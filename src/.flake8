@@ -1,0 +1,5 @@
+[flake8]
+exclude=__pycache__,
+        ./.uwsgi_plugins_builder/*,
+        ./uwsgi-consul,
+max-line-length = 119
