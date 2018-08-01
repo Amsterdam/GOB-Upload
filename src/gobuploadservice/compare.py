@@ -1,0 +1,93 @@
+"""Compare new data with the existing data
+
+Derive Add, Change, Delete and Confirm actions by comparing a full set of new data against the full set of current data
+
+"""
+from sqlalchemy.engine.url import URL
+from sqlalchemy import create_engine
+from sqlalchemy import Table
+from sqlalchemy import text
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+
+from gobuploadservice.util import calculate_mutation
+from gobuploadservice.config import GOB_DB
+
+"""SQLAlchemy engine that encapsulates the database"""
+engine = create_engine(URL(**GOB_DB))
+
+Base = declarative_base()
+Base.metadata.reflect(bind=engine)
+
+session = sessionmaker()
+session.configure(bind=engine)
+gob_session = session()
+
+
+def compare(msg):
+    """Compare new data in msg (contents) with the current data
+
+    :param msg: The new data, including header and summary
+    :return: result message
+    """
+
+    # Parse the message header
+    header = msg["header"]
+    entity = header["entity"]
+    source = header["source"]
+    source_id = header["source_id"]
+    version = header["version"]
+
+    # Do any migrations if the data is behind in version
+    if version != "0.1":
+        # No migrations defined yet...
+        raise ValueError("Unexpected version, please write a generic migration here of migrate the import")
+
+    # Get the table where the current entities are stored
+    entities = Table(entity, Base.metadata)
+
+    # Get all current data for the source
+    all = gob_session.query(entities).filter(text(f"_source='{source}'")).all()
+
+    # Convert the data to a dictionary for fast lookup on source_id
+    cur_values = {getattr(data, source_id): data for data in all}
+    new_values = {data[source_id]: data for data in msg["contents"]}
+
+    # Get all current and new source ids
+    cur_ids = [value for value in cur_values.keys()]
+    new_ids = [value for value in new_values.keys()]
+
+    # Derive the mutations
+    mutations = []
+
+    # Loop over all source_ids (both new and existing)
+    for id in set(cur_ids + new_ids):
+        # Get the new value from the dictionary
+        new_value = new_values.get(id)
+
+        # Get the current value from the dictionary and transform it into an object
+        # Skip all derived and meta data by filtering on not starting with "_"
+        cur_value = cur_values.get(id)
+        cur_value = {attr: getattr(cur_value, attr) for attr in dir(cur_value) if not attr.startswith('_')}
+
+        mutation = calculate_mutation(new_value, cur_value)
+        if mutation is not None:
+            mutations.append(mutation)
+
+    print_report(mutations)
+
+    # Return the result
+    return {
+        "header": header,
+        "summary": None,  # No log, metrics and qa indicators for now
+        "contents": mutations,
+    }
+
+
+def print_report(mutations):
+    # Print a simple report
+    print(f"Aantal mutaties: {len(mutations)}")
+    for action in ["ADD", "MODIFIED", "CONFIRMED", "DELETED"]:
+        actions = [mutation for mutation in mutations if mutation['action'] == action]
+        if len(actions) > 0:
+            print(f"- {action}: {len(actions)}")

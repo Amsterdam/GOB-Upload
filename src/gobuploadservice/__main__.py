@@ -10,7 +10,7 @@ import time
 from gobuploadservice.config import MESSAGE_BROKER, QUEUES, WORKFLOW_QUEUE
 from gobuploadservice.message_broker.async_message_broker import AsyncConnection
 
-from gobuploadservice.compare import compare
+from gobuploadservice import compare
 from gobuploadservice.update import full_update
 
 
