@@ -52,7 +52,7 @@ Or activate the previously created virtual environment
 
     source venv/bin/activate
     
-Start the client:
+Start the service:
 
     cd src
-    python -m upload
+    python -m gobuploadservice

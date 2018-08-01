@@ -13,7 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-from upload.config import GOB_DB
+from gobuploadservice.config import GOB_DB
 
 """SQLAlchemy engine that encapsulates the database"""
 engine = create_engine(URL(**GOB_DB))

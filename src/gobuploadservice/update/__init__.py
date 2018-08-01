@@ -7,7 +7,7 @@ from sqlalchemy import create_engine
 from sqlalchemy import Table
 from sqlalchemy.ext.declarative import declarative_base
 
-from upload.config import GOB_DB
+from gobuploadservice.config import GOB_DB
 
 """SQLAlchemy engine that encapsulates the database"""
 engine = create_engine(URL(**GOB_DB))

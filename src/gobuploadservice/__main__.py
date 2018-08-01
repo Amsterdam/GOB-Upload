@@ -7,11 +7,11 @@ It writes the storage to apply events to the storage
 """
 import time
 
-from upload.config import MESSAGE_BROKER, QUEUES, WORKFLOW_QUEUE
-from upload.message_broker.async_message_broker import AsyncConnection
+from gobuploadservice.config import MESSAGE_BROKER, QUEUES, WORKFLOW_QUEUE
+from gobuploadservice.message_broker.async_message_broker import AsyncConnection
 
-from upload.compare import compare
-from upload.update import full_update
+from gobuploadservice.compare import compare
+from gobuploadservice.update import full_update
 
 
 def publish_request_result(connection, key, result_msg):
