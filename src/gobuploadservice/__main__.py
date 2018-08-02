@@ -7,27 +7,17 @@ It writes the storage to apply events to the storage
 """
 import time
 
-from gobuploadservice.config import MESSAGE_BROKER, QUEUES, WORKFLOW_QUEUE
+from gobuploadservice.config import MESSAGE_BROKER, get_workflow_queue
 from gobuploadservice.message_broker.async_message_broker import AsyncConnection
 
-from gobuploadservice import compare
+from gobuploadservice.compare import compare
 from gobuploadservice.update import full_update
 
 
-def publish_request_result(connection, key, result_msg):
-    """Publish the result of a request
-
-    :param connection: The message broker connection
-    :param key: The key to identify the type of message
-    :param result: The message
-    :return:
-    """
-    post = {
-        "exchange": "gob.workflow",
-        "name": "gob.workflow.proposal",
-        "key": "*.proposal"
-    }
-    connection.publish(post, key, result_msg)
+WORKFLOW = {
+    'fullimport.request': {'handler': compare, 'report_back': 'fullupdate.proposal'},
+    'fullupdate.request': {'handler': full_update, 'report_back': 'fullupdate.proposal'}
+}
 
 
 def on_message(connection, queue, key, msg):
@@ -40,32 +30,25 @@ def on_message(connection, queue, key, msg):
     :return:
     """
 
-    if queue["name"] == WORKFLOW_QUEUE:
-        # Request has been received
-        if key == "fullimport.request":
-            print("Fullimport.request accepted, start compare")
-            result_msg = compare(msg)
-            publish_request_result(connection, "fullupdate.proposal", result_msg)
-        elif key == "fullupdate.request":
-            print("Fullupdate.request accepted, start update")
-            result_msg = full_update(msg)
-            publish_request_result(connection, "updatefinished.proposal", result_msg)
-        else:
-            print("Unknown request received", key)
-            return False  # ignore message, leave for someone else
-    else:
-        # This should never happen, the subscription routing_key should filter the messages
-        print("Unknown message type received", queue["name"], key)
-        return False  # Do not acknowledge the message
+    print(f"{key} accepted from {queue['name']}, start compare")
 
-    return True  # Acknowledge message when it has been fully handled
+    handle = WORKFLOW[key]['handler']
+    report_back = WORKFLOW[key]['report_back']
+
+    try:
+        result_msg = handle(msg)
+    except RuntimeError:
+        return False
+
+    connection.publish(get_workflow_queue(report_back), report_back, result_msg)
+    return True
 
 
 # Start a connection with the message broker
 with AsyncConnection(MESSAGE_BROKER) as connection:
-
     # Subscribe to the queues, handle messages in the on_message function (runs in another thread)
-    connection.subscribe(QUEUES, on_message)
+    for key in WORKFLOW.keys():
+        connection.subscribe(get_workflow_queue(key), on_message)
 
     # Repeat forever
     print("Update component started")

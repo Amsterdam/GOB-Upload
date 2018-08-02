@@ -3,14 +3,16 @@ import os
 MESSAGE_BROKER = os.environ["MESSAGE_BROKER_ADDRESS"]
 
 WORKFLOW_QUEUE = "gob.workflow.request"
+WORKFLOW_EXCHANGE = "gob.workflow"
 
-QUEUES = [
-    {
-        "exchange": "gob.workflow",
+
+def get_workflow_queue(key):
+    return {
+        "exchange": WORKFLOW_EXCHANGE,
         "name": WORKFLOW_QUEUE,
-        "key": "*.request"
+        "key": key
     }
-]
+
 
 GOB_DB = {'drivername': 'postgres',
           'username': 'gob',
