@@ -1,0 +1,14 @@
+version: '3.0'
+
+services:
+
+  update_client:
+    build: src
+    container_name: update_client
+    environment:
+      MESSAGE_BROKER_ADDRESS: rabbitmq
+
+networks:
+  default:
+    external:
+      name: gob-network
