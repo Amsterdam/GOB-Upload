@@ -3,25 +3,24 @@
 Derive Add, Change, Delete and Confirm actions by comparing a full set of new data against the full set of current data
 
 """
+import datetime
+from decimal import Decimal
+
 from sqlalchemy.engine.url import URL
 from sqlalchemy import create_engine
-from sqlalchemy import Table
-from sqlalchemy import text
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session
+from sqlalchemy.ext.automap import automap_base
 
-from gobuploadservice.util import calculate_mutation
 from gobuploadservice.config import GOB_DB
+from gobuploadservice.gob_config import GOBHeader
 
 """SQLAlchemy engine that encapsulates the database"""
 engine = create_engine(URL(**GOB_DB))
 
-Base = declarative_base()
+# prepare base for autoreflecting existing tables
+Base = automap_base()
+Base.prepare(engine, reflect=True)
 Base.metadata.reflect(bind=engine)
-
-session = sessionmaker()
-session.configure(bind=engine)
-gob_session = session()
 
 
 def compare(msg):
@@ -32,59 +31,127 @@ def compare(msg):
     """
 
     # Parse the message header
-    header = msg["header"]
-    entity = header["entity"]
-    source = header["source"]
-    source_id = header["source_id"]
-    version = header["version"]
+    metadata = GOBHeader(msg)
 
     # Do any migrations if the data is behind in version
-    if version != "0.1":
+    if metadata.version != "0.1":
         # No migrations defined yet...
         raise ValueError("Unexpected version, please write a generic migration here of migrate the import")
 
+    # Todo: I propose kicking of another message, with another handler, if migration (or init of datatype) is needed
+
     # Get the table where the current entities are stored
-    entities = Table(entity, Base.metadata)
+    Entity = getattr(Base.classes, metadata.entity)
+    session = Session(engine)
 
-    # Get all current data for the source
-    all = gob_session.query(entities).filter(text(f"_source='{source}'")).all()
+    # Get all current non-deleted ids for this source
+    current_ids = session.query(Entity._source_id).filter_by(_source=metadata.source, _date_deleted=None).all()
 
-    # Convert the data to a dictionary for fast lookup on source_id
-    cur_values = {getattr(data, source_id): data for data in all}
-    new_values = {data[source_id]: data for data in msg["contents"]}
+    # Read new content into dictionary
+    new_entities = {data['_source_id']: data for data in msg["contents"]}
 
-    # Get all current and new source ids
-    cur_ids = [value for value in cur_values.keys()]
-    new_ids = [value for value in new_values.keys()]
+    # find deletes by comparing current ids to new entities:
+    deleted_ids = [current._source_id for current in current_ids if current._source_id not in new_entities]
 
-    # Derive the mutations
     mutations = []
+    # create delete mutations
+    for deleted_id in deleted_ids:
+        entity = session.query(Entity).filter_by(_source=metadata.source, _source_id=deleted_id).one()
+        mutations.append(_create_delete_mutation(entity, metadata))
 
-    # Loop over all source_ids (both new and existing)
-    for id in set(cur_ids + new_ids):
-        # Get the new value from the dictionary
-        new_value = new_values.get(id)
+    # create other mutations
+    for new_id, new_entity in new_entities.items():
+        entity = session.query(Entity).filter_by(_source=metadata.source, _source_id=new_id).one_or_none()
+        mutations.append(_create_confirm_modify_or_delete(entity, metadata, new_entity))
 
-        # Get the current value from the dictionary and transform it into an object
-        # Skip all derived and meta data by filtering on not starting with "_"
-        cur_value = cur_values.get(id)
-        cur_value = {attr: getattr(cur_value, attr) for attr in dir(cur_value) if not attr.startswith('_')}
+    session.close()
 
-        mutation = calculate_mutation(new_value, cur_value)
-        if mutation is not None:
-            mutations.append(mutation)
-
-    print_report(mutations)
+    _print_report(mutations)
 
     # Return the result
     return {
-        "header": header,
+        "header": metadata.as_header,
         "summary": None,  # No log, metrics and qa indicators for now
         "contents": mutations,
     }
 
 
-def print_report(mutations):
+def _create_confirm_modify_or_delete(entity, metadata, new_entity):
+    if entity is not None:
+        if _is_equal(entity, new_entity):
+            return _create_confirmed_mutation(entity, metadata)
+        else:
+            return _create_modified_mutation(entity, new_entity, metadata)
+    else:
+        return _create_add_mutation(new_entity, metadata)
+
+
+def _is_equal(entity, new_entity):
+    # this should be based on gob-model description, however for now:
+    # Skip all derived and meta data by filtering on not starting with "_"
+    attributes_to_check = [key for key, v in new_entity.items() if not key.startswith('_')]
+
+    for attribute in attributes_to_check:
+        if not _is_attr_equal(new_entity[attribute], getattr(entity, attribute)):
+            return False
+
+    return True
+
+
+def _is_attr_equal(new_value, stored_value):
+    """Determine if a new value is equal to a already stored value
+
+    Values may be stored in a different format than the new data. Convert the data where required
+
+    Todo: this should be generic functionality of GOB-datatypes
+
+    :param new_value: The new value
+    :param stored_value: The currently stored value
+    :return: True if both values compare equal
+    """
+    if isinstance(stored_value, datetime.date):
+        return new_value == stored_value.strftime("%Y-%m-%d")
+    elif isinstance(stored_value, Decimal):
+        return new_value == str(stored_value)
+    elif isinstance(stored_value, bool):
+        return new_value == str(stored_value)
+    else:
+        return new_value == stored_value
+
+
+def _create_delete_mutation(entity, metadata):
+    contents = {"_source_id": entity._source_id, metadata.id_column: getattr(entity, metadata.id_column)}
+    return {"action": "DELETED", "contents": contents}
+
+
+def _create_confirmed_mutation(entity, metadata):
+    contents = {"_source_id": entity._source_id, metadata.id_column: getattr(entity, metadata.id_column)}
+    return {"action": "CONFIRMED", "contents": contents}
+
+
+def _create_add_mutation(new_entity, metadata):
+    ids = {"_source_id": new_entity['_source_id'], metadata.id_column: new_entity[metadata.id_column]}
+    return {"action": "ADD", "contents": {**new_entity, **ids}}
+
+
+def _create_modified_mutation(entity, new_entity, metadata):
+    ids = {"_source_id": new_entity['_source_id'], metadata.id_column: new_entity[metadata.id_column]}
+    modifications = []
+
+    attributes_to_check = [key for key, v in new_entity.items() if not key.startswith('_')]
+
+    for attribute in attributes_to_check:
+        if not _is_attr_equal(new_entity[attribute], getattr(entity, attribute)):
+            modifications.append({
+                "key": attribute,
+                "new_value": new_entity[attribute],
+                "old_value": getattr(entity, attribute)
+            })
+
+    return {"action": "MODIFIED", "contents": dict(modifications=modifications, **ids)}
+
+
+def _print_report(mutations):
     # Print a simple report
     print(f"Aantal mutaties: {len(mutations)}")
     for action in ["ADD", "MODIFIED", "CONFIRMED", "DELETED"]:

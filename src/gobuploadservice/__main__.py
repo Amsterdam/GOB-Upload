@@ -16,7 +16,7 @@ from gobuploadservice.update import full_update
 
 WORKFLOW = {
     'fullimport.request': {'handler': compare, 'report_back': 'fullupdate.proposal'},
-    'fullupdate.request': {'handler': full_update, 'report_back': 'fullupdate.proposal'}
+    'fullupdate.request': {'handler': full_update, 'report_back': 'updatefinished.proposal'}
 }
 
 
@@ -30,7 +30,7 @@ def on_message(connection, queue, key, msg):
     :return:
     """
 
-    print(f"{key} accepted from {queue['name']}, start compare")
+    print(f"{key} accepted from {queue['name']}, start handling")
 
     handle = WORKFLOW[key]['handler']
     report_back = WORKFLOW[key]['report_back']
@@ -48,7 +48,7 @@ def on_message(connection, queue, key, msg):
 with AsyncConnection(MESSAGE_BROKER) as connection:
     # Subscribe to the queues, handle messages in the on_message function (runs in another thread)
     for key in WORKFLOW.keys():
-        connection.subscribe(get_workflow_queue(key), on_message)
+        connection.subscribe([get_workflow_queue(key)], on_message)
 
     # Repeat forever
     print("Update component started")

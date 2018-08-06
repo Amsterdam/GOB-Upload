@@ -164,7 +164,7 @@ class AsyncConnection(object):
 
         # Create a connection object
         self._connection = pika.SelectConnection(
-            parameters=pika.ConnectionParameters(self._address),
+            parameters=pika.ConnectionParameters(self._address, heartbeat_interval=600, blocked_connection_timeout=300),
             on_open_callback=self._on_open_connection,
             on_open_error_callback=on_error_connection,
             on_close_callback=on_close_connection)
