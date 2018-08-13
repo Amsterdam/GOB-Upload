@@ -4,6 +4,7 @@ Each update to the model is by means of an event.
 Events can specify to Add, Delete, Change of Confirm any data in the database.
 Events are the key data of the database. It allows to (re-)construct the database for any given point in time
 """
+import copy
 
 EVENTS = {
     "eventid": "GOB.PKInteger",   # Unique identification of the event, numbered sequentially
@@ -26,5 +27,5 @@ def create_event(orm_event, gob_event, data, metadata):
         action=gob_event.name,
         source=metadata.source,
         source_id=data[metadata.source_id_column],
-        contents=data
+        contents=copy.deepcopy(data)
     )
