@@ -7,8 +7,8 @@ It writes the storage to apply events to the storage
 """
 import time
 
+from gobcore.message_broker.async_message_broker import AsyncConnection
 from gobuploadservice.config import MESSAGE_BROKER, get_workflow_queue
-from gobuploadservice.message_broker.async_message_broker import AsyncConnection
 
 from gobuploadservice.compare import compare
 from gobuploadservice.update import full_update

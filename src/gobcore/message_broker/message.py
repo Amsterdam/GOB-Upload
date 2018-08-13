@@ -1,12 +1,3 @@
-GOB_TIMESTAMPS = {
-    "ADD": '_date_created',
-    "MODIFIED": '_date_modified',
-    "DELETED": '_date_deleted',
-    "CONFIRMED": '_date_confirmed',
-}
-GOB_ACTIONS = ["ADD", "DELETED", "MODIFIED", "CONFIRMED"]
-
-
 class GOBHeader():
     source_id_column = '_source_id'
 
@@ -17,6 +8,7 @@ class GOBHeader():
         assert self.id_column is not None
         assert self.entity is not None
         assert self.version is not None
+        assert self.gob_model is not None
 
     @property
     def source(self):
@@ -39,11 +31,17 @@ class GOBHeader():
         return self._header['version']
 
     @property
+    def gob_model(self):
+        return self._header['gob_model']
+
+    @property
     def as_header(self):
         return {
             "source": self.source,
             "timestamp": self.timestamp,
             "entity_id": self.id_column,
             "entity": self.entity,
-            "version": self.version
+            "version": self.version,
+            "gob_model": self.gob_model
         }
+    # Todo, version should be a part of gob_model?

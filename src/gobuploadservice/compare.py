@@ -1,26 +1,26 @@
 """Compare new data with the existing data
 
-Derive Add, Change, Delete and Confirm actions by comparing a full set of new data against the full set of current data
+Derive Add, Change, Delete and Confirm events by comparing a full set of new data against the full set of current data
 
 """
 import datetime
 from decimal import Decimal
 
-from sqlalchemy.engine.url import URL
 from sqlalchemy import create_engine
+from sqlalchemy.engine.url import URL
 from sqlalchemy.orm import Session
-from sqlalchemy.ext.automap import automap_base
+
+from gobcore.events import GOB
+from gobcore.events import GOB_EVENTS
+from gobcore.message_broker.message import GOBHeader
 
 from gobuploadservice.config import GOB_DB
-from gobuploadservice.gob_config import GOBHeader
+from gobuploadservice.storage.init_storage import init_storage
+from gobuploadservice.storage.util import get_reflected_base
 
 """SQLAlchemy engine that encapsulates the database"""
 engine = create_engine(URL(**GOB_DB))
-
-# prepare base for autoreflecting existing tables
-Base = automap_base()
-Base.prepare(engine, reflect=True)
-Base.metadata.reflect(bind=engine)
+Base = get_reflected_base(engine)
 
 
 def compare(msg):
@@ -32,19 +32,14 @@ def compare(msg):
 
     # Parse the message header
     metadata = GOBHeader(msg)
-
-    # Do any migrations if the data is behind in version
-    if metadata.version != "0.1":
-        # No migrations defined yet...
-        raise ValueError("Unexpected version, please write a generic migration here of migrate the import")
-
-    # Todo: I propose kicking of another message, with another handler, if migration (or init of datatype) is needed
+    base = init_storage(metadata, engine, Base)
 
     # Get the table where the current entities are stored
-    Entity = getattr(Base.classes, metadata.entity)
-    session = Session(engine)
+    Entity = getattr(base.classes, metadata.entity)
+    entity_id_field = metadata.id_column
 
     # Get all current non-deleted ids for this source
+    session = Session(engine)
     current_ids = session.query(Entity._source_id).filter_by(_source=metadata.source, _date_deleted=None).all()
 
     # Read new content into dictionary
@@ -57,12 +52,14 @@ def compare(msg):
     # create delete mutations
     for deleted_id in deleted_ids:
         entity = session.query(Entity).filter_by(_source=metadata.source, _source_id=deleted_id).one()
-        mutations.append(_create_delete_mutation(entity, metadata))
+        mutations.append(_create_delete(deleted_id, entity, entity_id_field))
 
     # create other mutations
     for new_id, new_entity in new_entities.items():
-        entity = session.query(Entity).filter_by(_source=metadata.source, _source_id=new_id).one_or_none()
-        mutations.append(_create_confirm_modify_or_delete(entity, metadata, new_entity))
+        entity = session.query(Entity).filter_by(_source=metadata.source,
+                                                 _source_id=new_id,
+                                                 _date_deleted=None).one_or_none()
+        mutations.append(_create_confirm_modify_or_add(entity, new_entity, entity_id_field))
 
     session.close()
 
@@ -76,14 +73,24 @@ def compare(msg):
     }
 
 
-def _create_confirm_modify_or_delete(entity, metadata, new_entity):
+def _create_delete(deleted_id, entity, entity_id_field):
+    entity_id = getattr(entity, entity_id_field)
+    return GOB.DELETED.get_modification(deleted_id, entity_id_field, entity_id)
+
+
+def _create_confirm_modify_or_add(entity, new_entity, entity_id_field):
+    source_id = new_entity['_source_id']
+    entity_id = new_entity[entity_id_field]
+
     if entity is not None:
-        if _is_equal(entity, new_entity):
-            return _create_confirmed_mutation(entity, metadata)
+        mutations = _calculate_mutations(entity, new_entity)
+
+        if len(mutations) == 0:
+            return GOB.CONFIRMED.get_modification(source_id, entity_id_field, entity_id)
         else:
-            return _create_modified_mutation(entity, new_entity, metadata)
+            return GOB.MODIFIED.get_modification(source_id, entity_id_field, entity_id, mutations=mutations)
     else:
-        return _create_add_mutation(new_entity, metadata)
+        return GOB.ADD.get_modification(source_id, entity_id_field, entity_id, contents=new_entity)
 
 
 def _is_equal(entity, new_entity):
@@ -119,42 +126,25 @@ def _is_attr_equal(new_value, stored_value):
         return new_value == stored_value
 
 
-def _create_delete_mutation(entity, metadata):
-    contents = {"_source_id": entity._source_id, metadata.id_column: getattr(entity, metadata.id_column)}
-    return {"action": "DELETED", "contents": contents}
-
-
-def _create_confirmed_mutation(entity, metadata):
-    contents = {"_source_id": entity._source_id, metadata.id_column: getattr(entity, metadata.id_column)}
-    return {"action": "CONFIRMED", "contents": contents}
-
-
-def _create_add_mutation(new_entity, metadata):
-    ids = {"_source_id": new_entity['_source_id'], metadata.id_column: new_entity[metadata.id_column]}
-    return {"action": "ADD", "contents": {**new_entity, **ids}}
-
-
-def _create_modified_mutation(entity, new_entity, metadata):
-    ids = {"_source_id": new_entity['_source_id'], metadata.id_column: new_entity[metadata.id_column]}
-    modifications = []
-
+def _calculate_mutations(entity, new_entity):
+    attr_modifications = []
     attributes_to_check = [key for key, v in new_entity.items() if not key.startswith('_')]
 
     for attribute in attributes_to_check:
         if not _is_attr_equal(new_entity[attribute], getattr(entity, attribute)):
-            modifications.append({
+            attr_modifications.append({
                 "key": attribute,
                 "new_value": new_entity[attribute],
                 "old_value": getattr(entity, attribute)
             })
 
-    return {"action": "MODIFIED", "contents": dict(modifications=modifications, **ids)}
+    return attr_modifications
 
 
 def _print_report(mutations):
     # Print a simple report
     print(f"Aantal mutaties: {len(mutations)}")
-    for action in ["ADD", "MODIFIED", "CONFIRMED", "DELETED"]:
-        actions = [mutation for mutation in mutations if mutation['action'] == action]
-        if len(actions) > 0:
-            print(f"- {action}: {len(actions)}")
+    for event in GOB_EVENTS:
+        events = [mutation for mutation in mutations if mutation['action'] == event.name]
+        if len(events) > 0:
+            print(f"- {event.name}: {len(events)}")

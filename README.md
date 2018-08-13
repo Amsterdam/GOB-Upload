@@ -35,9 +35,11 @@ When finished the process will publish its resuls as a **updatefinished.proposal
     
 # Local Installation
 
-Start the [GOB Message Broker](https://github.com/Amsterdam/GOB-Message-Broker)
+Start the [GOB Workflow](https://github.com/Amsterdam/GOB-Workflow)
 
-Expose the IP address of the message broker in the environment:
+You will end up with a running RabbitMQ instance, and a workflow manager listening to it.
+
+Expose the IP address of the message queue in the environment:
 
 ```bash
 export MESSAGE_BROKER_ADDRESS=localhost
@@ -46,13 +48,32 @@ export MESSAGE_BROKER_ADDRESS=localhost
 Create a virtual environment:
 
     python3 -m venv venv
+    source venv/bin/activate
     pip install -r src/requirements.txt
     
 Or activate the previously created virtual environment
 
     source venv/bin/activate
-    
-Start the service:
 
-    cd src
-    python -m gobuploadservice
+For the benefits of local development an instance of Postgres can be spun up,
+it will run on the gob-network, which needs to be created manually,
+if it doesn't exist yet:
+
+```bash
+docker network create gob-network
+```
+
+Then start the dockerized instance of Postgres:
+
+```bash
+docker-compose up database &
+```
+
+# Running locally
+
+Start the service, _using the virtual environment_:
+
+```bash
+(venv) $ cd src
+(venv) $ python -m gobuploadservice
+```
