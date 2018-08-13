@@ -22,7 +22,7 @@ class MODIFIED(GOBAction):
     @classmethod
     def get_modification(self, _source_id, _id_column, _id, **kwargs):
         assert 'mutations' in kwargs
-        contents = {'mutations': kwargs[ 'mutations']}
+        contents = {'mutations': kwargs['mutations']}
         return super().get_modification(_source_id, _id_column, _id, contents=contents)
 
 
