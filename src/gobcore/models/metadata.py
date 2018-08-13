@@ -1,7 +1,6 @@
 """The GOB entities and corresponding properties and types
 
 """
-from gobcore.data_types import GOB
 
 """Meta data that is registered for every entity"""
 METADATA_COLUMNS = {
@@ -23,6 +22,6 @@ METADATA_COLUMNS = {
 
 """Columns that are at the start of each entity"""
 FIXED_COLUMNS = {
-    "_gobid": "GOB.PKInteger", # The internal (GOB) id of the entity
-    "_id": "GOB.String"        # Provide for a generic (independent from Stelselpedia) id field for every entity
+    "_gobid": "GOB.PKInteger",  # The internal (GOB) id of the entity
+    "_id": "GOB.String"         # Provide for a generic (independent from Stelselpedia) id field for every entity
 }
