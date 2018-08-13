@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from gobcore.events import GOB_EVENTS, get_event, GOB
 from gobcore.message_broker.message import GOBHeader
+from gobcore.models.event import create_event
 
 from gobuploadservice.config import GOB_DB
 from gobuploadservice.storage.init_storage import init_storage
@@ -30,12 +31,15 @@ def full_update(msg):
 
     # Reflect on the database to get an Object-mapping to the entity
     Entity = getattr(base.classes, metadata.entity)
+    Event = base.classes.event
 
     session = Session(engine)
     modifications = msg["contents"]
     for modification in modifications:
         data = modification['contents']
         event = get_event(modification["action"])
+
+        session.add(create_event(Event, event, data, metadata))
 
         # read and remove relevant id's (requires `compare` to put them in)
         entity_id = data.pop(metadata.id_column)
