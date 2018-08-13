@@ -2,11 +2,23 @@ version: '3.0'
 
 services:
 
-  update_client:
+  update_service:
     build: src
-    container_name: update_client
+    container_name: update_service
     environment:
       MESSAGE_BROKER_ADDRESS: rabbitmq
+
+  database:
+    image: amsterdam/postgres
+    ports:
+    - "5406:5432"
+    container_name: storage
+    environment:
+      POSTGRES_PASSWORD: insecure
+      POSTGRES_DB: gob
+      POSTGRES_USER: gob
+    volumes:
+    - "~/.ssh/datapunt.key:/root/.ssh/datapunt.key"
 
 networks:
   default:
