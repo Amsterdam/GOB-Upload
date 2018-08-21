@@ -1,3 +1,8 @@
+"""Database utility methods
+
+This module serves as a utility layer between the GOB model and the underlying storage
+
+"""
 from sqlalchemy import Column
 
 from gobcore.data_types import get_gob_type
