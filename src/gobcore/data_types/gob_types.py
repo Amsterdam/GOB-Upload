@@ -1,3 +1,19 @@
+"""GOB Types
+
+Each possible data type in GOB is defined in this module.
+The definition includes:
+    name - the name of the data type, e.g. string
+    sql_type - the corresponding storage type, e.g. sqlalchemy.String
+    is_pk - whether the attribute that has this type is the primary key of the entity
+
+todo:
+    is_pk tells something about the attribute, not about the type.
+    should is_pk stay a type property?
+
+todo:
+    GOBType is an abstract base class, why not subclass from ABC?
+
+"""
 import sqlalchemy
 
 
