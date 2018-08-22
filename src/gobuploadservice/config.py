@@ -14,8 +14,10 @@ def get_workflow_queue(key):
     }
 
 
-GOB_DB = {'drivername': 'postgres',
-          'username': 'gob',
-          'password': 'insecure',
-          'host': os.getenv("DB_HOST", "localhost"),
-          'port': 5406}
+GOB_DB = {
+    'drivername': 'postgres',
+    'username': 'gob',
+    'password': 'insecure',
+    'host': os.getenv("DB_HOST", "localhost"),
+    'port': 5406
+}

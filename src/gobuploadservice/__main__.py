@@ -14,9 +14,16 @@ from gobuploadservice.compare import compare
 from gobuploadservice.update import full_update
 
 
+# Definition of the workflow messages that are accepted, how these are processed and what is reported back.
 WORKFLOW = {
-    'fullimport.request': {'handler': compare, 'report_back': 'fullupdate.proposal'},
-    'fullupdate.request': {'handler': full_update, 'report_back': 'updatefinished.proposal'}
+    'fullimport.request': {
+        'handler': compare,
+        'report_back': 'fullupdate.proposal'
+    },
+    'fullupdate.request': {
+        'handler': full_update,
+        'report_back': 'updatefinished.proposal'
+    }
 }
 
 
@@ -32,7 +39,9 @@ def on_message(connection, queue, key, msg):
 
     print(f"{key} accepted from {queue['name']}, start handling")
 
+    # Get the handler for the specific workflow
     handle = WORKFLOW[key]['handler']
+    # Get the key to report back the results
     report_back = WORKFLOW[key]['report_back']
 
     try:

@@ -1,5 +1,10 @@
 # flake8: noqa
 # todo: check if this file can be simplified and/or shared in multiple GOB components
+"""Asynchronous message broker
+
+Todo: Share from the module in the GOB-Message-Broker repo
+
+"""
 import json
 import threading
 
