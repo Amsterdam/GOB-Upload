@@ -49,7 +49,8 @@ def compare(msg):
     # Read new content into dictionary
     new_entities = {data['_source_id']: data for data in msg["contents"]}
 
-    # find deletes by comparing current ids to new entities:
+    # find deletes by comparing current ids to new entities
+    # if a current_id is not found in the new_entities it is interpreted as a deletion
     deleted_ids = [current._source_id for current in current_ids if current._source_id not in new_entities]
 
     # create the list of mutations
@@ -59,7 +60,7 @@ def compare(msg):
     for deleted_id in deleted_ids:
         # Get the database entity that is to be deleted (identified by source + source_id)
         entity = session.query(Entity).filter_by(_source=metadata.source, _source_id=deleted_id).one()
-        # Create a delete mutation (source_id, entity, ...
+        # Create a delete mutation
         mutations.append(_create_delete(deleted_id, entity, entity_id_field))
 
     # create other mutations
@@ -127,47 +128,24 @@ def _create_confirm_modify_or_add(entity, new_entity, entity_id_field):
             return GOB.MODIFIED.get_modification(source_id, entity_id_field, entity_id, mutations=mutations)
 
 
-# def _is_equal(entity, new_entity):
-#     """
-#     Check if an entity is equal to another entity
-#
-#     Skip all derived and meta data by filtering on not starting with "_"
-#
-#     :param entity:
-#     :param new_entity:
-#     :return:
-#     """
-#     attributes_to_check = [key for key, v in new_entity.items() if not key.startswith('_')]
-#
-#     for attribute in attributes_to_check:
-#         if not _is_attr_equal(new_entity[attribute], getattr(entity, attribute)):
-#             return False
-#
-#     return True
-
-
-def _is_attr_equal(new_value, stored_value):
+def _stored_value_as_string(stored_value):
     """
-    Determine if a new value is equal to a already stored value
-
-    Values may be stored in a different format than the new data. Convert the data where required
+    Convert to stored value to a string in order to be comparable with any new value
+    New values are strings (except for None values)
+    This is to allow for any appropriate type conversion when storing the value
 
     Todo: this should be generic functionality of GOB-datatypes
 
-    :param new_value: The new value
-    :param stored_value: The currently stored value
-    :return: True if both values compare equal
+    :param stored_value:
+    :return:
     """
+
     if isinstance(stored_value, datetime.date):
-        return new_value == stored_value.strftime("%Y-%m-%d")
-    elif isinstance(stored_value, Decimal):
-        return new_value == str(stored_value)
-    elif isinstance(stored_value, bool):
-        if new_value != str(stored_value):
-            print(new_value, stored_value, str(stored_value))
-        return new_value == str(stored_value)
+        # Convert the stored date to an ISO 8601 formatted date string
+        return stored_value.strftime("%Y-%m-%d")
     else:
-        return new_value == stored_value
+        # Default is the standard string conversion
+        return str(stored_value)
 
 
 def _calculate_mutations(entity, new_entity):
@@ -186,7 +164,12 @@ def _calculate_mutations(entity, new_entity):
     attributes_to_check = [key for key, v in new_entity.items() if not key.startswith('_')]
 
     for attribute in attributes_to_check:
-        if not _is_attr_equal(new_entity[attribute], getattr(entity, attribute)):
+        # in order to compare the new_value with the stored_value the stored value has to be
+        # converted to a string
+        # the new value is converted to a string (to handle None values, otherwise it is already a string)
+        new_value = str(new_entity[attribute])
+        stored_value = _stored_value_as_string(getattr(entity, attribute))
+        if not new_value == stored_value:
             attr_modifications.append({
                 "key": attribute,
                 "new_value": new_entity[attribute],
