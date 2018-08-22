@@ -13,8 +13,16 @@ from sqlalchemy import Table, Index
 
 
 def init_entity(metadata, engine):
-    table_name = metadata.entity
-    model = metadata.gob_model
+    """
+    Initialize a database table for the given metadata.
+
+    :param metadata:
+    :param engine:
+    :return:
+    """
+
+    table_name = metadata.entity    # e.g. meetbouten
+    model = metadata.gob_model      # the GOB model for the specified entity
 
     # internal columns
     columns = [get_column_definition(column) for column in FIXED_COLUMNS.items()]
@@ -22,6 +30,8 @@ def init_entity(metadata, engine):
 
     # externally visible columns
     columns.extend([get_column_definition(column) for column in METADATA_COLUMNS['public'].items()])
+
+    # get the entity columns
     data_column_desc = {col: desc['type'] for col, desc in model.items()}
     columns.extend([get_column_definition(column) for column in data_column_desc.items()])
 

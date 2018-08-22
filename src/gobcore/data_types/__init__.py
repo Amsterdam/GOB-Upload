@@ -24,7 +24,7 @@ GOB_TYPES = [
     GOB.Boolean
 ]
 
-# Convert GOB_TYPES to a dictionary indexed by the name of the type
+# Convert GOB_TYPES to a dictionary indexed by the name of the type, prefixed by GOB.
 _gob_types_dict = {f'GOB.{gob_type.__name__}': gob_type for gob_type in GOB_TYPES}
 
 # no geo implemented yet. We pass wkt strings around for now.

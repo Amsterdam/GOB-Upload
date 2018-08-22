@@ -1,4 +1,11 @@
-"""The GOB entities and corresponding properties and types
+"""GOB metadata
+
+Definition of the attributes that are automatically added to each GOB entity.
+
+The auto-included attributes have the purpose of
+    registering the last application of a specific event, e.g. date_confirmed
+    registering the source of the data; source and source_id
+    provide for a internal id and universal id reference; gobid and id
 
 """
 
