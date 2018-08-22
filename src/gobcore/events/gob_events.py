@@ -38,6 +38,7 @@ class ADD(GOBAction):
         source_id: 12881429
         contents: {
             meetboutid: "12881429",
+            indicatie_beveiligd: "True",
             ....
         }
     """
@@ -55,8 +56,8 @@ class MODIFIED(GOBAction):
         contents: {
             mutations: [{
                 key: "indicatie_beveiligd",
-                old_value: "true",
-                new_value: "false"
+                new_value: "False"
+                old_value: True,
             }]
         }
     """

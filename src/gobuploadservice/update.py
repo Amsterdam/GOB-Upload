@@ -36,15 +36,18 @@ def full_update(msg):
     session = Session(engine)
     modifications = msg["contents"]
     for modification in modifications:
+        # Get the event and corresponding data (possibly empty, e.g. for DELETE)
         data = modification['contents']
         event = get_event(modification["action"])
 
+        # Store the event in the database
         session.add(create_event(Event, event, data, metadata))
 
         # read and remove relevant id's (requires `compare` to put them in)
         entity_id = data.pop(metadata.id_column)
         source_id = data.pop(metadata.source_id_column)
 
+        # Updates on entities are uniquely identified by the source and source_id
         entity = session.query(Entity).filter_by(_source=metadata.source,
                                                  _source_id=source_id).one_or_none()
 
@@ -55,11 +58,12 @@ def full_update(msg):
             session.add(entity)
 
         if event == GOB.ADD and entity._date_deleted is not None:
+            # todo: is this not a create and should the date_created be set, and other dates set to null?
             entity._date_deleted = None
 
         assert entity._date_deleted is None
 
-        # add timestamp
+        # set timestamp for the event, e.g. last_modified for MODIFIED event
         data[event.timestamp_field] = metadata.timestamp
 
         # hydrate the object with data:
@@ -98,8 +102,12 @@ def _hydrate(entity, model, data, event):
 
     for key, value in data.items():
         # todo make this more generic (this should not be read from sqlalchemy model, but from GOB-model
+        # todo: other data types (like date) require similar conversions
         if isinstance(getattr(model, key).prop.columns[0].type, Boolean):
-            setattr(entity, key, bool(value))
+            # Except for None values, all new values are string values
+            # A boolean string value has to be converted to a boolean
+            # Note: Do not use bool(value); bool('False') evaluates to True !
+            setattr(entity, key, value == str(True))
         else:
             setattr(entity, key, value)
 
