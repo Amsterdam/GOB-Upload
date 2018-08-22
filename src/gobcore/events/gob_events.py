@@ -10,6 +10,10 @@ todo: The classname is GOBAction and the filename is gob_events. This is confusi
 
 todo: GOBAction is an abstract base class, why not subclass from ABC?
 
+todo: The delete and confirm actions contain too much data. Contents can be left empty
+    A deletion or confirmation simple specifies source and sourceid in a collection
+    See also the examples in the action classes
+
 """
 
 
