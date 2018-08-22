@@ -6,7 +6,6 @@ Todo: Event, action and mutation are used for the same subject. Use one name to 
 
 """
 import datetime
-from decimal import Decimal
 
 from sqlalchemy import create_engine
 from sqlalchemy.engine.url import URL
