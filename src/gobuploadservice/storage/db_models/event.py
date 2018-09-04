@@ -22,23 +22,29 @@ EVENTS = {
 }
 
 
-def create_event(orm_event, gob_event, data, metadata):
+def create_event(DbEvent, event, metadata):
     """
     Method to fill the orm event entity with the required data,
     specifically placed here, to make sure all fields above are filled
 
     :param orm_event:
-    :param gob_event:
+    :param event:
     :param data:
     :param metadata:
     :return: orm_event
     """
 
-    return orm_event(
+    # todo: is this the right place to get the id (and event-name)?
+    #   this is implicit knowledge of event data structure
+    source_id = event['data'][metadata.source_id_column]
+
+    return DbEvent(
         timestamp=metadata.timestamp,
         entity=metadata.entity,
-        action=gob_event.name,
+        action=event['event'],
         source=metadata.source,
-        source_id=data[metadata.source_id_column],
-        contents=copy.deepcopy(data)
+        source_id=source_id,
+        # todo: should this be named data, instead of contents
+        # (contents is part of message, data is part of even)
+        contents=copy.deepcopy(event['data'])
     )

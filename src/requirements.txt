@@ -1,5 +1,6 @@
 coverage==4.5.1
 flake8==3.5.0
+-e git+https://github.com/Amsterdam/GOB-Core@39f77c2d868c200aeb1859d6df037ab8ba348933#egg=gobcore
 mccabe==0.6.1
 pika==0.12.0
 psycopg2-binary==2.7.5
