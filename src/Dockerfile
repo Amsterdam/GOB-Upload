@@ -12,4 +12,4 @@ RUN rm requirements.txt
 # Copy gobuploadservice module
 COPY gobuploadservice gobuploadservice
 
-CMD ['python3', '-m', 'gobuploadservice']
+CMD ["python3", "-m", "gobuploadservice"]
