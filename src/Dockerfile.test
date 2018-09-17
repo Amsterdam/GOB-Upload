@@ -8,6 +8,7 @@ WORKDIR /app
 COPY requirements.txt /app/
 RUN pip3 install --no-cache-dir -r requirements.txt
 RUN rm requirements.txt
+RUN rm -rf /app/src/gobcore/tests
 
 # Copy gobuploadservice module
 COPY gobuploadservice gobuploadservice
