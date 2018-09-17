@@ -2,23 +2,11 @@
 
 Process events and apply the event on the current state of the entity
 """
-from sqlalchemy import create_engine
-from sqlalchemy.engine.url import URL
-from sqlalchemy.orm import Session
-
 from gobcore.events.import_message import ImportMessage
 from gobcore.events import GobEvent
 
-from gobuploadservice.storage.db_models.event import create_event
-
 from gobuploadservice import print_report
-from gobuploadservice.config import GOB_DB
-from gobuploadservice.storage.init_storage import init_storage
-from gobuploadservice.storage.util import get_reflected_base
-
-"""SQLAlchemy engine that encapsulates the database"""
-engine = create_engine(URL(**GOB_DB))
-Base = get_reflected_base(engine)
+from gobuploadservice.storage.storage_handler import GOBStorageHandler
 
 
 def full_update(msg):
@@ -28,53 +16,30 @@ def full_update(msg):
     :return:
     """
     # Interpret the message header
+
     message = ImportMessage(msg)
     metadata = message.metadata
 
-    # Todo: this should be done elsewhere
-    base = init_storage(metadata, engine, Base)
+    db = GOBStorageHandler(metadata)
 
-    # Reflect on the database to get an Object-mapping to the entity
-    DbEvent = base.classes.event
-    DbEntity = getattr(base.classes, metadata.entity)
+    with db.get_session():
+        for event in message.contents:
+            # Store the event in the database
+            db.add_event_to_db(event)
 
-    session = Session(engine)
+            # Get the gob_event
+            gob_event = GobEvent(event, metadata)
 
-    for event in message.contents:
-        # Store the event in the database
-        session.add(create_event(DbEvent, event, metadata))
+            # read and remove relevant id's (requires `get_event_for` in `compare` to put them in)
+            # todo: currently source_id is always the same as the entity_id. If this will always  be true,
+            #       then we can skip one of the two.
+            entity_id, source_id = gob_event.pop_ids()
 
-        # Get the gob_event
-        gob_event = GobEvent(event, metadata)
+            # Updates on entities are uniquely identified by the source_id
+            entity = db.get_entity_for_update(entity_id, source_id, gob_event)
 
-        # read and remove relevant id's (requires `compare` to put them in)
-        entity_id, source_id = gob_event.pop_ids()
-
-        # Updates on entities are uniquely identified by the source and source_id
-        entity = session.query(DbEntity).filter_by(_source=metadata.source,
-                                                   _source_id=source_id).one_or_none()
-
-        # Make sure an entity is available when the event requires an addition.
-        if gob_event.is_add_new:
-            if entity is None:
-                # create a new Entity
-                entity = DbEntity(_source_id=source_id, _source=metadata.source)
-                setattr(entity, metadata.id_column, entity_id)
-                session.add(entity)
-
-            entity._date_deleted = None
-
-        # todo: create meaningfull exceptions in GOB-Core
-        assert entity._date_deleted is None
-
-        # apply the event on the entity
-        gob_event.apply_to(entity)
-
-    # Todo: think about transactional integrity, here the db update can be succesfull, while the report back can fail,
-    #       triggering a requeue.
-
-    session.commit()
-    session.close()
+            # apply the event on the entity
+            gob_event.apply_to(entity)
 
     print_report(message.contents)
 
