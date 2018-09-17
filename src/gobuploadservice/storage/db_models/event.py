@@ -22,7 +22,7 @@ EVENTS = {
 }
 
 
-def create_event(DbEvent, event, metadata):
+def build_db_event(DbEvent, event, metadata):
     """
     Method to fill the orm event entity with the required data,
     specifically placed here, to make sure all fields above are filled
@@ -45,6 +45,6 @@ def create_event(DbEvent, event, metadata):
         source=metadata.source,
         source_id=source_id,
         # todo: should this be named data, instead of contents
-        # (contents is part of message, data is part of even)
+        # (contents is part of message, data is part of event)
         contents=copy.deepcopy(event['data'])
     )
