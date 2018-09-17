@@ -6,19 +6,19 @@ It writes the storage to apply events to the storage
 
 """
 from gobcore.message_broker.messagedriven_service import messagedriven_service
-from gobuploadservice.compare import compare
-from gobuploadservice.update import full_update
+from gobuploadservice import compare
+from gobuploadservice import update
 
 SERVICEDEFINITION = {
     'fullimport.request': {
         'queue': "gob.workflow.request",
-        'handler': compare,
+        'handler': compare.compare,
         'report_back': 'fullupdate.proposal',
         'report_queue': 'gob.workflow.proposal'
     },
     'fullupdate.request': {
         'queue': "gob.workflow.request",
-        'handler': full_update,
+        'handler': update.full_update,
         'report_back': 'updatefinished.proposal',
         'report_queue': 'gob.workflow.proposal'
     },

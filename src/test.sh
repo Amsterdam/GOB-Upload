@@ -6,12 +6,8 @@ set -e # stop on any error
 echo "Running style checks"
 flake8
 
-echo "Running unit tests - MISSING!"
-python -m unittest
+echo "Running unit tests"
+pytest tests/
 
-echo "Running coverage tests - MISSING!"
-export COVERAGE_FILE=/tmp/.coverage
-coverage erase
-coverage run -m unittest
-
-coverage report --include=./gobuploadservice/*.py # --fail-under=80
+echo "Running coverage tests"
+pytest --cov=gobuploadservice --cov-report html --cov-fail-under=50
