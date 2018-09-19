@@ -19,7 +19,7 @@ class TestUpdate(TestCase):
         message = fixtures.get_event_message_fixture()
         full_update(message)
 
-        self.mock_storage.add_event_to_db.assert_called_with(message['contents'][0])
+        self.mock_storage.add_event_to_storage.assert_called_with(message['contents'][0])
 
     @patch('gobuploadservice.update.GobEvent')
     def test_fullupdate_creates_event_and_pops_ids(self, mock_event, mock):
