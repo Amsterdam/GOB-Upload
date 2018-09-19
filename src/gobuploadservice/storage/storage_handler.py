@@ -1,3 +1,15 @@
+"""Abstraction for the storage that is backing GOB, it is metadata aware, and requires a session in context
+
+Use it like this:
+
+    message = ImportMessage(msg)
+    metadata = message.metadata
+
+    storage = GOBStorageHandler(metadata)
+
+    with storage.get_session():
+        entity = storage.get_entity_for_update(entity_id, source_id, gob_event)
+"""
 import functools
 
 from gobcore.exceptions import GOBException
@@ -13,7 +25,15 @@ from gobuploadservice.storage.db_models.metadata import FIXED_COLUMNS, METADATA_
 
 
 def with_session(func):
-    """Decorator for methods that require the session in the context """
+    """Decorator for methods that require the session in the context
+
+    Use like this:
+
+        @with_session
+        def get_entity(self, id):
+
+    A call to this method will raise an GOBException if session is not in context.
+    """
     @functools.wraps(func)
     def wrapper_decorator(*args, **kwargs):
         self = args[0]
@@ -28,7 +48,7 @@ class GOBStorageHandler():
     EVENT_TABLE = "event"
 
     def __init__(self, gob_metadata):
-        """Initialize DBHandler with gob metadata
+        """Initialize StorageHandler with gob metadata
 
         This will create abstractions to entities and events, and initialize storage if necessary
 
@@ -45,6 +65,9 @@ class GOBStorageHandler():
         self.base.metadata.reflect(bind=self.engine)
 
     def _init_storage(self):
+        """Check if the necessary tables (for events, and for the entities in metadata) are present
+        If not, they are required
+        """
         if not hasattr(self.base.classes, self.metadata.entity):
             # Create events table if not yet exists
             if not hasattr(self.base.classes, self.EVENT_TABLE):
@@ -121,11 +144,21 @@ class GOBStorageHandler():
 
     @with_session
     def get_current_ids(self):
+        """Overview of entities that are current
+
+        :return: a list of ids for the entity that are currently not deleted.
+        """
         return self.session.query(self.DbEntity._source_id).filter_by(_source=self.metadata.source,
                                                                       _date_deleted=None).all()
 
     @with_session
     def get_entity_or_none(self, entity_id, with_deleted=False):
+        """Gets an entity. If it doesn't exist, returns None
+
+        :param entity_id: id of the entity to get
+        :param with_deleted: boolean denoting if entities that are deleted should be considered (default: False)
+        :return:
+        """
         entity_query = self.session.query(self.DbEntity).filter_by(_source=self.metadata.source, _source_id=entity_id)
         if not with_deleted:
             entity_query = entity_query.filter_by(_date_deleted=None)
@@ -133,11 +166,23 @@ class GOBStorageHandler():
         return entity_query.one_or_none()
 
     @with_session
-    def add_event_to_db(self, event):
+    def add_event_to_storage(self, event):
+        """Adds an instance of event to the session, for storage
+
+        :param event: instance of DbEvent to store
+        """
         entity = build_db_event(self.DbEvent, event, self.metadata)
         self.session.add(entity)
 
     def get_entity_for_update(self, entity_id, source_id, gob_event):
+        """Get an entity to work with. Changes to the entity will be persisted on leaving session context
+
+        :param entity_id: id of the entity
+        :param source_id: id of the source instance
+        :param gob_event: the GOBEvent for which the instance will be used
+        :return:
+        """
+
         entity = self.get_entity_or_none(source_id, with_deleted=True)
 
         if entity is None:
