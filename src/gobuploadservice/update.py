@@ -20,12 +20,12 @@ def full_update(msg):
     message = ImportMessage(msg)
     metadata = message.metadata
 
-    db = GOBStorageHandler(metadata)
+    storage = GOBStorageHandler(metadata)
 
-    with db.get_session():
+    with storage.get_session():
         for event in message.contents:
             # Store the event in the database
-            db.add_event_to_db(event)
+            storage.add_event_to_storage(event)
 
             # Get the gob_event
             gob_event = GobEvent(event, metadata)
@@ -36,7 +36,7 @@ def full_update(msg):
             entity_id, source_id = gob_event.pop_ids()
 
             # Updates on entities are uniquely identified by the source_id
-            entity = db.get_entity_for_update(entity_id, source_id, gob_event)
+            entity = storage.get_entity_for_update(entity_id, source_id, gob_event)
 
             # apply the event on the entity
             gob_event.apply_to(entity)
