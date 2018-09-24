@@ -149,7 +149,7 @@ class GOBStorageHandler():
         :return: a list of ids for the entity that are currently not deleted.
         """
         return self.session.query(self.DbEntity._source_id).filter_by(_source=self.metadata.source,
-                                                                      _date_deleted=None).all()
+                                                                      _date_deleted=None)
 
     @with_session
     def get_entity_or_none(self, entity_id, with_deleted=False):

@@ -7,6 +7,8 @@ services:
     container_name: update_service
     environment:
       MESSAGE_BROKER_ADDRESS: rabbitmq
+      DATABASE_PORT_OVERRIDE: 5432
+      DATABASE_HOST_OVERRIDE: database
 
   database:
     image: amsterdam/postgres
