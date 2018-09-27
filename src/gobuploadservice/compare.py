@@ -10,7 +10,7 @@ from gobcore.events.import_message import ImportMessage
 from gobcore.typesystem import get_modifications
 
 from gobuploadservice import print_report
-from gobuploadservice.storage.storage_handler import GOBStorageHandler
+from gobuploadservice.storage.handler import GOBStorageHandler
 
 
 def compare(msg):
