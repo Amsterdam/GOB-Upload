@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 from gobcore.events.import_events import ADD, DELETE, CONFIRM, MODIFY
 
 from gobuploadservice.update import full_update
-from gobuploadservice.storage.storage_handler import GOBStorageHandler
+from gobuploadservice.storage.handler import GOBStorageHandler
 from tests import fixtures
 
 
