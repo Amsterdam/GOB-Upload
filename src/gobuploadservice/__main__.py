@@ -5,23 +5,35 @@ It reads the storage to derive events from new uploads
 It writes the storage to apply events to the storage
 
 """
+from gobcore.message_broker.config import WORKFLOW_EXCHANGE
 from gobcore.message_broker.messagedriven_service import messagedriven_service
+
 from gobuploadservice import compare
 from gobuploadservice import update
 from gobuploadservice.storage.handler import GOBStorageHandler
 
 SERVICEDEFINITION = {
-    'fullimport.request': {
-        'queue': "gob.workflow.request",
+    'full_import_request': {
+        'exchange': WORKFLOW_EXCHANGE,
+        'queue': 'gob.workflow.request',
+        'key': 'fullimport.request',
         'handler': compare.compare,
-        'report_back': 'fullupdate.proposal',
-        'report_queue': 'gob.workflow.proposal'
+        'report': {
+            'exchange': WORKFLOW_EXCHANGE,
+            'queue': 'gob.workflow.proposal',
+            'key': 'fullupdate.proposal'
+        }
     },
-    'fullupdate.request': {
-        'queue': "gob.workflow.request",
+    'full_update_request': {
+        'exchange': WORKFLOW_EXCHANGE,
+        'queue': 'gob.workflow.request',
+        'key': 'fullupdate.request',
         'handler': update.full_update,
-        'report_back': 'updatefinished.proposal',
-        'report_queue': 'gob.workflow.proposal'
+        'report': {
+            'exchange': WORKFLOW_EXCHANGE,
+            'queue': 'gob.workflow.proposal',
+            'key': 'updatefinished.proposal'
+        }
     },
 }
 
