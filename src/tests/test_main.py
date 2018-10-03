@@ -16,8 +16,6 @@ class TestMain(TestCase):
 
         for key, definition in __main__.SERVICEDEFINITION.items():
             self.assertTrue('queue' in definition)
-            self.assertTrue('report_back' in definition)
-            self.assertTrue('report_queue' in definition)
-
+            self.assertTrue('report' in definition)
             self.assertTrue('handler' in definition)
             self.assertTrue(callable(definition['handler']))
