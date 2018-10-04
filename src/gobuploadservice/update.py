@@ -6,7 +6,7 @@ from gobcore.events.import_message import ImportMessage
 from gobcore.events import GobEvent
 
 from gobuploadservice import print_report
-from gobuploadservice.storage.storage_handler import GOBStorageHandler
+from gobuploadservice.storage.handler import GOBStorageHandler
 
 
 def full_update(msg):

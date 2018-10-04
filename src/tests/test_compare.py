@@ -1,18 +1,21 @@
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
+from gobcore.model import GOBModel
 from gobuploadservice.compare import compare
-from gobuploadservice.storage.storage_handler import GOBStorageHandler
+from gobuploadservice.storage.handler import GOBStorageHandler
 from tests import fixtures
 
 
+@patch('gobuploadservice.compare.GOBModel')
 @patch('gobuploadservice.compare.GOBStorageHandler')
 class TestCompare(TestCase):
     def setUp(self):
-        self.mock_storage =  MagicMock(spec=GOBStorageHandler)
+        self.mock_storage = MagicMock(spec=GOBStorageHandler)
+        self.mock_model = MagicMock(spec=GOBModel)
 
-    def test_compare_creates_delete(self, mock):
-        mock.return_value = self.mock_storage
+    def test_compare_creates_delete(self, storage_mock, model_mock):
+        storage_mock.return_value = self.mock_storage
 
         # setup: one entity in db, none in message
         self.mock_storage.get_current_ids.return_value = [fixtures.get_entity_fixture(_source_id=1)]
@@ -24,8 +27,8 @@ class TestCompare(TestCase):
         self.assertEqual(len(result['contents']), 1)
         self.assertEqual(result['contents'][0]['event'], 'DELETE')
 
-    def test_compare_creates_add(self, mock):
-        mock.return_value = self.mock_storage
+    def test_compare_creates_add(self, storage_mock, model_mock):
+        storage_mock.return_value = self.mock_storage
 
         # setup: no entity in db, one in message
         self.mock_storage.get_entity_or_none.return_value = None
@@ -37,8 +40,8 @@ class TestCompare(TestCase):
         self.assertEqual(len(result['contents']), 1)
         self.assertEqual(result['contents'][0]['event'], 'ADD')
 
-    def test_compare_creates_confirm(self, mock):
-        mock.return_value = self.mock_storage
+    def test_compare_creates_confirm(self, storage_mock, model_mock):
+        storage_mock.return_value = self.mock_storage
 
         # setup: message and database have the same entity
         message = fixtures.get_message_fixture()
@@ -55,8 +58,9 @@ class TestCompare(TestCase):
         self.assertEqual(len(result['contents']), 1)
         self.assertEqual(result['contents'][0]['event'], 'CONFIRM')
 
-    def test_compare_creates_modify(self, mock):
-        mock.return_value = self.mock_storage
+    def test_compare_creates_modify(self, storage_mock, model_mock):
+        storage_mock.return_value = self.mock_storage
+        model_mock.return_value = self.mock_model
 
         # setup: message and database have entity with same id but different data
         field_name = fixtures.random_string()
@@ -72,6 +76,15 @@ class TestCompare(TestCase):
 
         self.mock_storage.get_current_ids.return_value = [entity]
         self.mock_storage.get_entity_or_none.return_value = entity
+
+        # Add the field to the model as well
+        self.mock_model.get_model.return_value = {
+            "fields": {
+                field_name: {
+                    "type": "GOB.String"
+                }
+            }
+        }
 
         result = compare(message)
 

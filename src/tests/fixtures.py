@@ -12,6 +12,17 @@ def random_string(length=12, source=None):
     return ''.join(random.choice(source) for x in range(length))
 
 
+def random_array(callable=random_string):
+    result = []
+    for i in range(0, random.randint(1, 4)):
+        result.append(callable())
+    return result
+
+
+def random_dict(callable=random_string):
+    return {key: callable for key in random_array(random_string)}
+
+
 # todo: these fixtures should have a tighter relation to the objects in GOB-Core
 def get_message_fixture(contents=None, **kwargs):
     header = get_metadata_fixture()
@@ -45,7 +56,9 @@ def get_event_fixture(metadata, event_name=None):
 
 
 def get_metadata_fixture():
-    header = {key: random_string() for key in ["source", "timestamp", "id_column", "entity", "version"]}
+    header = {key: random_string() for key in ["source", "timestamp", "version"]}
+    header["entity"] = "meetbouten"
+    header["id_column"] = "meetboutid"
     header["model"] = {header['id_column']: {"type": "GOB.String"}}
     return MessageMetaData(**header).as_header
 

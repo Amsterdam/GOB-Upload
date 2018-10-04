@@ -18,6 +18,8 @@ from sqlalchemy.engine.url import URL
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session
 
+from gobcore.model import GOBModel
+
 from gobuploadservice.config import GOB_DB
 from gobuploadservice.storage.db_models import get_column
 from gobuploadservice.storage.db_models.event import EVENTS, build_db_event
@@ -47,16 +49,21 @@ class GOBStorageHandler():
     """Metadata aware Storage handler """
     EVENT_TABLE = "event"
 
-    def __init__(self, gob_metadata):
+    def __init__(self, gob_metadata=None):
         """Initialize StorageHandler with gob metadata
 
         This will create abstractions to entities and events, and initialize storage if necessary
 
         """
         self.metadata = gob_metadata
+
         self.engine = create_engine(URL(**GOB_DB))
         self._get_reflected_base()
-        self._init_storage()
+
+        # If storage handler was created with metadata it was requested by an event, so we do not create tables
+        if not self.metadata:
+            self._init_storage()
+
         self.session = None
 
     def _get_reflected_base(self):
@@ -65,23 +72,18 @@ class GOBStorageHandler():
         self.base.metadata.reflect(bind=self.engine)
 
     def _init_storage(self):
-        """Check if the necessary tables (for events, and for the entities in metadata) are present
+        """Check if the necessary tables (for events, and for the entities in gobmodel) are present
         If not, they are required
         """
-        if not hasattr(self.base.classes, self.metadata.entity):
-            # Create events table if not yet exists
-            if not hasattr(self.base.classes, self.EVENT_TABLE):
-                self._init_event()
+        # Create events table if not yet exists
+        if not hasattr(self.base.classes, self.EVENT_TABLE):
+            self._init_event()
 
-            # create table
-            self._init_entity()
+        # Create model tables
+        self._init_entities()
 
-            # refresh reflected base
-            self._get_reflected_base()
-
-        if self.metadata.version != "0.1":
-            # No migrations defined yet...
-            raise ValueError("Unexpected version, please write a generic migration here of migrate the import")
+        # refresh reflected base
+        self._get_reflected_base()
 
     def _init_event(self):
         """
@@ -93,32 +95,38 @@ class GOBStorageHandler():
         table = Table(self.EVENT_TABLE, meta, *columns, extend_existing=True)
         table.create(self.engine, checkfirst=True)
 
-    def _init_entity(self):
+    def _init_entities(self):
         """
-        Initialize a database table for the given metadata.
+        Initialize a database table for the gobmodel.
         """
 
-        table_name = self.metadata.entity    # e.g. meetbouten
-        model = self.metadata.model          # the GOB model for the specified entity
+        model = GOBModel()
 
-        # internal columns
-        columns = [get_column(column) for column in FIXED_COLUMNS.items()]
-        columns.extend([get_column(column) for column in METADATA_COLUMNS['private'].items()])
+        for entity_name in model.get_model_names():
+            if model.get_model(entity_name)['version'] != "0.1":
+                # No migrations defined yet...
+                raise ValueError("Unexpected version, please write a generic migration here of migrate the import")
 
-        # externally visible columns
-        columns.extend([get_column(column) for column in METADATA_COLUMNS['public'].items()])
+            fields = model.get_model_fields(entity_name)          # the GOB model for the specified entity
 
-        # get the entity columns
-        data_column_desc = {col: desc['type'] for col, desc in model.items()}
-        columns.extend([get_column(column) for column in data_column_desc.items()])
+            # internal columns
+            columns = [get_column(column) for column in FIXED_COLUMNS.items()]
+            columns.extend([get_column(column) for column in METADATA_COLUMNS['private'].items()])
 
-        # Create an index on source and source_id for performant updates
-        index = Index(f"{table_name}.idx.source_source_id", "_source", "_source_id", unique=True)
+            # externally visible columns
+            columns.extend([get_column(column) for column in METADATA_COLUMNS['public'].items()])
 
-        meta = MetaData(self.engine)
+            # get the entity columns
+            data_column_desc = {col: desc['type'] for col, desc in fields.items()}
+            columns.extend([get_column(column) for column in data_column_desc.items()])
 
-        table = Table(table_name, meta, *columns, index, extend_existing=True)
-        table.create(self.engine, checkfirst=True)
+            # Create an index on source and source_id for performant updates
+            index = Index(f"{entity_name}.idx.source_source_id", "_source", "_source_id", unique=True)
+
+            meta = MetaData(self.engine)
+
+            table = Table(entity_name, meta, *columns, index, extend_existing=True)
+            table.create(self.engine, checkfirst=True)
 
     @property
     def DbEvent(self):

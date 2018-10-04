@@ -7,10 +7,11 @@ Todo: Event, action and mutation are used for the same subject. Use one name to 
 """
 from gobcore.events import get_event_for
 from gobcore.events.import_message import ImportMessage
+from gobcore.model import GOBModel
 from gobcore.typesystem import get_modifications
 
 from gobuploadservice import print_report
-from gobuploadservice.storage.storage_handler import GOBStorageHandler
+from gobuploadservice.storage.handler import GOBStorageHandler
 
 
 def compare(msg):
@@ -23,6 +24,9 @@ def compare(msg):
     # Parse the message header
     message = ImportMessage(msg)
     metadata = message.metadata
+
+    gob_model = GOBModel()
+    entity_model = gob_model.get_model(metadata.entity)
 
     # Read new content into dictionary
     new_entities = {data['_source_id']: data for data in msg["contents"]}
@@ -45,7 +49,7 @@ def compare(msg):
             entity = storage.get_entity_or_none(entity_id)
             # calculate modifications, this will be an empty list if either data or entity is empty
             # or if all attributes are equal
-            modifications = get_modifications(entity, data, metadata.model)
+            modifications = get_modifications(entity, data, entity_model['fields'])
             # construct the event given the entity, data, and metadata
             event = get_event_for(entity, data, metadata, modifications)
             # append the event to the events-list to be outputted
