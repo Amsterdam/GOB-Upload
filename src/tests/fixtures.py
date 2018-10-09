@@ -60,6 +60,7 @@ def get_metadata_fixture():
     header["entity"] = "meetbouten"
     header["id_column"] = "meetboutid"
     header["model"] = {header['id_column']: {"type": "GOB.String"}}
+    header["process_id"] = f"{header['timestamp']}.{header['source']}.{header['entity']}"
     return MessageMetaData(**header).as_header
 
 

@@ -7,11 +7,15 @@ Todo: Event, action and mutation are used for the same subject. Use one name to 
 """
 from gobcore.events import get_event_for
 from gobcore.events.import_message import ImportMessage
+from gobcore.log import get_logger
 from gobcore.model import GOBModel
 from gobcore.typesystem import get_modifications
 
-from gobuploadservice import print_report
+from gobuploadservice import get_report
 from gobuploadservice.storage.handler import GOBStorageHandler
+
+
+logger = get_logger(name="COMPARE")
 
 
 def compare(msg):
@@ -21,9 +25,17 @@ def compare(msg):
     :return: result message
     """
 
+    extra_log_kwargs = {
+        'process_id': msg['header']['process_id'],
+        'source': msg['header']['source'],
+        'entity': msg['header']['entity']
+    }
+    logger.info("Compare to GOB Database started", extra=extra_log_kwargs)
+
     # Parse the message header
     message = ImportMessage(msg)
     metadata = message.metadata
+    print(msg['header'])
 
     gob_model = GOBModel()
     entity_model = gob_model.get_model(metadata.entity)
@@ -55,7 +67,8 @@ def compare(msg):
             # append the event to the events-list to be outputted
             events.append(event)
 
-    print_report(events)
+    results = get_report(events)
+    logger.info(f"{results['RECORDS']} number of events created from message", extra={**extra_log_kwargs, 'data': results})
 
     # Return the result without log.
     return ImportMessage.create_import_message(metadata.as_header, None, events)
