@@ -1,15 +1,19 @@
 from gobcore.events import GOB_EVENTS
 
 
-def print_report(events):
+def get_report(events):
     """
-    Print a simple report telling how many of each events has been processed
+    Return a simple report telling how many of each events has been processed
 
     :param events:
-    :return:
+    :return: dict with number of events per gob event
     """
-    print(f"Aantal mutaties: {len(events)}")
-    for gob_event in GOB_EVENTS:
-        counted_events = [event for event in events if event['event'] == gob_event.name]
-        if len(counted_events) > 0:
-            print(f"- {gob_event.name}: {len(counted_events)}")
+    counted_events = {
+        'RECORDS': len(events)
+    }
+    for event in events:
+        try:
+            counted_events[event['event']] += 1
+        except KeyError:
+             counted_events[event['event']] = 1
+    return counted_events

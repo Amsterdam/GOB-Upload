@@ -4,9 +4,13 @@ Process events and apply the event on the current state of the entity
 """
 from gobcore.events.import_message import ImportMessage
 from gobcore.events import GobEvent
+from gobcore.log import get_logger
 
-from gobuploadservice import print_report
+from gobuploadservice import get_report
 from gobuploadservice.storage.handler import GOBStorageHandler
+
+
+logger = get_logger(name="UPDATE")
 
 
 def full_update(msg):
@@ -15,8 +19,14 @@ def full_update(msg):
     :param msg: the result of the application of the events
     :return:
     """
-    # Interpret the message header
+    extra_log_kwargs = {
+        'process_id': msg['header']['process_id'],
+        'source': msg['header']['source'],
+        'entity': msg['header']['entity']
+    }
+    logger.info("Update records to GOB Database started", extra=extra_log_kwargs)
 
+    # Interpret the message header
     message = ImportMessage(msg)
     metadata = message.metadata
 
@@ -41,7 +51,8 @@ def full_update(msg):
             # apply the event on the entity
             gob_event.apply_to(entity)
 
-    print_report(message.contents)
+    results = get_report(message.contents)
+    logger.info(f"{results['RECORDS']} number of events applied to database", extra={**extra_log_kwargs, 'data': results})
 
     # Return the result message, with no log, no contents
     return ImportMessage.create_import_message(metadata.as_header, None, None)
