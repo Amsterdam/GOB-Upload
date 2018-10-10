@@ -35,7 +35,6 @@ def compare(msg):
     # Parse the message header
     message = ImportMessage(msg)
     metadata = message.metadata
-    print(msg['header'])
 
     gob_model = GOBModel()
     entity_model = gob_model.get_model(metadata.entity)
@@ -68,7 +67,7 @@ def compare(msg):
             events.append(event)
 
     results = get_report(events)
-    logger.info(f"{results['RECORDS']} number of events created from message",
+    logger.info(f"{results['num_records']} number of events created from message",
                 extra={**extra_log_kwargs, 'data': results})
 
     # Return the result without log.
