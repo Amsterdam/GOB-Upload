@@ -1,3 +1,5 @@
+import logging
+
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
@@ -11,7 +13,13 @@ from tests import fixtures
 @patch('gobuploadservice.update.GOBStorageHandler')
 class TestUpdate(TestCase):
     def setUp(self):
+        # Disable logging to prevent test from connecting to RabbitMQ
+        logging.disable(logging.CRITICAL)
+
         self.mock_storage = MagicMock(spec=GOBStorageHandler)
+
+    def tearDown(self):
+        logging.disable(logging.NOTSET)
 
     def test_fullupdate_saves_event(self, mock):
         mock.return_value = self.mock_storage
