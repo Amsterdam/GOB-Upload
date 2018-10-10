@@ -52,7 +52,8 @@ def full_update(msg):
             gob_event.apply_to(entity)
 
     results = get_report(message.contents)
-    logger.info(f"{results['RECORDS']} number of events applied to database", extra={**extra_log_kwargs, 'data': results})
+    logger.info(f"{results['RECORDS']} number of events applied to database",
+                extra={**extra_log_kwargs, 'data': results})
 
     # Return the result message, with no log, no contents
     return ImportMessage.create_import_message(metadata.as_header, None, None)
