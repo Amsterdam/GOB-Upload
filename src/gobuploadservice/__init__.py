@@ -1,6 +1,3 @@
-from gobcore.events import GOB_EVENTS
-
-
 def get_report(events):
     """
     Return a simple report telling how many of each events has been processed
@@ -15,5 +12,5 @@ def get_report(events):
         try:
             counted_events[event['event']] += 1
         except KeyError:
-             counted_events[event['event']] = 1
+            counted_events[event['event']] = 1
     return counted_events

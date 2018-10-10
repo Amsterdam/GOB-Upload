@@ -68,7 +68,8 @@ def compare(msg):
             events.append(event)
 
     results = get_report(events)
-    logger.info(f"{results['RECORDS']} number of events created from message", extra={**extra_log_kwargs, 'data': results})
+    logger.info(f"{results['RECORDS']} number of events created from message",
+                extra={**extra_log_kwargs, 'data': results})
 
     # Return the result without log.
     return ImportMessage.create_import_message(metadata.as_header, None, events)
