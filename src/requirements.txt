@@ -5,7 +5,7 @@ coverage==4.5.1
 flake8==3.5.0
 GeoAlchemy2==0.5.0
 geomet==0.2.0.post2
--e git+https://github.com/Amsterdam/GOB-Core.git@v0.4.6b#egg=gobcore
+-e git+https://github.com/Amsterdam/GOB-Core.git@v0.4.6#egg=gobcore
 mccabe==0.6.1
 more-itertools==4.3.0
 numpy==1.15.1
