@@ -13,22 +13,9 @@ services:
     volumes:
       - gob-volume:/app/shared
 
-  database:
-    image: amsterdam/postgres
-    ports:
-    - "5406:5432"
-    container_name: storage
-    environment:
-      POSTGRES_PASSWORD: insecure
-      POSTGRES_DB: gob
-      POSTGRES_USER: gob
-    volumes:
-    - "~/.ssh/datapunt.key:/root/.ssh/datapunt.key"
-
 volumes:
   gob-volume:
     external: true
-
 
 networks:
   default:
