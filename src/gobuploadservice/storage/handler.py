@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from gobcore.model import GOBModel
 from gobcore.model.metadata import FIXED_COLUMNS, METADATA_COLUMNS
+from gobcore.views import GOBViews
 
 from gobuploadservice.config import GOB_DB
 from gobuploadservice.storage.db_models import get_column
@@ -82,6 +83,9 @@ class GOBStorageHandler():
         # Create model tables
         self._init_entities()
 
+        # Create model views
+        self._init_views()
+
         # refresh reflected base
         self._get_reflected_base()
 
@@ -105,7 +109,7 @@ class GOBStorageHandler():
         for entity_name in model.get_model_names():
             if model.get_model(entity_name)['version'] != "0.1":
                 # No migrations defined yet...
-                raise ValueError("Unexpected version, please write a generic migration here of migrate the import")
+                raise ValueError("Unexpected version, please write a generic migration here or migrate the import")
 
             fields = model.get_model_fields(entity_name)          # the GOB model for the specified entity
 
@@ -127,6 +131,27 @@ class GOBStorageHandler():
 
             table = Table(entity_name, meta, *columns, index, extend_existing=True)
             table.create(self.engine, checkfirst=True)
+
+    def _init_views(self):
+        """
+        Initialize the views for the gobviews.
+        """
+
+        views = GOBViews()
+        for catalog in views.get_catalogs():
+            for entity in views.get_entities(catalog):
+                for view_name, view in views.get_views(catalog, entity).items():
+                    if view['version'] != "0.1":
+                        # No migrations defined yet...
+                        raise ValueError(
+                            "Unexpected version, please write a generic migration here or migrate the view"
+                        )
+
+                    self._create_view(f"{catalog}_{entity}_{view_name}", "\n".join(view['query']))
+
+    def _create_view(self, name, definition):
+        statement = f"CREATE OR REPLACE VIEW {name} AS {definition}"
+        self.engine.execute(statement)
 
     @property
     def DbEvent(self):
@@ -199,6 +224,7 @@ class GOBStorageHandler():
 
             entity = self.DbEntity(_source_id=source_id, _source=self.metadata.source)
             setattr(entity, self.metadata.id_column, entity_id)
+            setattr(entity, '_id', entity_id)
             self.session.add(entity)
 
         if entity._date_deleted is not None and not gob_event.is_add_new:

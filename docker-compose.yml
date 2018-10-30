@@ -9,18 +9,13 @@ services:
       MESSAGE_BROKER_ADDRESS: rabbitmq
       DATABASE_PORT_OVERRIDE: 5432
       DATABASE_HOST_OVERRIDE: database
-
-  database:
-    image: amsterdam/postgres
-    ports:
-    - "5406:5432"
-    container_name: storage
-    environment:
-      POSTGRES_PASSWORD: insecure
-      POSTGRES_DB: gob
-      POSTGRES_USER: gob
+      GOB_SHARED_DIR: /app/shared
     volumes:
-    - "~/.ssh/datapunt.key:/root/.ssh/datapunt.key"
+      - gob-volume:/app/shared
+
+volumes:
+  gob-volume:
+    external: true
 
 networks:
   default:
