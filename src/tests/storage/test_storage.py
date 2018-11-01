@@ -4,8 +4,8 @@ from unittest import mock
 
 from gobcore.exceptions import GOBException
 
-from gobuploadservice.storage.handler import with_session
-from gobuploadservice.storage import handler
+from gobupload.storage.handler import with_session
+from gobupload.storage import handler
 from tests import fixtures
 
 
@@ -45,7 +45,7 @@ class TestContextManager(unittest.TestCase):
         # restore in setUp patched code
         importlib.reload(handler)
 
-    @mock.patch("gobuploadservice.storage.handler.Session")
+    @mock.patch("gobupload.storage.handler.Session")
     def test_session_context(self, mock_session):
         storage = handler.GOBStorageHandler(fixtures.random_string())
 

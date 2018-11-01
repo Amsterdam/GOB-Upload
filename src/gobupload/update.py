@@ -6,8 +6,8 @@ from gobcore.events.import_message import ImportMessage
 from gobcore.events import GobEvent
 from gobcore.log import get_logger
 
-from gobuploadservice import get_report
-from gobuploadservice.storage.handler import GOBStorageHandler
+from gobupload import get_report
+from gobupload.storage.handler import GOBStorageHandler
 
 
 logger = get_logger(name="UPDATE")

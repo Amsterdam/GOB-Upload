@@ -11,8 +11,8 @@ from gobcore.log import get_logger
 from gobcore.model import GOBModel
 from gobcore.typesystem import get_modifications
 
-from gobuploadservice import get_report
-from gobuploadservice.storage.handler import GOBStorageHandler
+from gobupload import get_report
+from gobupload.storage.handler import GOBStorageHandler
 
 
 logger = get_logger(name="COMPARE")

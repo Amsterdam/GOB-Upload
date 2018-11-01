@@ -22,9 +22,9 @@ from gobcore.model import GOBModel
 from gobcore.model.metadata import FIXED_COLUMNS, METADATA_COLUMNS
 from gobcore.views import GOBViews
 
-from gobuploadservice.config import GOB_DB
-from gobuploadservice.storage.db_models import get_column
-from gobuploadservice.storage.db_models.event import EVENTS, build_db_event
+from gobupload.config import GOB_DB
+from gobupload.storage.db_models import get_column
+from gobupload.storage.db_models.event import EVENTS, build_db_event
 
 
 def with_session(func):
