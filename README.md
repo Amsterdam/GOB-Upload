@@ -55,7 +55,7 @@ Start the service:
 
 ```bash
 cd src
-python -m gobuploadservice
+python -m gobupload
 ```
 
 ## Tests
