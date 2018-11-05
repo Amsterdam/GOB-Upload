@@ -48,7 +48,10 @@ def with_session(func):
 
 class GOBStorageHandler():
     """Metadata aware Storage handler """
-    EVENT_TABLE = "event"
+    model = GOBModel()
+
+    EVENT_TABLE = "events"
+    ALL_TABLES = [EVENT_TABLE] + model.get_model_names()
 
     def __init__(self, gob_metadata=None):
         """Initialize StorageHandler with gob metadata
@@ -61,10 +64,6 @@ class GOBStorageHandler():
         self.engine = create_engine(URL(**GOB_DB))
         self._get_reflected_base()
 
-        # If storage handler was created with metadata it was requested by an event, so we do not create tables
-        if not self.metadata:
-            self._init_storage()
-
         self.session = None
 
     def _get_reflected_base(self):
@@ -72,7 +71,7 @@ class GOBStorageHandler():
         self.base.prepare(self.engine, reflect=True)
         self.base.metadata.reflect(bind=self.engine)
 
-    def _init_storage(self):
+    def init_storage(self):
         """Check if the necessary tables (for events, and for the entities in gobmodel) are present
         If not, they are required
         """
@@ -160,6 +159,22 @@ class GOBStorageHandler():
     @property
     def DbEntity(self):
         return getattr(self.base.classes, self.metadata.entity)
+
+    def _drop_table(self, table):
+        statement = f"DROP TABLE {table} CASCADE"
+        self.engine.execute(statement)
+
+    def drop_tables(self, tables):
+        for table in self.ALL_TABLES:
+            self._drop_table(table)
+
+    def _truncate_table(self, table):
+        statement = f"TRUNCATE TABLE {table}"
+        self.engine.execute(statement)
+
+    def truncate_tables(self, tables):
+        for table in tables:
+            self._truncate_table(table)
 
     def get_session(self):
         """ Exposes an underlying database session as managed context """

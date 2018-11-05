@@ -39,11 +39,10 @@ SERVICEDEFINITION = {
     },
 }
 
-print("START STORAGE")
 
 # Initialize database tables
 storage = GOBStorageHandler()
+storage.init_storage()
 
-print("START MESSAGE BROKER")
 
 messagedriven_service(SERVICEDEFINITION)
