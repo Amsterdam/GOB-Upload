@@ -12,8 +12,6 @@ from gobupload import compare
 from gobupload import update
 from gobupload.storage.handler import GOBStorageHandler
 
-print("START GOBUPLOAD")
-
 SERVICEDEFINITION = {
     'full_import_request': {
         'exchange': WORKFLOW_EXCHANGE,
@@ -44,5 +42,4 @@ SERVICEDEFINITION = {
 storage = GOBStorageHandler()
 storage.init_storage()
 
-
-messagedriven_service(SERVICEDEFINITION)
+messagedriven_service(SERVICEDEFINITION, "Upload")
