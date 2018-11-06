@@ -4,9 +4,7 @@ This command line script can be used to clear the database or truncate the
 tables. For now this is intented to reduce the manual steps needed when
 changing models or other database tables.
 
-     python -m gobupload.storage drop <table> or --all
-     python -m gobupload.storage truncate <table> or --all
-     python -m gobupload.storage init
+     python -m gobupload.storage resetdb
 """
 import argparse
 import getpass
