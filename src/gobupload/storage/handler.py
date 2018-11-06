@@ -50,8 +50,8 @@ class GOBStorageHandler():
     """Metadata aware Storage handler """
     model = GOBModel()
 
-    EVENT_TABLE = "events"
-    ALL_TABLES = [EVENT_TABLE] + model.get_model_names()
+    EVENTS_TABLE = "events"
+    ALL_TABLES = [EVENTS_TABLE] + model.get_model_names()
 
     def __init__(self, gob_metadata=None):
         """Initialize StorageHandler with gob metadata
@@ -76,7 +76,7 @@ class GOBStorageHandler():
         If not, they are required
         """
         # Create events table if not yet exists
-        if not hasattr(self.base.classes, self.EVENT_TABLE):
+        if not hasattr(self.base.classes, self.EVENTS_TABLE):
             self._init_event()
 
         # Create model tables
@@ -95,7 +95,7 @@ class GOBStorageHandler():
         meta = MetaData(self.engine)
 
         columns = [get_column(column) for column in EVENTS.items()]
-        table = Table(self.EVENT_TABLE, meta, *columns, extend_existing=True)
+        table = Table(self.EVENTS_TABLE, meta, *columns, extend_existing=True)
         table.create(self.engine, checkfirst=True)
 
     def _init_entities(self):
@@ -154,7 +154,7 @@ class GOBStorageHandler():
 
     @property
     def DbEvent(self):
-        return self.base.classes.event
+        return getattr(self.base.classes, self.EVENTS_TABLE)
 
     @property
     def DbEntity(self):
