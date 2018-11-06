@@ -6,7 +6,7 @@ class TestMain(TestCase):
     @mock.patch('gobcore.message_broker.messagedriven_service.messagedriven_service')
     def test_main_calls_service_with_definition(self, mock_service, mock_storage):
         from gobupload import __main__
-        mock_service.assert_called_with(__main__.SERVICEDEFINITION)
+        mock_service.assert_called_with(__main__.SERVICEDEFINITION, "Upload")
 
     # Mock this, to prevent service from starting when importing __main__
     @mock.patch('gobupload.storage.handler.GOBStorageHandler')
