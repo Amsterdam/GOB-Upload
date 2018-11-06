@@ -161,20 +161,14 @@ class GOBStorageHandler():
         return getattr(self.base.classes, self.metadata.entity)
 
     def _drop_table(self, table):
-        statement = f"DROP TABLE {table} CASCADE"
+        statement = f"DROP TABLE IF EXISTS {table} CASCADE"
         self.engine.execute(statement)
 
-    def drop_tables(self, tables):
+    def drop_tables(self):
         for table in self.ALL_TABLES:
             self._drop_table(table)
-
-    def _truncate_table(self, table):
-        statement = f"TRUNCATE TABLE {table}"
-        self.engine.execute(statement)
-
-    def truncate_tables(self, tables):
-        for table in tables:
-            self._truncate_table(table)
+        # Update the reflected base
+        self._get_reflected_base()
 
     def get_session(self):
         """ Exposes an underlying database session as managed context """

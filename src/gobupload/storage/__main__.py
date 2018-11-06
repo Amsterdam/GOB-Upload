@@ -9,7 +9,9 @@ changing models or other database tables.
      python -m gobupload.storage init
 """
 import argparse
+import getpass
 
+from gobupload.config import GOB_DB
 from gobupload.storage.handler import GOBStorageHandler
 
 
@@ -18,33 +20,26 @@ parser = argparse.ArgumentParser(
     description='Perform database mutations',
     epilog='Generieke Ontsluiting Basisregistraties')
 
-parser.add_argument('command',
-                    type=str,
-                    help='the command to perform on the database')
-
-parser.add_argument('table',
-                    nargs='?',
-                    type=str,
-                    help='the specific table to perform the command on')
-
-parser.add_argument('--all',
-                    action='store_true',
-                    help='flag to perform the command on all tables')
+command = parser.add_subparsers(title='the command to perform',
+                                dest='command',
+                                metavar='command')
+command.required = True
+command.add_parser('resetdb', help="reset the database to it's empty state")
 
 args = parser.parse_args()
 
-# Return an error if no table or --all is provided when dropping or truncating a table
-if args.command in ('drop', 'truncate') and not args.table and not args.all:
-    parser.error('a table or --all is required when trying to drop or truncate')
+confirm = getpass.getpass("""You have requested a reset of the database.
+This will IRREVERSIBLY DESTROY all data currently in the GOB database,
+and return each table to an empty state.
+Are you sure you want to do this?
+    Type the database password to continue, or 'no' to cancel: """)
 
-storage = GOBStorageHandler()
-tables = [args.table] if not args.all else storage.ALL_TABLES
+if confirm == GOB_DB['password']:
+    storage = GOBStorageHandler()
 
-if args.command == 'drop':
-    storage.drop_tables(tables)
-
-if args.command == 'truncate':
-    storage.truncate_tables(tables)
-
-if args.command == 'init':
-    storage.init_storage()
+    if args.command == 'resetdb':
+        # Drop all tables and re-initialize the database
+        storage.drop_tables()
+        storage.init_storage()
+else:
+    print("Database reset cancelled.")
