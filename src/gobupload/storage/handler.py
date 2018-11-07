@@ -234,6 +234,7 @@ class GOBStorageHandler():
             entity = self.DbEntity(_source_id=source_id, _source=self.metadata.source)
             setattr(entity, self.metadata.id_column, entity_id)
             setattr(entity, '_id', entity_id)
+            setattr(entity, '_version', self.metadata.version)
             self.session.add(entity)
 
         if entity._date_deleted is not None and not gob_event.is_add_new:
