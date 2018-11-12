@@ -28,9 +28,7 @@ def get_message_fixture(contents=None, **kwargs):
     header = get_metadata_fixture()
 
     if contents is None:
-        metadata = MessageMetaData(header)
-        contents = [get_data_object(metadata, **kwargs)]
-        header = metadata.as_header
+        contents = [get_data_object(header, **kwargs)]
 
     return {'header': header,
             'summary': None,
@@ -51,17 +49,18 @@ def get_event_data_fixture(gob_event, metadata):
 def get_event_fixture(metadata, event_name=None):
     gob_event = random_gob_event() if event_name is None else _get_event(event_name)
     data = get_event_data_fixture(gob_event, metadata)
-    entity_id = data.pop(metadata.id_column)
-    return gob_event.create_event(data[metadata.source_id_column], metadata.id_column, entity_id, data)
+    entity_id = data.pop(metadata["id_column"])
+    return gob_event.create_event(data["_source_id"], metadata["id_column"], entity_id, data)
 
 
 def get_metadata_fixture():
     header = {key: random_string() for key in ["source", "timestamp", "version"]}
+    header["catalogue"] = "catalogue"
     header["entity"] = "meetbouten"
     header["id_column"] = "meetboutid"
     header["model"] = {header['id_column']: {"type": "GOB.String"}}
     header["process_id"] = f"{header['timestamp']}.{header['source']}.{header['entity']}"
-    return MessageMetaData(header).as_header
+    return header
 
 
 def get_entity_fixture(**kwargs):
@@ -75,9 +74,9 @@ def get_entity_fixture(**kwargs):
 
 
 def get_data_object(metadata, **kwargs):
-    data_object = {'_source_id': random_string(), metadata.id_column: random_string()}
+    data_object = {'_source_id': random_string(), metadata["id_column"]: random_string()}
     for field, value in kwargs.items():
-        metadata.model[field] = {"type": "GOB.String"}
+        metadata["model"][field] = {"type": "GOB.String"}
         data_object[field] = str(value)
 
     return data_object
@@ -85,13 +84,13 @@ def get_data_object(metadata, **kwargs):
 
 def get_event_message_fixture(event_name=None):
     message = get_message_fixture()
-    metadata = MessageMetaData(message['header'])
+    metadata = message['header']
     event = get_event_fixture(metadata, event_name)
     message['contents'] = [event]
 
     for field in event['data'].keys():
         if field != '_source_id':
-            metadata.model[field] = {"type": "GOB.String"}
-    message['header'] = metadata.as_header
+            metadata["model"][field] = {"type": "GOB.String"}
+    message['header'] = metadata
 
     return message
