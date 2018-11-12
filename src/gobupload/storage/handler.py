@@ -53,6 +53,8 @@ class GOBStorageHandler():
     EVENTS_TABLE = "events"
     ALL_TABLES = [EVENTS_TABLE] + model.get_model_names()
 
+    user_name = f"({GOB_DB['username']}@{GOB_DB['host']}:{GOB_DB['port']})"
+
     def __init__(self, gob_metadata=None):
         """Initialize StorageHandler with gob metadata
 
