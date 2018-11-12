@@ -1,6 +1,6 @@
 # GOB-Upload
 
-GOB Upload data from import client to GOB
+Upload data to GOB
 
 Uploading data consists of a comparing and storing the new data.
 
@@ -14,6 +14,11 @@ When finished the process will publish the result as a **fullUpload.proposal** m
 A **fullUpload.request** message triggers the process that registers the updates in the database and updates the models.
 When finished the process will publish its resuls as a **updatefinished.proposal** message
 
+# Infrastructure
+
+A running [GOB infrastructure](https://github.com/Amsterdam/GOB-Infra)
+is required to run this component.
+
 # Docker
 
 ## Requirements
@@ -24,7 +29,15 @@ When finished the process will publish its resuls as a **updatefinished.proposal
 ## Run
 
 ```bash
+docker-compose build
 docker-compose up &
+```
+
+## Tests
+
+```bash
+docker-compose -f src/.jenkins/test/docker-compose.yml build
+docker-compose -f src/.jenkins/test/docker-compose.yml run test
 ```
 
 # Local
@@ -55,7 +68,7 @@ Start the service:
 
 ```bash
 cd src
-python -m gobuploadservice
+python -m gobupload
 ```
 
 ## Tests

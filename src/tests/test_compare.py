@@ -4,13 +4,13 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from gobcore.model import GOBModel
-from gobuploadservice.compare import compare
-from gobuploadservice.storage.handler import GOBStorageHandler
+from gobupload.compare import compare
+from gobupload.storage.handler import GOBStorageHandler
 from tests import fixtures
 
 
-@patch('gobuploadservice.compare.GOBModel')
-@patch('gobuploadservice.compare.GOBStorageHandler')
+@patch('gobupload.compare.GOBModel')
+@patch('gobupload.compare.GOBStorageHandler')
 class TestCompare(TestCase):
     def setUp(self):
         # Disable logging to prevent test from connecting to RabbitMQ

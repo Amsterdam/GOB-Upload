@@ -28,7 +28,7 @@ def get_message_fixture(contents=None, **kwargs):
     header = get_metadata_fixture()
 
     if contents is None:
-        metadata = MessageMetaData(**header)
+        metadata = MessageMetaData(header)
         contents = [get_data_object(metadata, **kwargs)]
         header = metadata.as_header
 
@@ -61,7 +61,7 @@ def get_metadata_fixture():
     header["id_column"] = "meetboutid"
     header["model"] = {header['id_column']: {"type": "GOB.String"}}
     header["process_id"] = f"{header['timestamp']}.{header['source']}.{header['entity']}"
-    return MessageMetaData(**header).as_header
+    return MessageMetaData(header).as_header
 
 
 def get_entity_fixture(**kwargs):
@@ -85,7 +85,7 @@ def get_data_object(metadata, **kwargs):
 
 def get_event_message_fixture(event_name=None):
     message = get_message_fixture()
-    metadata = MessageMetaData(**message['header'])
+    metadata = MessageMetaData(message['header'])
     event = get_event_fixture(metadata, event_name)
     message['contents'] = [event]
 

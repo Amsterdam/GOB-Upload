@@ -2,9 +2,9 @@ version: '3.0'
 
 services:
 
-  update_service:
+  gobupload:
     build: src
-    container_name: update_service
+    container_name: gobupload
     environment:
       MESSAGE_BROKER_ADDRESS: rabbitmq
       DATABASE_PORT_OVERRIDE: 5432

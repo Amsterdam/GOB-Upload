@@ -5,12 +5,12 @@ from unittest.mock import MagicMock, patch
 
 from gobcore.events.import_events import ADD, DELETE, CONFIRM, MODIFY
 
-from gobuploadservice.update import full_update
-from gobuploadservice.storage.handler import GOBStorageHandler
+from gobupload.update import full_update
+from gobupload.storage.handler import GOBStorageHandler
 from tests import fixtures
 
 
-@patch('gobuploadservice.update.GOBStorageHandler')
+@patch('gobupload.update.GOBStorageHandler')
 class TestUpdate(TestCase):
     def setUp(self):
         # Disable logging to prevent test from connecting to RabbitMQ
@@ -29,7 +29,7 @@ class TestUpdate(TestCase):
 
         self.mock_storage.add_event_to_storage.assert_called_with(message['contents'][0])
 
-    @patch('gobuploadservice.update.GobEvent')
+    @patch('gobupload.update.GobEvent')
     def test_fullupdate_creates_event_and_pops_ids(self, mock_event, mock):
         mock.return_value = self.mock_storage
 
@@ -44,7 +44,7 @@ class TestUpdate(TestCase):
         mock_event.assert_called()
         gob_event.pop_ids.assert_called()
 
-    @patch('gobuploadservice.update.GobEvent')
+    @patch('gobupload.update.GobEvent')
     def test_fullupdate_applies_events(self, mock_event, mock):
         mock.return_value = self.mock_storage
 

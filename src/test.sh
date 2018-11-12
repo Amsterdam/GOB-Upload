@@ -10,4 +10,4 @@ echo "Running unit tests"
 pytest tests/
 
 echo "Running coverage tests"
-pytest --cov=gobuploadservice --cov-report html --cov-fail-under=50
+pytest --cov=gobupload --cov-report html --cov-fail-under=50

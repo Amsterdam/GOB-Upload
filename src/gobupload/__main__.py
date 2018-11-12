@@ -8,11 +8,9 @@ It writes the storage to apply events to the storage
 from gobcore.message_broker.config import WORKFLOW_EXCHANGE
 from gobcore.message_broker.messagedriven_service import messagedriven_service
 
-from gobuploadservice import compare
-from gobuploadservice import update
-from gobuploadservice.storage.handler import GOBStorageHandler
-
-print("START GOBUPLOAD")
+from gobupload import compare
+from gobupload import update
+from gobupload.storage.handler import GOBStorageHandler
 
 SERVICEDEFINITION = {
     'full_import_request': {
@@ -39,11 +37,9 @@ SERVICEDEFINITION = {
     },
 }
 
-print("START STORAGE")
 
 # Initialize database tables
 storage = GOBStorageHandler()
+storage.init_storage()
 
-print("START MESSAGE BROKER")
-
-messagedriven_service(SERVICEDEFINITION)
+messagedriven_service(SERVICEDEFINITION, "Upload")

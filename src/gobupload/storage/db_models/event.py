@@ -18,6 +18,7 @@ EVENTS = {
     "eventid": "GOB.PKInteger",   # Unique identification of the event, numbered sequentially
     "timestamp": "GOB.DateTime",  # datetime when the event as created
     "entity": "GOB.String",       # the entity to which the event need to be applied
+    "version": "GOB.String",      # the version of the entity model
     "action": "GOB.String",       # add, change, delete or confirm
     "source": "GOB.String",       # the source of the entity, e.g. DIVA
     "source_id": "GOB.String",    # the id of the entity in the source
@@ -40,13 +41,12 @@ def build_db_event(DbEvent, event, metadata):
     # todo: is this the right place to get the id (and event-name)?
     #   this is implicit knowledge of event data structure
     source_id = event['data'][metadata.source_id_column]
-
     # Use the GOBType encoder to encode the Decimal values
     json_contents = json.dumps(copy.deepcopy(event['data']), cls=GobTypeJSONEncoder)
-
     return DbEvent(
         timestamp=metadata.timestamp,
         entity=metadata.entity,
+        version=metadata.version,
         action=event['event'],
         source=metadata.source,
         source_id=source_id,

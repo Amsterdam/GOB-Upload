@@ -22,9 +22,9 @@ from gobcore.model import GOBModel
 from gobcore.model.metadata import FIXED_COLUMNS, METADATA_COLUMNS
 from gobcore.views import GOBViews
 
-from gobuploadservice.config import GOB_DB
-from gobuploadservice.storage.db_models import get_column
-from gobuploadservice.storage.db_models.event import EVENTS, build_db_event
+from gobupload.config import GOB_DB
+from gobupload.storage.db_models import get_column
+from gobupload.storage.db_models.event import EVENTS, build_db_event
 
 
 def with_session(func):
@@ -48,7 +48,10 @@ def with_session(func):
 
 class GOBStorageHandler():
     """Metadata aware Storage handler """
-    EVENT_TABLE = "event"
+    model = GOBModel()
+
+    EVENTS_TABLE = "events"
+    ALL_TABLES = [EVENTS_TABLE] + model.get_model_names()
 
     def __init__(self, gob_metadata=None):
         """Initialize StorageHandler with gob metadata
@@ -61,10 +64,6 @@ class GOBStorageHandler():
         self.engine = create_engine(URL(**GOB_DB))
         self._get_reflected_base()
 
-        # If storage handler was created with metadata it was requested by an event, so we do not create tables
-        if not self.metadata:
-            self._init_storage()
-
         self.session = None
 
     def _get_reflected_base(self):
@@ -72,12 +71,12 @@ class GOBStorageHandler():
         self.base.prepare(self.engine, reflect=True)
         self.base.metadata.reflect(bind=self.engine)
 
-    def _init_storage(self):
+    def init_storage(self):
         """Check if the necessary tables (for events, and for the entities in gobmodel) are present
         If not, they are required
         """
         # Create events table if not yet exists
-        if not hasattr(self.base.classes, self.EVENT_TABLE):
+        if not hasattr(self.base.classes, self.EVENTS_TABLE):
             self._init_event()
 
         # Create model tables
@@ -96,7 +95,7 @@ class GOBStorageHandler():
         meta = MetaData(self.engine)
 
         columns = [get_column(column) for column in EVENTS.items()]
-        table = Table(self.EVENT_TABLE, meta, *columns, extend_existing=True)
+        table = Table(self.EVENTS_TABLE, meta, *columns, extend_existing=True)
         table.create(self.engine, checkfirst=True)
 
     def _init_entities(self):
@@ -155,11 +154,21 @@ class GOBStorageHandler():
 
     @property
     def DbEvent(self):
-        return self.base.classes.event
+        return getattr(self.base.classes, self.EVENTS_TABLE)
 
     @property
     def DbEntity(self):
         return getattr(self.base.classes, self.metadata.entity)
+
+    def _drop_table(self, table):
+        statement = f"DROP TABLE IF EXISTS {table} CASCADE"
+        self.engine.execute(statement)
+
+    def drop_tables(self):
+        for table in self.ALL_TABLES:
+            self._drop_table(table)
+        # Update the reflected base
+        self._get_reflected_base()
 
     def get_session(self):
         """ Exposes an underlying database session as managed context """
@@ -225,6 +234,7 @@ class GOBStorageHandler():
             entity = self.DbEntity(_source_id=source_id, _source=self.metadata.source)
             setattr(entity, self.metadata.id_column, entity_id)
             setattr(entity, '_id', entity_id)
+            setattr(entity, '_version', self.metadata.version)
             self.session.add(entity)
 
         if entity._date_deleted is not None and not gob_event.is_add_new:
