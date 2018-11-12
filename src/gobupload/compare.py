@@ -28,9 +28,10 @@ def compare(msg):
     extra_log_kwargs = {
         'process_id': msg['header']['process_id'],
         'source': msg['header']['source'],
+        'catalogue': msg['header']['catalogue'],
         'entity': msg['header']['entity']
     }
-    logger.info("Compare to GOB Database started", extra=extra_log_kwargs)
+    logger.info(f"Compare to GOB Database {GOBStorageHandler.user_name} started", extra=extra_log_kwargs)
 
     # Parse the message header
     message = ImportMessage(msg)
@@ -71,4 +72,4 @@ def compare(msg):
                 extra={**extra_log_kwargs, 'data': results})
 
     # Return the result without log.
-    return ImportMessage.create_import_message(metadata.as_header, None, events)
+    return ImportMessage.create_import_message(msg["header"], None, events)

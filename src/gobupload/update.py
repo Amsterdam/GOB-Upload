@@ -22,9 +22,10 @@ def full_update(msg):
     extra_log_kwargs = {
         'process_id': msg['header']['process_id'],
         'source': msg['header']['source'],
+        'catalogue': msg['header']['catalogue'],
         'entity': msg['header']['entity']
     }
-    logger.info("Update records to GOB Database started", extra=extra_log_kwargs)
+    logger.info(f"Update records to GOB Database {GOBStorageHandler.user_name} started", extra=extra_log_kwargs)
 
     # Interpret the message header
     message = ImportMessage(msg)
@@ -56,4 +57,4 @@ def full_update(msg):
                 extra={**extra_log_kwargs, 'data': results})
 
     # Return the result message, with no log, no contents
-    return ImportMessage.create_import_message(metadata.as_header, None, None)
+    return ImportMessage.create_import_message(msg["header"], None, None)
