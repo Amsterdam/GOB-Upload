@@ -107,7 +107,7 @@ class GOBStorageHandler():
 
         model = GOBModel()
 
-        for catalog_name, catalog in model.get_catalogs():
+        for catalog_name, catalog in model.get_catalogs().items():
             for collection_name, collection in model.get_collections(catalog_name).items():
                 if collection['version'] != "0.1":
                     # No migrations defined yet...
@@ -127,7 +127,7 @@ class GOBStorageHandler():
                 columns.extend([get_column(column) for column in data_column_desc.items()])
 
                 # Create an index on source and source_id for performant updates
-                table_name = GOBModel.get_table_name(catalog_name, collection_name)
+                table_name = GOBModel().get_table_name(catalog_name, collection_name)
                 index = Index(
                     f'{table_name}.idx.source_source_id',
                     '_source',
@@ -167,7 +167,7 @@ class GOBStorageHandler():
 
     @property
     def DbEntity(self):
-        return getattr(self.base.classes, GOBModel.get_table_name(self.metadata.catalogue, self.metadata.entity))
+        return getattr(self.base.classes, GOBModel().get_table_name(self.metadata.catalogue, self.metadata.entity))
 
     def _drop_table(self, table):
         statement = f"DROP TABLE IF EXISTS {table} CASCADE"
