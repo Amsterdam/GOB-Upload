@@ -49,6 +49,7 @@ def get_event_data_fixture(gob_event, metadata):
 def get_event_fixture(metadata, event_name=None):
     gob_event = random_gob_event() if event_name is None else _get_event(event_name)
     data = get_event_data_fixture(gob_event, metadata)
+    data["_last_event"] = None
     entity_id = data.pop(metadata["id_column"])
     return gob_event.create_event(data["_source_id"], metadata["id_column"], entity_id, data)
 
@@ -70,6 +71,7 @@ def get_entity_fixture(**kwargs):
     entity = Object()
     for attr, value in kwargs.items():
         setattr(entity, attr, value)
+    setattr(entity, "_last_event", None)
     return entity
 
 
