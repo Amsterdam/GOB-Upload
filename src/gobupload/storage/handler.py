@@ -127,8 +127,9 @@ class GOBStorageHandler():
                 columns.extend([get_column(column) for column in data_column_desc.items()])
 
                 # Create an index on source and source_id for performant updates
+                table_name = GOBModel.get_table_name(catalog_name, collection_name)
                 index = Index(
-                    f'{catalog_name}_{collection_name}.idx.source_source_id',
+                    f'{table_name}.idx.source_source_id',
                     '_source',
                     '_source_id',
                     unique=True
@@ -136,7 +137,7 @@ class GOBStorageHandler():
 
                 meta = MetaData(self.engine)
 
-                table = Table(f'{catalog_name}_{collection_name}', meta, *columns, index, extend_existing=True)
+                table = Table(f'{table_name}', meta, *columns, index, extend_existing=True)
                 table.create(self.engine, checkfirst=True)
 
     def _init_views(self):
@@ -166,7 +167,7 @@ class GOBStorageHandler():
 
     @property
     def DbEntity(self):
-        return getattr(self.base.classes, f'{self.metadata.catalogue}_{self.metadata.entity}')
+        return getattr(self.base.classes, GOBModel.get_table_name(self.metadata.catalogue, self.metadata.entity))
 
     def _drop_table(self, table):
         statement = f"DROP TABLE IF EXISTS {table} CASCADE"
