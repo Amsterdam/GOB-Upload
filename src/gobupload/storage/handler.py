@@ -51,7 +51,7 @@ class GOBStorageHandler():
     model = GOBModel()
 
     EVENTS_TABLE = "events"
-    ALL_TABLES = [EVENTS_TABLE] + model.get_model_names()
+    ALL_TABLES = [EVENTS_TABLE] + model.get_table_names()
 
     user_name = f"({GOB_DB['username']}@{GOB_DB['host']}:{GOB_DB['port']})"
 
@@ -107,31 +107,37 @@ class GOBStorageHandler():
 
         model = GOBModel()
 
-        for entity_name in model.get_model_names():
-            if model.get_model(entity_name)['version'] != "0.1":
-                # No migrations defined yet...
-                raise ValueError("Unexpected version, please write a generic migration here or migrate the import")
+        for catalog_name, catalog in model.get_catalogs():
+            for collection_name, collection in model.get_collections(catalog_name).items():
+                if collection['version'] != "0.1":
+                    # No migrations defined yet...
+                    raise ValueError("Unexpected version, please write a generic migration here or migrate the import")
 
-            fields = model.get_model_fields(entity_name)          # the GOB model for the specified entity
+                fields = collection['fields']          # the GOB model for the specified entity
 
-            # internal columns
-            columns = [get_column(column) for column in FIXED_COLUMNS.items()]
-            columns.extend([get_column(column) for column in METADATA_COLUMNS['private'].items()])
+                # internal columns
+                columns = [get_column(column) for column in FIXED_COLUMNS.items()]
+                columns.extend([get_column(column) for column in METADATA_COLUMNS['private'].items()])
 
-            # externally visible columns
-            columns.extend([get_column(column) for column in METADATA_COLUMNS['public'].items()])
+                # externally visible columns
+                columns.extend([get_column(column) for column in METADATA_COLUMNS['public'].items()])
 
-            # get the entity columns
-            data_column_desc = {col: desc['type'] for col, desc in fields.items()}
-            columns.extend([get_column(column) for column in data_column_desc.items()])
+                # get the entity columns
+                data_column_desc = {col: desc['type'] for col, desc in fields.items()}
+                columns.extend([get_column(column) for column in data_column_desc.items()])
 
-            # Create an index on source and source_id for performant updates
-            index = Index(f"{entity_name}.idx.source_source_id", "_source", "_source_id", unique=True)
+                # Create an index on source and source_id for performant updates
+                index = Index(
+                    f'{catalog_name}_{collection_name}.idx.source_source_id',
+                    '_source',
+                    '_source_id',
+                    unique=True
+                )
 
-            meta = MetaData(self.engine)
+                meta = MetaData(self.engine)
 
-            table = Table(entity_name, meta, *columns, index, extend_existing=True)
-            table.create(self.engine, checkfirst=True)
+                table = Table(f'{catalog_name}_{collection_name}', meta, *columns, index, extend_existing=True)
+                table.create(self.engine, checkfirst=True)
 
     def _init_views(self):
         """
@@ -160,7 +166,7 @@ class GOBStorageHandler():
 
     @property
     def DbEntity(self):
-        return getattr(self.base.classes, self.metadata.entity)
+        return getattr(self.base.classes, f'{self.metadata.catalogue}_{self.metadata.entity}')
 
     def _drop_table(self, table):
         statement = f"DROP TABLE IF EXISTS {table} CASCADE"
