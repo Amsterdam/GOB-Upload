@@ -38,7 +38,7 @@ def compare(msg):
     metadata = message.metadata
 
     gob_model = GOBModel()
-    entity_model = gob_model.get_model(metadata.entity)
+    entity_model = gob_model.get_collection(metadata.catalogue, metadata.entity)
 
     # Read new content into dictionary
     new_entities = {data['_source_id']: data for data in msg["contents"]}
