@@ -224,6 +224,8 @@ class GOBStorageHandler():
         """
         entity = build_db_event(self.DbEvent, event, self.metadata)
         self.session.add(entity)
+        self.session.flush()
+        return entity
 
     def get_entity_for_update(self, entity_id, source_id, gob_event):
         """Get an entity to work with. Changes to the entity will be persisted on leaving session context
