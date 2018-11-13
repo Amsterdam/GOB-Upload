@@ -5,6 +5,7 @@ Process events and apply the event on the current state of the entity
 from gobcore.events.import_message import ImportMessage
 from gobcore.events import GobEvent
 from gobcore.log import get_logger
+from gobcore.exceptions import GOBException
 
 from gobupload import get_report
 from gobupload.storage.handler import GOBStorageHandler
@@ -36,7 +37,7 @@ def full_update(msg):
     with storage.get_session():
         for event in message.contents:
             # Store the event in the database
-            storage.add_event_to_storage(event)
+            stored_event = storage.add_event_to_storage(event)
 
             # Get the gob_event
             gob_event = GobEvent(event, metadata)
@@ -46,11 +47,20 @@ def full_update(msg):
             #       then we can skip one of the two.
             entity_id, source_id = gob_event.pop_ids()
 
+            # Compare "age"
+            entity = storage.get_entity_or_none(source_id)
+            is_valid = gob_event.last_event is None if entity is None else entity._last_event == gob_event.last_event
+            if not is_valid:
+                msg = f"Trying to apply a {gob_event.name} event that is not in sync: entity id {entity._id}"
+                raise GOBException(msg)
+
             # Updates on entities are uniquely identified by the source_id
             entity = storage.get_entity_for_update(entity_id, source_id, gob_event)
 
             # apply the event on the entity
             gob_event.apply_to(entity)
+            # and register the last event that has updated this entity
+            entity._last_event = stored_event.eventid
 
     results = get_report(message.contents)
     logger.info(f"{results['num_records']} number of events applied to database",
