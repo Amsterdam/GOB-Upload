@@ -194,6 +194,41 @@ class GOBStorageHandler():
         return session_context()
 
     @with_session
+    def get_entity_max_eventid(self):
+        """Get the highest last_event property of entity
+
+        :return: The highest last_event
+        """
+        result = self.session.query(self.DbEntity)\
+                     .filter_by(_source=self.metadata.source)\
+                     .order_by(self.DbEntity._last_event.desc())\
+                     .first()
+        return None if result is None else result._last_event
+
+    @with_session
+    def get_last_eventid(self):
+        """Get the highest last_event property of entity
+
+        :return: The highest last_event
+        """
+        result = self.session.query(self.DbEvent) \
+            .filter_by(source=self.metadata.source, catalogue=self.metadata.catalogue, entity=self.metadata.entity) \
+            .order_by(self.DbEvent.eventid.desc()) \
+            .first()
+        return None if result is None else result.eventid
+
+    @with_session
+    def get_events_starting_after(self, eventid):
+        """Return a list of events with eventid starting at eventid
+
+        :return: The list of events
+        """
+        return self.session.query(self.DbEvent) \
+            .filter_by(source=self.metadata.source, catalogue=self.metadata.catalogue, entity=self.metadata.entity) \
+            .filter(self.DbEvent.eventid > eventid if eventid else True) \
+            .all()
+
+    @with_session
     def get_current_ids(self):
         """Overview of entities that are current
 
@@ -203,14 +238,14 @@ class GOBStorageHandler():
                                                                       _date_deleted=None).all()
 
     @with_session
-    def get_entity_or_none(self, entity_id, with_deleted=False):
+    def get_entity_or_none(self, source_id, with_deleted=False):
         """Gets an entity. If it doesn't exist, returns None
 
-        :param entity_id: id of the entity to get
+        :param source_id: id of the entity to get
         :param with_deleted: boolean denoting if entities that are deleted should be considered (default: False)
         :return:
         """
-        entity_query = self.session.query(self.DbEntity).filter_by(_source=self.metadata.source, _source_id=entity_id)
+        entity_query = self.session.query(self.DbEntity).filter_by(_source=self.metadata.source, _source_id=source_id)
         if not with_deleted:
             entity_query = entity_query.filter_by(_date_deleted=None)
 
@@ -224,10 +259,8 @@ class GOBStorageHandler():
         """
         entity = build_db_event(self.DbEvent, event, self.metadata)
         self.session.add(entity)
-        self.session.flush()
-        return entity
 
-    def get_entity_for_update(self, entity_id, source_id, gob_event):
+    def get_entity_for_update(self, event, data):
         """Get an entity to work with. Changes to the entity will be persisted on leaving session context
 
         :param entity_id: id of the entity
@@ -236,19 +269,32 @@ class GOBStorageHandler():
         :return:
         """
 
-        entity = self.get_entity_or_none(source_id, with_deleted=True)
+        entity = self.get_entity_or_none(event.source_id, with_deleted=True)
 
         if entity is None:
-            if not gob_event.is_add_new:
-                raise GOBException(f"Trying to '{gob_event.name}' a not existing entity")
+            if event.action != "ADD":
+                raise GOBException(f"Trying to '{event.action}' a not existing entity")
 
-            entity = self.DbEntity(_source_id=source_id, _source=self.metadata.source)
-            setattr(entity, self.metadata.id_column, entity_id)
-            setattr(entity, '_id', entity_id)
-            setattr(entity, '_version', self.metadata.version)
+            # Create an empty entity for the sepcified source and source_id
+            entity = self.DbEntity(_source=self.metadata.source, _source_id=event.source_id)
+
+            # Example data (event contents)
+            # {
+            #     "entity": {"identificatie": "10281154", ... "_last_event": null},
+            #     "id_column": "identificatie",
+            #      "_last_event": null,
+            #      "_source_id": "10281154",
+            #      "identificatie": "10281154"
+            # }
+
+            id_column = data["id_column"]
+            id_value = data["entity"][id_column]
+            setattr(entity, id_column, id_value)
+            setattr(entity, '_id', id_value)
+            setattr(entity, '_version', event.version)
             self.session.add(entity)
 
-        if entity._date_deleted is not None and not gob_event.is_add_new:
-            raise GOBException(f"Trying to '{gob_event.name}' a deleted entity")
+        if entity._date_deleted is not None and event.action != "ADD":
+            raise GOBException(f"Trying to '{event.action}' a deleted entity")
 
         return entity
