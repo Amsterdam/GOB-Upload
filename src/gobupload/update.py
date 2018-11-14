@@ -73,8 +73,9 @@ def _apply_events(storage, start_after):
 
         # Log the number of events that is going to be applied (if any)
         n_events = len(unhandled_events)
+        n_applied = {}
         if n_events <= 0:
-            return n_events
+            return n_applied
 
         logger.info(f"About to apply {n_events} events")
 
@@ -95,8 +96,11 @@ def _apply_events(storage, start_after):
             # and register the last event that has updated this entity
             entity._last_event = event.eventid
 
-        logger.info(f"{n_events} events applied")
-        return n_events
+            n_applied[event.action] = n_applied.get(event.action, 0) + 1
+
+        for action, n in n_applied.items():
+            logger.info(f"{n} {action} events applied")
+        return n_applied
 
 
 def _get_event_ids(storage):
@@ -122,12 +126,14 @@ def update_events(storage, message):
     """
     with storage.get_session():
         logger.info(f"About to create {len(message.contents)} events")
-        n_stored = 0
-        n_skipped = 0
+        n_stored = {}
+        n_skipped = {}
 
         for event in message.contents:
             source_id = event["data"]["_source_id"]
             entity = storage.get_entity_or_none(source_id)
+
+            action = event['event']
 
             # Is the comparison that has lead to this event based upon the current version of the entity?
             last_event = event["data"]["_last_event"]
@@ -135,14 +141,17 @@ def update_events(storage, message):
             if is_valid:
                 # Store the event in the database
                 storage.add_event_to_storage(event)
-                n_stored += 1
+                n_stored[action] = n_stored.get(action, 0) + 1
             else:
                 # Report warning
-                logger.warning(f"Skip outdated {event['event']} event, source id: {source_id}",
-                               {"id": "Skip outdated event", "data": {"source_id": source_id}})
-                n_skipped += 1
+                logger.warning(f"Skip outdated {action} event, source id: {source_id}",
+                               {"id": "Skip outdated event", "data": {"action": action, "source_id": source_id}})
+                n_skipped[action] = n_skipped.get(action, 0) + 1
 
-        logger.info(f"{n_stored} events created, {n_skipped} events skipped")
+        for action, n in n_stored.items():
+            logger.info(f"{n} {action} events created")
+        for action, n in n_skipped.items():
+            logger.info(f"{n} {action} events skipped")
         return n_stored, n_skipped
 
 
@@ -202,10 +211,13 @@ def full_update(msg):
     # Build result message
     results = {
         "num_records": len(message.contents),
-        "num_events_added": n_stored,
-        "num_events_skipped": n_skipped,
-        "num_added": n_events_applied
     }
+    for result, fmt in [(n_stored, "num_{action}_events"),
+                        (n_skipped, "num_{action}_events_skipped"),
+                        (n_events_applied, "num_{action}_applied")]:
+        for action, n in result.items():
+            results[fmt.format(action=action.lower())] = n
+
     logger.info(f"Update completed", {'data': results})
 
     # Return the result message, with no log, no contents
