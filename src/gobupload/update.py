@@ -8,7 +8,6 @@ from gobcore.events.import_message import ImportMessage, MessageMetaData
 from gobcore.events import GobEvent
 from gobcore.log import get_logger
 
-from gobupload import get_report
 from gobupload.storage.handler import GOBStorageHandler
 
 logger = None
@@ -75,9 +74,9 @@ def _apply_events(storage, start_after):
         # Log the number of events that is going to be applied (if any)
         n_events = len(unhandled_events)
         if n_events <= 0:
-            return
+            return n_events
 
-        logger.info(f"Appling {n_events} events")
+        logger.info(f"About to apply {n_events} events")
 
         for event in unhandled_events:
 
@@ -97,6 +96,7 @@ def _apply_events(storage, start_after):
             entity._last_event = event.eventid
 
         logger.info(f"{n_events} events applied")
+        return n_events
 
 
 def _get_event_ids(storage):
@@ -121,8 +121,9 @@ def update_events(storage, message):
     :return:
     """
     with storage.get_session():
-        logger.info(f"Creating {len(message.contents)} events")
+        logger.info(f"About to create {len(message.contents)} events")
         n_stored = 0
+        n_skipped = 0
 
         for event in message.contents:
             source_id = event["data"]["_source_id"]
@@ -138,9 +139,11 @@ def update_events(storage, message):
             else:
                 # Report warning
                 logger.warning(f"Skip outdated {event['event']} event, source id: {source_id}",
-                               {"id": "Skip outdated event"})
+                               {"id": "Skip outdated event", "data": {"source_id": source_id}})
+                n_skipped += 1
 
-        logger.info(f"{n_stored} events created")
+        logger.info(f"{n_stored} events created, {n_skipped} events skipped")
+        return n_stored, n_skipped
 
 
 def _init_logger(msg):
@@ -188,14 +191,22 @@ def full_update(msg):
     _apply_events(storage, entity_max_eventid)
 
     # Add new events
-    update_events(storage, message)
+    n_stored, n_skipped = update_events(storage, message)
+
+    # Get the max eventid of the entities and the last eventid of the events
+    entity_max_eventid, last_eventid = _get_event_ids(storage)
 
     # Apply the new events
-    _apply_events(storage, entity_max_eventid)
+    n_events_applied = _apply_events(storage, entity_max_eventid)
 
     # Build result message
-    results = get_report(message.contents)
-    logger.info(f"{results['num_records']} events applied to database", {'data': results})
+    results = {
+        "num_records": len(message.contents),
+        "num_events_added": n_stored,
+        "num_events_skipped": n_skipped,
+        "num_added": n_events_applied
+    }
+    logger.info(f"Update completed", {'data': results})
 
     # Return the result message, with no log, no contents
     return ImportMessage.create_import_message(msg["header"], None, None)
