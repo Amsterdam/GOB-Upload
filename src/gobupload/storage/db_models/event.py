@@ -17,6 +17,7 @@ from gobcore.typesystem.json import GobTypeJSONEncoder
 EVENTS = {
     "eventid": "GOB.PKInteger",   # Unique identification of the event, numbered sequentially
     "timestamp": "GOB.DateTime",  # datetime when the event as created
+    "catalogue": "GOB.String",    # The catalogue in which the entity resides
     "entity": "GOB.String",       # the entity to which the event need to be applied
     "version": "GOB.String",      # the version of the entity model
     "action": "GOB.String",       # add, change, delete or confirm
@@ -45,6 +46,7 @@ def build_db_event(DbEvent, event, metadata):
     json_contents = json.dumps(copy.deepcopy(event['data']), cls=GobTypeJSONEncoder)
     return DbEvent(
         timestamp=metadata.timestamp,
+        catalogue=metadata.catalogue,
         entity=metadata.entity,
         version=metadata.version,
         action=event['event'],

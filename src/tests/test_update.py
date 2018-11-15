@@ -17,6 +17,7 @@ class TestUpdate(TestCase):
         logging.disable(logging.CRITICAL)
 
         self.mock_storage = MagicMock(spec=GOBStorageHandler)
+        self.mock_storage.get_entity_or_none.return_value = None
 
     def tearDown(self):
         logging.disable(logging.NOTSET)
@@ -39,10 +40,12 @@ class TestUpdate(TestCase):
 
         message = fixtures.get_event_message_fixture()
 
+        self.mock_storage.get_events_starting_after.return_value = []
+
         full_update(message)
 
-        mock_event.assert_called()
-        gob_event.pop_ids.assert_called()
+        self.mock_storage.add_event_to_storage.assert_called()
+        self.mock_storage.get_events_starting_after.assert_called()
 
     @patch('gobupload.update.GobEvent')
     def test_fullupdate_applies_events(self, mock_event, mock):
@@ -56,9 +59,9 @@ class TestUpdate(TestCase):
             id_to_pop = message['contents'][0]['data']['_source_id']
             gob_event.pop_ids.return_value = id_to_pop, id_to_pop
 
+            self.mock_storage.get_events_starting_after.return_value = []
+
             full_update(message)
 
-            mock_event.assert_called()
-            gob_event.pop_ids.assert_called()
-            self.mock_storage.get_entity_for_update.assert_called_with(id_to_pop, id_to_pop, gob_event)
-            gob_event.apply_to.assert_called()
+            self.mock_storage.add_event_to_storage.assert_called()
+            self.mock_storage.get_events_starting_after.assert_called()

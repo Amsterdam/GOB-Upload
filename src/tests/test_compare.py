@@ -85,7 +85,7 @@ class TestCompare(TestCase):
         self.mock_storage.get_entity_or_none.return_value = entity
 
         # Add the field to the model as well
-        self.mock_model.get_model.return_value = {
+        self.mock_model.get_collection.return_value = {
             "fields": {
                 field_name: {
                     "type": "GOB.String"
