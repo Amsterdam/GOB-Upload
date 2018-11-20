@@ -86,7 +86,6 @@ class GOBStorageHandler():
         ]
         alembic.config.main(argv=alembicArgs)
 
-
         # Create model views
         self._init_views()
 
