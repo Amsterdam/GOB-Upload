@@ -24,7 +24,7 @@ from gobcore.views import GOBViews
 from gobupload.config import GOB_DB
 from gobupload.storage.db_models.event import build_db_event
 
-from gobupload.models.model import Base
+import alembic.config
 
 
 def with_session(func):
@@ -78,7 +78,14 @@ class GOBStorageHandler():
         If not, they are required
         """
 
-        Base.metadata.create_all(self.engine)
+        # Database migrations are handled by alembic
+        # alembic upgrade head
+        alembicArgs = [
+            '--raiseerr',
+            'upgrade', 'head',
+        ]
+        alembic.config.main(argv=alembicArgs)
+
 
         # Create model views
         self._init_views()
