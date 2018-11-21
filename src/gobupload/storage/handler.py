@@ -13,18 +13,18 @@ Use it like this:
 import functools
 
 from gobcore.exceptions import GOBException
-from sqlalchemy import create_engine, MetaData, Table, Index
+from sqlalchemy import create_engine
 from sqlalchemy.engine.url import URL
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session
 
 from gobcore.model import GOBModel
-from gobcore.model.metadata import FIXED_COLUMNS, METADATA_COLUMNS
 from gobcore.views import GOBViews
 
 from gobupload.config import GOB_DB
-from gobupload.storage.db_models import get_column
-from gobupload.storage.db_models.event import EVENTS, build_db_event
+from gobupload.storage.db_models.event import build_db_event
+
+import alembic.config
 
 
 def with_session(func):
@@ -77,68 +77,20 @@ class GOBStorageHandler():
         """Check if the necessary tables (for events, and for the entities in gobmodel) are present
         If not, they are required
         """
-        # Create events table if not yet exists
-        if not hasattr(self.base.classes, self.EVENTS_TABLE):
-            self._init_event()
 
-        # Create model tables
-        self._init_entities()
+        # Database migrations are handled by alembic
+        # alembic upgrade head
+        alembicArgs = [
+            '--raiseerr',
+            'upgrade', 'head',
+        ]
+        alembic.config.main(argv=alembicArgs)
 
         # Create model views
         self._init_views()
 
         # refresh reflected base
         self._get_reflected_base()
-
-    def _init_event(self):
-        """
-        Create the events table
-        """
-        meta = MetaData(self.engine)
-
-        columns = [get_column(column) for column in EVENTS.items()]
-        table = Table(self.EVENTS_TABLE, meta, *columns, extend_existing=True)
-        table.create(self.engine, checkfirst=True)
-
-    def _init_entities(self):
-        """
-        Initialize a database table for the gobmodel.
-        """
-
-        model = GOBModel()
-
-        for catalog_name, catalog in model.get_catalogs().items():
-            for collection_name, collection in model.get_collections(catalog_name).items():
-                if collection['version'] != "0.1":
-                    # No migrations defined yet...
-                    raise ValueError("Unexpected version, please write a generic migration here or migrate the import")
-
-                fields = collection['fields']          # the GOB model for the specified entity
-
-                # internal columns
-                columns = [get_column(column) for column in FIXED_COLUMNS.items()]
-                columns.extend([get_column(column) for column in METADATA_COLUMNS['private'].items()])
-
-                # externally visible columns
-                columns.extend([get_column(column) for column in METADATA_COLUMNS['public'].items()])
-
-                # get the entity columns
-                data_column_desc = {col: desc['type'] for col, desc in fields.items()}
-                columns.extend([get_column(column) for column in data_column_desc.items()])
-
-                # Create an index on source and source_id for performant updates
-                table_name = GOBModel().get_table_name(catalog_name, collection_name)
-                index = Index(
-                    f'{table_name}.idx.source_source_id',
-                    '_source',
-                    '_source_id',
-                    unique=True
-                )
-
-                meta = MetaData(self.engine)
-
-                table = Table(f'{table_name}', meta, *columns, index, extend_existing=True)
-                table.create(self.engine, checkfirst=True)
 
     def _init_views(self):
         """
