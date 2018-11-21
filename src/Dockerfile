@@ -12,4 +12,8 @@ RUN rm requirements.txt
 # Copy gobupload module
 COPY gobupload gobupload
 
+# Copy alembic config
+COPY alembic alembic
+COPY alembic.ini alembic.ini
+
 CMD ["python3", "-m", "gobupload"]
