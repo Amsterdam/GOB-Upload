@@ -15,15 +15,13 @@ from gobupload import get_report
 from gobupload.storage.handler import GOBStorageHandler
 
 
-logger = get_logger(name="COMPARE")
-
-
 def compare(msg):
     """Compare new data in msg (contents) with the current data
 
     :param msg: The new data, including header and summary
     :return: result message
     """
+    logger = get_logger(name="COMPARE")
 
     extra_log_kwargs = {
         'process_id': msg['header']['process_id'],
