@@ -6,7 +6,7 @@ import json
 
 from gobcore.events.import_message import ImportMessage, MessageMetaData
 from gobcore.events import GobEvent
-from gobcore.log import get_logger, LOGLEVEL
+from gobcore.log import get_logger
 
 from gobupload.storage.handler import GOBStorageHandler
 
