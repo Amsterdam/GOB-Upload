@@ -7,7 +7,7 @@ Todo: Event, action and mutation are used for the same subject. Use one name to 
 """
 from gobcore.events import get_event_for
 from gobcore.events.import_message import ImportMessage
-from gobcore.log import get_logger, LOGLEVEL
+from gobcore.log import get_logger
 from gobcore.model import GOBModel
 from gobcore.typesystem import get_modifications
 
