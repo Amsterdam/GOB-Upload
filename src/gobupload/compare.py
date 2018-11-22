@@ -14,7 +14,7 @@ from gobcore.typesystem import get_modifications
 from gobupload import get_report
 from gobupload.storage.handler import GOBStorageHandler
 
-logger = get_logger(name="COMPARE")
+logger = None
 
 
 def compare(msg):
@@ -23,7 +23,10 @@ def compare(msg):
     :param msg: The new data, including header and summary
     :return: result message
     """
-    logger.setLevel(LOGLEVEL)
+    global logger
+    if logger is None:
+        logger = get_logger(name="COMPARE")
+
     extra_log_kwargs = {
         'process_id': msg['header']['process_id'],
         'source': msg['header']['source'],

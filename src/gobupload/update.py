@@ -15,12 +15,13 @@ logger = None
 
 class Logger():
 
-    _logger = get_logger("UPDATE")
+    _logger = None
 
     def __init__(self, name, default_args):
         self._name = name
         self._default_args = default_args
-        Logger._logger.setLevel(LOGLEVEL)
+        if Logger._logger is None:
+            Logger._logger = get_logger("UPDATE")
 
     def info(self, msg, kwargs={}):
         Logger._logger.info(msg, extra={**(self._default_args), **kwargs})
