@@ -7,12 +7,14 @@ Todo: Event, action and mutation are used for the same subject. Use one name to 
 """
 from gobcore.events import get_event_for
 from gobcore.events.import_message import ImportMessage
-from gobcore.log import get_logger
+from gobcore.log import get_logger, LOGLEVEL
 from gobcore.model import GOBModel
 from gobcore.typesystem import get_modifications
 
 from gobupload import get_report
 from gobupload.storage.handler import GOBStorageHandler
+
+logger = get_logger(name="COMPARE")
 
 
 def compare(msg):
@@ -21,8 +23,7 @@ def compare(msg):
     :param msg: The new data, including header and summary
     :return: result message
     """
-    logger = get_logger(name="COMPARE")
-
+    logger.setLevel(LOGLEVEL)
     extra_log_kwargs = {
         'process_id': msg['header']['process_id'],
         'source': msg['header']['source'],
