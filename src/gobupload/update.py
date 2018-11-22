@@ -6,7 +6,7 @@ import json
 
 from gobcore.events.import_message import ImportMessage, MessageMetaData
 from gobcore.events import GobEvent
-from gobcore.log import get_logger
+from gobcore.log import get_logger, LOGLEVEL
 
 from gobupload.storage.handler import GOBStorageHandler
 
@@ -15,16 +15,18 @@ logger = None
 
 class Logger():
 
+    _logger = get_logger("UPDATE")
+
     def __init__(self, name, default_args):
         self._name = name
         self._default_args = default_args
-        self._logger = get_logger("UPDATE")
+        Logger._logger.setLevel(LOGLEVEL)
 
     def info(self, msg, kwargs={}):
-        self._logger.info(msg, extra={**(self._default_args), **kwargs})
+        Logger._logger.info(msg, extra={**(self._default_args), **kwargs})
 
     def warning(self, msg, kwargs={}):
-        self._logger.warning(msg, extra={**(self._default_args), **kwargs})
+        Logger._logger.warning(msg, extra={**(self._default_args), **kwargs})
 
 
 def _get_gob_event(event, data):
