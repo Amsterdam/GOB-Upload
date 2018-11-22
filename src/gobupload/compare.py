@@ -14,6 +14,8 @@ from gobcore.typesystem import get_modifications
 from gobupload import get_report
 from gobupload.storage.handler import GOBStorageHandler
 
+logger = None
+
 
 def compare(msg):
     """Compare new data in msg (contents) with the current data
@@ -21,7 +23,9 @@ def compare(msg):
     :param msg: The new data, including header and summary
     :return: result message
     """
-    logger = get_logger(name="COMPARE")
+    global logger
+    if logger is None:
+        logger = get_logger(name="COMPARE")
 
     extra_log_kwargs = {
         'process_id': msg['header']['process_id'],

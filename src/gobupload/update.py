@@ -15,16 +15,19 @@ logger = None
 
 class Logger():
 
+    _logger = None
+
     def __init__(self, name, default_args):
         self._name = name
         self._default_args = default_args
-        self._logger = get_logger("UPDATE")
+        if Logger._logger is None:
+            Logger._logger = get_logger("UPDATE")
 
     def info(self, msg, kwargs={}):
-        self._logger.info(msg, extra={**(self._default_args), **kwargs})
+        Logger._logger.info(msg, extra={**(self._default_args), **kwargs})
 
     def warning(self, msg, kwargs={}):
-        self._logger.warning(msg, extra={**(self._default_args), **kwargs})
+        Logger._logger.warning(msg, extra={**(self._default_args), **kwargs})
 
 
 def _get_gob_event(event, data):
