@@ -55,14 +55,17 @@ def _update_relation(catalog_name, collection_name, relation):
               f"to {relation['destination_attribute']} on {catalog_name}_{collection_name}")
 
         query = _get_update_query(catalog_name, collection_name, relation)
+
+        result = None
         if query:
             result = storage.session.execute(query)
 
-            print(f"{result.rowcount} relation(s) made for "
-                  f"{relation['field_name']} on {relation['catalog']}_{relation['collection']} "
-                  f"to {relation['destination_attribute']} on {catalog_name}_{collection_name}")
-        else:
-            print("No relations made")
+    if result:
+        print(f"{result.rowcount} relation(s) made for "
+              f"{relation['field_name']} on {relation['catalog']}_{relation['collection']} "
+              f"to {relation['destination_attribute']} on {catalog_name}_{collection_name}")
+    else:
+        print("No relations made")
 
 
 def _get_all_entities(update_model, relation):
