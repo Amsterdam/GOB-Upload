@@ -56,9 +56,7 @@ def _update_relation(catalog_name, collection_name, relation):
 
         query = _get_update_query(catalog_name, collection_name, relation)
 
-        result = None
-        if query:
-            result = storage.session.execute(query)
+        result = storage.session.execute(query) if query else None
 
     if result:
         print(f"{result.rowcount} relation(s) made for "
