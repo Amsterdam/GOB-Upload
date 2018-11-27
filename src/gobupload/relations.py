@@ -16,7 +16,7 @@ from gobupload.storage.handler import GOBStorageHandler
 
 model = GOBModel()
 sources = GOBSources()
-storage = GOBStorageHandler()
+storage = None
 
 
 def build_relations(catalog_name, collection_name):
@@ -26,6 +26,10 @@ def build_relations(catalog_name, collection_name):
     :param collection_name: the name of the collection
     :return:
     """
+    global storage
+
+    storage = GOBStorageHandler()
+
     relations = sources.get_relations(catalog_name, collection_name)
     for relation in relations:
         _update_relation(catalog_name, collection_name, relation)
