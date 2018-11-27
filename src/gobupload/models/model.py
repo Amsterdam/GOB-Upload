@@ -3,7 +3,7 @@ from sqlalchemy.ext.declarative import declarative_base
 
 # Import data definitions
 from gobcore.model import GOBModel
-from gobcore.model.metadata import FIXED_COLUMNS, METADATA_COLUMNS
+from gobcore.model.metadata import FIXED_COLUMNS, METADATA_COLUMNS, STATE_COLUMNS
 from gobupload.storage.db_models.event import EVENTS
 
 # Utility method to convert GOB type to a SQLAlchemy Column
@@ -52,11 +52,14 @@ def _derive_models():
             # the GOB model for the specified entity
             fields = {col: desc['type'] for col, desc in collection['fields'].items()}
 
+            state_columns = STATE_COLUMNS if collection.get('has_states') else {}
+
             # Collect all columns for this collection
             entity = {
                 **FIXED_COLUMNS,
                 **METADATA_COLUMNS['private'],
                 **METADATA_COLUMNS['public'],
+                **state_columns,
                 **fields
             }
 
