@@ -17,6 +17,8 @@ class TestRelations(TestCase):
         # Disable logging to prevent test from connecting to RabbitMQ
         logging.disable(logging.CRITICAL)
 
+        self.mock_storage = MagicMock(spec=GOBStorageHandler)
+
         self.mock_sources = GOBSources()
         self.mock_relation = {
             'catalog': 'catalog',
@@ -44,9 +46,11 @@ class TestRelations(TestCase):
     def tearDown(self):
         logging.disable(logging.NOTSET)
 
+    @patch('gobupload.relations.GOBStorageHandler')
     @patch('gobupload.relations._update_relation')
     @patch('gobupload.relations.GOBSources.get_relations')
-    def test_build_relations(self, mock_get_relations, mock_update_relations):
+    def test_build_relations(self, mock_get_relations, mock_update_relations, mock_storage):
+        mock_storage.return_value = self.mock_storage
         mock_get_relations.return_value = [self.mock_relation]
 
         relations.build_relations('catalog', 'collection')
