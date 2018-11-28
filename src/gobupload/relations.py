@@ -19,20 +19,22 @@ sources = GOBSources()
 storage = None
 
 
-def build_relations(catalog_name, collection_name):
-    """Build all relations for a collection from a catalog.
+def build_relations(msg):
+    """Build all relations for a catalog.
 
-    :param catalog_name: the name of the catalog
-    :param collection_name: the name of the collection
+    :param msg: a message from the broker containing the catalog to build relations to
     :return:
     """
     global storage
 
     storage = GOBStorageHandler()
 
-    relations = sources.get_relations(catalog_name, collection_name)
-    for relation in relations:
-        _update_relation(catalog_name, collection_name, relation)
+    catalog_name = msg['catalogue']
+
+    for collection_name in model.get_collection_names(catalog_name):
+        relations = sources.get_relations(catalog_name, collection_name)
+        for relation in relations:
+            _update_relation(catalog_name, collection_name, relation)
 
 
 def _update_relation(catalog_name, collection_name, relation):

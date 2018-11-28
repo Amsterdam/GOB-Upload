@@ -16,6 +16,7 @@ class TestMain(TestCase):
 
         for key, definition in __main__.SERVICEDEFINITION.items():
             self.assertTrue('queue' in definition)
-            self.assertTrue('report' in definition)
+            if key != 'full_relate_request':
+                self.assertTrue('report' in definition)
             self.assertTrue('handler' in definition)
             self.assertTrue(callable(definition['handler']))

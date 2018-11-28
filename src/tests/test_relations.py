@@ -49,13 +49,15 @@ class TestRelations(TestCase):
     @patch('gobupload.relations.GOBStorageHandler')
     @patch('gobupload.relations._update_relation')
     @patch('gobupload.relations.GOBSources.get_relations')
-    def test_build_relations(self, mock_get_relations, mock_update_relations, mock_storage):
+    @patch('gobupload.relations.GOBModel.get_collection_names')
+    def test_build_relations(self, mock_get_collection_names, mock_get_relations, mock_update_relations, mock_storage):
         mock_storage.return_value = self.mock_storage
+        mock_get_collection_names.return_value = ['collection']
         mock_get_relations.return_value = [self.mock_relation]
 
-        relations.build_relations('catalog', 'collection')
+        relations.build_relations({'catalogue': 'catalogue'})
 
-        mock_update_relations.assert_called_with('catalog', 'collection', self.mock_relation)
+        mock_update_relations.assert_called_with('catalogue', 'collection', self.mock_relation)
 
     @patch('gobupload.relations.storage')
     @patch('gobupload.relations._get_all_entities')
