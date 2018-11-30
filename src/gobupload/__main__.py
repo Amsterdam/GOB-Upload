@@ -9,6 +9,7 @@ from gobcore.message_broker.config import WORKFLOW_EXCHANGE
 from gobcore.message_broker.messagedriven_service import messagedriven_service
 
 from gobupload import compare
+from gobupload import relations
 from gobupload import update
 from gobupload.storage.handler import GOBStorageHandler
 
@@ -34,6 +35,12 @@ SERVICEDEFINITION = {
             'queue': 'gob.workflow.proposal',
             'key': 'updatefinished.proposal'
         }
+    },
+    'full_relate_request': {
+        'exchange': WORKFLOW_EXCHANGE,
+        'queue': 'gob.workflow.request',
+        'key': 'fullrelate.request',
+        'handler': relations.build_relations,
     },
 }
 
