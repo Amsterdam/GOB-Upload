@@ -21,6 +21,31 @@ class TestCompare(TestCase):
     def tearDown(self):
         logging.disable(logging.NOTSET)
 
+    def test_compare_fails_on_missing_dependencies(self, storage_mock, model_mock):
+        storage_mock.return_value = self.mock_storage
+
+        self.mock_storage.has_any_entity.return_value = False
+        message = fixtures.get_message_fixture(contents=[])
+        message["header"]["depends_on"] = {
+            "xyz": "abc"
+        }
+
+        result = compare(message)
+        self.assertEqual(result, None)
+
+    def test_compare_succeeds_on_found_dependencies(self, storage_mock, model_mock):
+        storage_mock.return_value = self.mock_storage
+
+        # setup: one entity in db, none in message
+        self.mock_storage.has_any_entity.return_value = True
+        message = fixtures.get_message_fixture(contents=[])
+        message["header"]["depends_on"] = {
+            "xyz": "abc"
+        }
+
+        result = compare(message)
+        self.assertNotEqual(result, None)
+
     def test_compare_creates_delete(self, storage_mock, model_mock):
         storage_mock.return_value = self.mock_storage
 

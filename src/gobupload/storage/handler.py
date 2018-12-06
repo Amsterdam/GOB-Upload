@@ -181,6 +181,16 @@ class GOBStorageHandler():
             .all()
 
     @with_session
+    def has_any_entity(self, key, value):
+        """Check if any entity exist with the given key-value combination
+
+        :param key: key value, e.g. "_source"
+        :param value: value to loop for, e.g. "DIVA"
+        :return: True if any entity exists, else False
+        """
+        return self.session.query(self.DbEntity).filter_by(**{key: value}).count() > 0
+
+    @with_session
     def get_current_ids(self):
         """Overview of entities that are current
 

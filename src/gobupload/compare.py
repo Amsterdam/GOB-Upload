@@ -48,6 +48,14 @@ def compare(msg):
     # Get all current non-deleted ids for this source
     storage = GOBStorageHandler(metadata)
     with storage.get_session():
+        # Check any dependencies
+        depends_on = msg["header"].get("depends_on", {})
+        for key, value in depends_on.items():
+            # Check every dependency
+            if not storage.has_any_entity(key, value):
+                logger.error(f"Compare failed; dependency {value} not found.", extra=extra_log_kwargs)
+                return None
+
         current_ids = storage.get_current_ids()
 
         # find deletes by comparing current ids to new entities
