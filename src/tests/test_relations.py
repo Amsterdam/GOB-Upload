@@ -7,7 +7,7 @@ from gobcore.model import GOBModel
 from gobcore.sources import GOBSources
 
 from gobupload import relations
-from gobupload.models.model import models
+from gobcore.model.sa.gob import models
 from gobupload.storage.handler import GOBStorageHandler
 
 
