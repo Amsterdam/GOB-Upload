@@ -29,7 +29,7 @@ def build_db_event(DbEvent, event, metadata):
 
     # todo: is this the right place to get the id (and event-name)?
     #   this is implicit knowledge of event data structure
-    source_id = event['data'][metadata.source_id_column]
+    source_id = event['data']['_source_id']
     # Use the GOBType encoder to encode the Decimal values
     json_contents = json.dumps(copy.deepcopy(event['data']), cls=GobTypeJSONEncoder)
     return DbEvent(

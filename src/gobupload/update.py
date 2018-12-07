@@ -133,7 +133,7 @@ def update_events(storage, message):
         n_skipped = {}
 
         for event in message.contents:
-            source_id = event["data"]["_source_id"]
+            source_id = event["data"]["_entity_source_id"]
             entity = storage.get_entity_or_none(source_id)
 
             action = event['event']
