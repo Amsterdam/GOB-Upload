@@ -46,6 +46,7 @@ def _get_gob_event(event, data):
     msg_header = {
         "process_id": None,
         "source": event.source,
+        "application": event.application,
         "id_column": data.get("id_column"),
         "catalogue": event.catalogue,
         "entity": event.entity,
