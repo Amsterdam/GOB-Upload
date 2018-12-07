@@ -39,6 +39,7 @@ def build_db_event(DbEvent, event, metadata):
         version=metadata.version,
         action=event['event'],
         source=metadata.source,
+        application=metadata.application,
         source_id=source_id,
         # todo: should this be named data, instead of contents
         # (contents is part of message, data is part of event)
