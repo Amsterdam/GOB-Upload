@@ -278,7 +278,7 @@ class GOBStorageHandler():
         :return:
         """
 
-        entity = self.get_entity_or_none(event.source_id, with_deleted=True)
+        entity = self.get_entity_or_none(data["_entity_source_id"], with_deleted=True)
 
         if entity is None:
             if event.action != "ADD":
