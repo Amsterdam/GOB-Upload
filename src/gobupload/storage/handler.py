@@ -110,8 +110,17 @@ class GOBStorageHandler():
                     self._create_view(f"{catalog}_{entity}_{view_name}", "\n".join(view['query']))
 
     def _create_view(self, name, definition):
-        statement = f"CREATE OR REPLACE VIEW {name} AS {definition}"
-        self.engine.execute(statement)
+        """Create view
+
+        Use DROP + CREATE because CREATE OR REPLACE raised an exception for some views
+
+        :param name: Name of the view
+        :param definition: Definition (SQL)
+        :return: None
+        """
+        statements = [f"DROP VIEW IF EXISTS {name} CASCADE", f"CREATE VIEW {name} AS {definition}"]
+        for statement in statements:
+            self.engine.execute(statement)
 
     @property
     def DbEvent(self):
