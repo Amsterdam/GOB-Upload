@@ -204,10 +204,43 @@ class GOBStorageHandler():
     def get_current_ids(self):
         """Overview of entities that are current
 
+        Current id's are evaluated within an application
+
         :return: a list of ids for the entity that are currently not deleted.
         """
-        return self.session.query(self.DbEntity._source_id).filter_by(_source=self.metadata.source,
-                                                                      _date_deleted=None).all()
+        filter = {
+            "_source": self.metadata.source,
+            "_application": self.metadata.application,
+            "_date_deleted": None
+        }
+        return self.session.query(self.DbEntity._source_id).filter_by(**filter).all()
+
+    @with_session
+    def get_current_entity(self, entity):
+        """Gets current stored version of entity for the given entity.
+
+        If it doesn't exist, returns None
+
+        An entity to retrieve is evaluated within a source
+        on the basis of its functional id (_id)
+
+        If the collection has states (has_states) then the datum_begin_geldigheid needs
+        also to be considered
+
+        :param entity: the new version of the entity
+        :return: the stored version of the entity, or None if it doesn't exist
+        """
+        collection = GOBModel().get_collection(self.metadata.catalogue, self.metadata.entity)
+
+        filter = {
+            "_source": self.metadata.source,
+            collection["entity_id"]: entity[collection["entity_id"]]
+        }
+        if collection.get("has_states", False):
+            filter["datum_begin_geldigheid"] = entity["datum_begin_geldigheid"]
+
+        entity_query = self.session.query(self.DbEntity).filter_by(**filter)
+        return entity_query.one_or_none()
 
     @with_session
     def get_entity_or_none(self, source_id, with_deleted=False):
@@ -217,7 +250,11 @@ class GOBStorageHandler():
         :param with_deleted: boolean denoting if entities that are deleted should be considered (default: False)
         :return:
         """
-        entity_query = self.session.query(self.DbEntity).filter_by(_source=self.metadata.source, _source_id=source_id)
+        filter = {
+            "_source": self.metadata.source,
+            "_source_id": source_id
+        }
+        entity_query = self.session.query(self.DbEntity).filter_by(**filter)
         if not with_deleted:
             entity_query = entity_query.filter_by(_date_deleted=None)
 

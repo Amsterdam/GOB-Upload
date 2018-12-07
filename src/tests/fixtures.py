@@ -54,7 +54,7 @@ def get_event_fixture(metadata, event_name=None):
 
 
 def get_metadata_fixture():
-    header = {key: random_string() for key in ["source", "timestamp", "version"]}
+    header = {key: random_string() for key in ["source", "timestamp", "version", "application"]}
     header["catalogue"] = "meetbouten"
     header["entity"] = "meetbouten"
     header["id_column"] = "meetboutid"
