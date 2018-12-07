@@ -63,7 +63,7 @@ class TestCompare(TestCase):
         storage_mock.return_value = self.mock_storage
 
         # setup: no entity in db, one in message
-        self.mock_storage.get_entity_or_none.return_value = None
+        self.mock_storage.get_current_entity.return_value = None
         message = fixtures.get_message_fixture()
 
         result = compare(message)
@@ -107,7 +107,7 @@ class TestCompare(TestCase):
         setattr(entity, field_name, old_value)
 
         self.mock_storage.get_current_ids.return_value = [entity]
-        self.mock_storage.get_entity_or_none.return_value = entity
+        self.mock_storage.get_current_entity.return_value = entity
 
         # Add the field to the model as well
         self.mock_model.get_collection.return_value = {

@@ -69,7 +69,7 @@ def compare(msg):
         events = []
         for entity_id, data in all.items():
             # get the entity from the storage (or None if it doesn't exist)
-            entity = storage.get_entity_or_none(entity_id)
+            entity = storage.get_current_entity(data)
             # calculate modifications, this will be an empty list if either data or entity is empty
             # or if all attributes are equal
             modifications = get_modifications(entity, data, entity_model['fields'])
