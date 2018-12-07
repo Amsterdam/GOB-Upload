@@ -119,7 +119,8 @@ class GOBStorageHandler():
 
     @property
     def DbEntity(self):
-        return getattr(self.base.classes, GOBModel().get_table_name(self.metadata.catalogue, self.metadata.entity))
+        table_name = GOBModel().get_table_name(self.metadata.catalogue, self.metadata.entity)
+        return getattr(self.base.classes, table_name)
 
     def _drop_table(self, table):
         statement = f"DROP TABLE IF EXISTS {table} CASCADE"
@@ -249,7 +250,9 @@ class GOBStorageHandler():
             #      "identificatie": "10281154"
             # }
 
-            id_column = data["id_column"]
+            collection = GOBModel().get_collection(self.metadata.catalogue, self.metadata.entity)
+
+            id_column = collection["entity_id"]
             id_value = data["entity"][id_column]
             setattr(entity, id_column, id_value)
             setattr(entity, '_id', id_value)
