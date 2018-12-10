@@ -57,9 +57,6 @@ def _get_gob_event(event, data):
     # Construct the event out of the reconstructed event data
     gob_event = GobEvent(event_msg, MessageMetaData(msg_header))
 
-    # In order to apply an event the meta data needs to be removed first
-    gob_event.pop_ids()
-
     return gob_event
 
 
