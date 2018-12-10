@@ -8,7 +8,7 @@ from sqlalchemy.engine.url import URL
 from logging.config import fileConfig
 
 sys.path.append('.')
-from gobupload.models.model import Base
+from gobcore.model.sa.gob import Base
 from gobupload.config import GOB_DB
 
 # this is the Alembic Config object, which provides

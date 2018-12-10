@@ -46,6 +46,7 @@ def _get_gob_event(event, data):
     msg_header = {
         "process_id": None,
         "source": event.source,
+        "application": event.application,
         "id_column": data.get("id_column"),
         "catalogue": event.catalogue,
         "entity": event.entity,
@@ -55,9 +56,6 @@ def _get_gob_event(event, data):
 
     # Construct the event out of the reconstructed event data
     gob_event = GobEvent(event_msg, MessageMetaData(msg_header))
-
-    # In order to apply an event the meta data needs to be removed first
-    gob_event.pop_ids()
 
     return gob_event
 
@@ -132,7 +130,7 @@ def update_events(storage, message):
         n_skipped = {}
 
         for event in message.contents:
-            source_id = event["data"]["_source_id"]
+            source_id = event["data"]["_entity_source_id"]
             entity = storage.get_entity_or_none(source_id)
 
             action = event['event']

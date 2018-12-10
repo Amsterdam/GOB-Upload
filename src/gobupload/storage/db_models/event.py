@@ -14,18 +14,6 @@ import json
 
 from gobcore.typesystem.json import GobTypeJSONEncoder
 
-EVENTS = {
-    "eventid": "GOB.PKInteger",   # Unique identification of the event, numbered sequentially
-    "timestamp": "GOB.DateTime",  # datetime when the event as created
-    "catalogue": "GOB.String",    # The catalogue in which the entity resides
-    "entity": "GOB.String",       # the entity to which the event need to be applied
-    "version": "GOB.String",      # the version of the entity model
-    "action": "GOB.String",       # add, change, delete or confirm
-    "source": "GOB.String",       # the source of the entity, e.g. DIVA
-    "source_id": "GOB.String",    # the id of the entity in the source
-    "contents": "GOB.JSON"        # a json object that holds the contents for the action, the full entity for an Add
-}
-
 
 def build_db_event(DbEvent, event, metadata):
     """
@@ -41,7 +29,7 @@ def build_db_event(DbEvent, event, metadata):
 
     # todo: is this the right place to get the id (and event-name)?
     #   this is implicit knowledge of event data structure
-    source_id = event['data'][metadata.source_id_column]
+    source_id = event['data']['_source_id']
     # Use the GOBType encoder to encode the Decimal values
     json_contents = json.dumps(copy.deepcopy(event['data']), cls=GobTypeJSONEncoder)
     return DbEvent(
@@ -51,6 +39,7 @@ def build_db_event(DbEvent, event, metadata):
         version=metadata.version,
         action=event['event'],
         source=metadata.source,
+        application=metadata.application,
         source_id=source_id,
         # todo: should this be named data, instead of contents
         # (contents is part of message, data is part of event)

@@ -110,8 +110,17 @@ class GOBStorageHandler():
                     self._create_view(f"{catalog}_{entity}_{view_name}", "\n".join(view['query']))
 
     def _create_view(self, name, definition):
-        statement = f"CREATE OR REPLACE VIEW {name} AS {definition}"
-        self.engine.execute(statement)
+        """Create view
+
+        Use DROP + CREATE because CREATE OR REPLACE raised an exception for some views
+
+        :param name: Name of the view
+        :param definition: Definition (SQL)
+        :return: None
+        """
+        statements = [f"DROP VIEW IF EXISTS {name} CASCADE", f"CREATE VIEW {name} AS {definition}"]
+        for statement in statements:
+            self.engine.execute(statement)
 
     @property
     def DbEvent(self):
@@ -119,7 +128,8 @@ class GOBStorageHandler():
 
     @property
     def DbEntity(self):
-        return getattr(self.base.classes, GOBModel().get_table_name(self.metadata.catalogue, self.metadata.entity))
+        table_name = GOBModel().get_table_name(self.metadata.catalogue, self.metadata.entity)
+        return getattr(self.base.classes, table_name)
 
     def _drop_table(self, table):
         statement = f"DROP TABLE IF EXISTS {table} CASCADE"
@@ -181,13 +191,59 @@ class GOBStorageHandler():
             .all()
 
     @with_session
+    def has_any_entity(self, key, value):
+        """Check if any entity exist with the given key-value combination
+
+        :param key: key value, e.g. "_source"
+        :param value: value to loop for, e.g. "DIVA"
+        :return: True if any entity exists, else False
+        """
+        return self.session.query(self.DbEntity).filter_by(**{key: value}).count() > 0
+
+    @with_session
     def get_current_ids(self):
         """Overview of entities that are current
 
+        Current id's are evaluated within an application
+
         :return: a list of ids for the entity that are currently not deleted.
         """
-        return self.session.query(self.DbEntity._source_id).filter_by(_source=self.metadata.source,
-                                                                      _date_deleted=None).all()
+        filter = {
+            "_source": self.metadata.source,
+            "_application": self.metadata.application,
+            "_date_deleted": None
+        }
+        return self.session.query(self.DbEntity._source_id).filter_by(**filter).all()
+
+    @with_session
+    def get_current_entity(self, entity, with_deleted=False):
+        """Gets current stored version of entity for the given entity.
+
+        If it doesn't exist, returns None
+
+        An entity to retrieve is evaluated within a source
+        on the basis of its functional id (_id)
+
+        If the collection has states (has_states) then the datum_begin_geldigheid needs
+        also to be considered
+
+        :param entity: the new version of the entity
+        :return: the stored version of the entity, or None if it doesn't exist
+        """
+        collection = GOBModel().get_collection(self.metadata.catalogue, self.metadata.entity)
+
+        filter = {
+            "_source": self.metadata.source,
+            collection["entity_id"]: entity[collection["entity_id"]]
+        }
+        if collection.get("has_states", False):
+            filter["datum_begin_geldigheid"] = entity["datum_begin_geldigheid"]
+
+        entity_query = self.session.query(self.DbEntity).filter_by(**filter)
+        if not with_deleted:
+            entity_query = entity_query.filter_by(_date_deleted=None)
+
+        return entity_query.one_or_none()
 
     @with_session
     def get_entity_or_none(self, source_id, with_deleted=False):
@@ -197,7 +253,11 @@ class GOBStorageHandler():
         :param with_deleted: boolean denoting if entities that are deleted should be considered (default: False)
         :return:
         """
-        entity_query = self.session.query(self.DbEntity).filter_by(_source=self.metadata.source, _source_id=source_id)
+        filter = {
+            "_source": self.metadata.source,
+            "_source_id": source_id
+        }
+        entity_query = self.session.query(self.DbEntity).filter_by(**filter)
         if not with_deleted:
             entity_query = entity_query.filter_by(_date_deleted=None)
 
@@ -221,7 +281,7 @@ class GOBStorageHandler():
         :return:
         """
 
-        entity = self.get_entity_or_none(event.source_id, with_deleted=True)
+        entity = self.get_entity_or_none(data["_entity_source_id"], with_deleted=True)
 
         if entity is None:
             if event.action != "ADD":
@@ -239,7 +299,9 @@ class GOBStorageHandler():
             #      "identificatie": "10281154"
             # }
 
-            id_column = data["id_column"]
+            collection = GOBModel().get_collection(self.metadata.catalogue, self.metadata.entity)
+
+            id_column = collection["entity_id"]
             id_value = data["entity"][id_column]
             setattr(entity, id_column, id_value)
             setattr(entity, '_id', id_value)

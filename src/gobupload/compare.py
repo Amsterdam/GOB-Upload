@@ -30,6 +30,7 @@ def compare(msg):
     extra_log_kwargs = {
         'process_id': msg['header']['process_id'],
         'source': msg['header']['source'],
+        'application': msg['header']['application'],
         'catalogue': msg['header']['catalogue'],
         'entity': msg['header']['entity']
     }
@@ -48,6 +49,14 @@ def compare(msg):
     # Get all current non-deleted ids for this source
     storage = GOBStorageHandler(metadata)
     with storage.get_session():
+        # Check any dependencies
+        depends_on = msg["header"].get("depends_on", {})
+        for key, value in depends_on.items():
+            # Check every dependency
+            if not storage.has_any_entity(key, value):
+                logger.error(f"Compare failed; dependency {value} not found.", extra=extra_log_kwargs)
+                return None
+
         current_ids = storage.get_current_ids()
 
         # find deletes by comparing current ids to new entities
@@ -60,12 +69,13 @@ def compare(msg):
         events = []
         for entity_id, data in all.items():
             # get the entity from the storage (or None if it doesn't exist)
-            entity = storage.get_entity_or_none(entity_id)
+            entity = storage.get_entity_or_none(entity_id) if data is None else\
+                     storage.get_current_entity(data)
             # calculate modifications, this will be an empty list if either data or entity is empty
             # or if all attributes are equal
             modifications = get_modifications(entity, data, entity_model['fields'])
             # construct the event given the entity, data, and metadata
-            event = get_event_for(entity, data, metadata, modifications)
+            event = get_event_for(entity, data, modifications)
             # append the event to the events-list to be outputted
             events.append(event)
 
