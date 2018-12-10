@@ -216,7 +216,7 @@ class GOBStorageHandler():
         return self.session.query(self.DbEntity._source_id).filter_by(**filter).all()
 
     @with_session
-    def get_current_entity(self, entity):
+    def get_current_entity(self, entity, with_deleted=False):
         """Gets current stored version of entity for the given entity.
 
         If it doesn't exist, returns None
@@ -240,6 +240,9 @@ class GOBStorageHandler():
             filter["datum_begin_geldigheid"] = entity["datum_begin_geldigheid"]
 
         entity_query = self.session.query(self.DbEntity).filter_by(**filter)
+        if not with_deleted:
+            entity_query = entity_query.filter_by(_date_deleted=None)
+
         return entity_query.one_or_none()
 
     @with_session
