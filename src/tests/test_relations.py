@@ -94,7 +94,7 @@ SET field_name = field_name::JSONB ||
                                ('{{\"id\": \"'|| catalog_collection._id ||'\"}}')::JSONB
 FROM catalog_collection
 WHERE field_name->>'bronwaarde' = catalog_collection.identificatie
-AND catalog2_collection2._source = 'source'
+AND catalog2_collection2._application = 'source'
 """
         mock_storage.session.execute.assert_called_with(expected_query)
 
@@ -123,7 +123,7 @@ SET field_name = field_name::JSONB ||
                                ('{{\"id\": \"'|| catalog_collection._id ||'\"}}')::JSONB
 FROM catalog_collection
 WHERE field_name->>'bronwaarde' = catalog_collection.identificatie
-AND catalog2_collection2._source = 'source'
+AND catalog2_collection2._application = 'source'
 """
 
         self.assertEqual(query, expected_query)
@@ -142,7 +142,7 @@ FROM (
     ON value->>'bronwaarde' = catalog_collection.identificatie
     GROUP BY catalog2_collection2._id
 ) AS enhanced
-WHERE catalog2_collection2._source = 'source'
+WHERE catalog2_collection2._application = 'source'
 AND catalog2_collection2._id = enhanced._id
 """
         self.assertEqual(query, expected_query)
@@ -162,7 +162,7 @@ FROM (
     LEFT JOIN catalog2_collection2 ON             catalog2_collection2.field2->>'id' = catalog2_collection2._id LEFT JOIN catalog3_collection3 ON             catalog2_collection2.field3->>'id' = catalog3_collection3._id
 
 ) AS enhanced
-WHERE catalog2_collection2._source = 'source'
+WHERE catalog2_collection2._application = 'source'
 AND catalog2_collection2._id = enhanced._id
 """
         self.assertEqual(query, expected_query)

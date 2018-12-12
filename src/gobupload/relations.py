@@ -111,7 +111,7 @@ SET {relation['field_name']} = {relation['field_name']}::JSONB ||
                                ('{{\"id\": \"'|| {source_table}._id ||'\"}}')::JSONB
 FROM {source_table}
 WHERE {relation['field_name']}->>'bronwaarde' = {source_table}.{relation['destination_attribute']}
-AND {update_table}._source = '{relation['source']}'
+AND {update_table}._application = '{relation['source']}'
 """
     elif relation['type'] == 'GOB.ManyReference':
         return f"""
@@ -125,7 +125,7 @@ FROM (
     ON value->>'bronwaarde' = {source_table}.{relation['destination_attribute']}
     GROUP BY {update_table}._id
 ) AS enhanced
-WHERE {update_table}._source = '{relation['source']}'
+WHERE {update_table}._application = '{relation['source']}'
 AND {update_table}._id = enhanced._id
 """
 
@@ -180,7 +180,7 @@ FROM (
 """
     query += f"""
 ) AS enhanced
-WHERE {update_table}._source = '{relation['source']}'
+WHERE {update_table}._application = '{relation['source']}'
 AND {update_table}._id = enhanced._id
 """
     return query
