@@ -166,6 +166,7 @@ def _init_logger(msg):
     default_args = {
         'process_id': msg['header']['process_id'],
         'source': msg['header']['source'],
+        'application': msg['header']['application'],
         'catalogue': msg['header']['catalogue'],
         'entity': msg['header']['entity']
     }
