@@ -87,7 +87,10 @@ def get_event_message_fixture(event_name=None):
     message = get_message_fixture()
     metadata = message['header']
     event = get_event_fixture(metadata, event_name)
-    message['contents'] = [event]
+    message['contents'] = {
+        "events": [event],
+        "recompares": []
+    }
 
     for field in event['data'].keys():
         if field != '_source_id':

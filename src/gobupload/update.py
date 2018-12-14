@@ -6,28 +6,53 @@ import json
 
 from gobcore.events.import_message import ImportMessage, MessageMetaData
 from gobcore.events import GobEvent
-from gobcore.log import get_logger
 
+from gobupload import init_logger
 from gobupload.storage.handler import GOBStorageHandler
+from gobupload.compare import recompare
 
 logger = None
 
 
-class Logger():
+class UpdateStatistics():
 
-    _logger = None
+    def __init__(self, events, recompares):
+        self.stored = {}
+        self.skipped = {}
+        self.applied = {}
+        self.events = events
+        self.recompares = recompares
 
-    def __init__(self, name, default_args):
-        self._name = name
-        self._default_args = default_args
-        if Logger._logger is None:
-            Logger._logger = get_logger("UPDATE")
+    def add_stored(self, action):
+        self.stored[action] = self.stored.get(action, 0) + 1
 
-    def info(self, msg, kwargs={}):
-        Logger._logger.info(msg, extra={**(self._default_args), **kwargs})
+    def add_skipped(self, action):
+        self.skipped[action] = self.skipped.get(action, 0) + 1
 
-    def warning(self, msg, kwargs={}):
-        Logger._logger.warning(msg, extra={**(self._default_args), **kwargs})
+    def add_applied(self, action):
+        self.applied[action] = self.applied.get(action, 0) + 1
+
+    def results(self):
+        """Get statistics in a dictionary
+
+        :return:
+        """
+        results = {
+            "num_events": len(self.events)
+        }
+        if self.recompares:
+            results["num_recompares"] = len(self.recompares)
+        for result, fmt in [(self.stored, "num_{action}_events"),
+                            (self.skipped, "num_{action}_events_skipped"),
+                            (self.applied, "num_{action}_applied")]:
+            for action, n in result.items():
+                results[fmt.format(action=action.lower())] = n
+        return results
+
+    def log(self):
+        for process in ["stored", "skipped", "applied"]:
+            for action, n in getattr(self, process).items():
+                logger.info(f"{n} {action} events {process}")
 
 
 def _get_gob_event(event, data):
@@ -60,11 +85,12 @@ def _get_gob_event(event, data):
     return gob_event
 
 
-def _apply_events(storage, start_after):
+def _apply_events(storage, start_after, stats):
     """Apply any unhandled events to the database
 
     :param storage: GOB (events + entities)
     :param start_after: the is of the last event that has been applied to the storage
+    :param stats: update statitics for this action
     :return:
     """
     with storage.get_session():
@@ -73,11 +99,11 @@ def _apply_events(storage, start_after):
 
         # Log the number of events that is going to be applied (if any)
         n_events = len(unhandled_events)
-        n_applied = {}
+        applied = {}
         if n_events <= 0:
-            return n_applied
+            return applied
 
-        logger.info(f"About to apply {n_events} events")
+        logger.info(f"Apply {n_events} events")
 
         for event in unhandled_events:
 
@@ -96,11 +122,8 @@ def _apply_events(storage, start_after):
             # and register the last event that has updated this entity
             entity._last_event = event.eventid
 
-            n_applied[event.action] = n_applied.get(event.action, 0) + 1
-
-        for action, n in n_applied.items():
-            logger.info(f"{n} {action} events applied")
-        return n_applied
+            # Collect statistics about the actions that have been applied
+            stats.add_applied(event.action)
 
 
 def _get_event_ids(storage):
@@ -115,62 +138,78 @@ def _get_event_ids(storage):
         return entity_max_eventid, last_eventid
 
 
-def update_events(storage, message):
+def _store_events(storage, events, stats):
     """Store events in GOB
 
     Only valid events are stored, other events are skipped (with an associated warning)
 
     :param storage: GOB (events + entities)
-    :param message: the event message
+    :param events: the events to process
+    :param stats: update statitics for this action
     :return:
     """
     with storage.get_session():
-        logger.info(f"About to create {len(message.contents)} events")
-        n_stored = {}
-        n_skipped = {}
+        logger.info(f"Create {len(events)} events")
 
-        for event in message.contents:
-            source_id = event["data"]["_entity_source_id"]
-            entity = storage.get_entity_or_none(source_id)
-
-            action = event['event']
-
-            # Is the comparison that has lead to this event based upon the current version of the entity?
-            last_event = event["data"]["_last_event"]
-            is_valid = last_event is None if entity is None else entity._last_event == last_event
-            if is_valid:
-                # Store the event in the database
-                storage.add_event_to_storage(event)
-                n_stored[action] = n_stored.get(action, 0) + 1
-            else:
-                # Report warning
-                logger.warning(f"Skip outdated {action} event, source id: {source_id}",
-                               {"id": "Skip outdated event", "data": {"action": action, "source_id": source_id}})
-                n_skipped[action] = n_skipped.get(action, 0) + 1
-
-        for action, n in n_stored.items():
-            logger.info(f"{n} {action} events created")
-        for action, n in n_skipped.items():
-            logger.info(f"{n} {action} events skipped")
-        return n_stored, n_skipped
+        for event in events:
+            _store_event(storage, event, stats)
 
 
-def _init_logger(msg):
-    """Provide for a logger for this message
+def _store_event(storage, event, stats):
+    """Store the events
 
-    :param msg: the processed message
-    :return: None
+    Only store valid events (not outdated)
+
+    :param storage: GOB (events + entities)
+    :param event: the event to process
+    :param stats: update statitics for this action
+    :return:
     """
-    global logger
+    source_id = event["data"]["_entity_source_id"]
+    entity = storage.get_entity_or_none(source_id)
 
-    default_args = {
-        'process_id': msg['header']['process_id'],
-        'source': msg['header']['source'],
-        'application': msg['header']['application'],
-        'catalogue': msg['header']['catalogue'],
-        'entity': msg['header']['entity']
-    }
-    logger = Logger("UPDATE", default_args)
+    action = event['event']
+
+    # Is the comparison that has lead to this event based upon the current version of the entity?
+    last_event = event["data"]["_last_event"]
+    is_valid = last_event is None if entity is None else entity._last_event == last_event
+
+    if is_valid:
+        # Store the event in the database
+        storage.add_event_to_storage(event)
+        stats.add_stored(action)
+    else:
+        # Report warning
+        logger.warning(f"Skip outdated {action} event, source id: {source_id}",
+                       {"id": "Skip outdated event", "data": {"action": action, "source_id": source_id}})
+        stats.add_skipped(action)
+
+
+def _process_events(storage, events, stats):
+    """Store and apply events
+
+    :param storage: GOB (events + entities)
+    :param event: the event to process
+    :param stats: update statitics for this action
+    :return:
+    """
+    # Get the max eventid of the entities and the last eventid of the events
+    entity_max_eventid, last_eventid = _get_event_ids(storage)
+
+    if entity_max_eventid == last_eventid:
+        logger.info(f"Model is up to date")
+    else:
+        logger.warning(f"Model is out of date! Start application of unhandled events")
+        _apply_events(storage, entity_max_eventid, stats)
+
+    # Add new events
+    _store_events(storage, events, stats)
+
+    # Get the max eventid of the entities and the last eventid of the events
+    entity_max_eventid, last_eventid = _get_event_ids(storage)
+
+    # Apply the new events
+    _apply_events(storage, entity_max_eventid, stats)
 
 
 def full_update(msg):
@@ -179,8 +218,8 @@ def full_update(msg):
     :param msg: the result of the application of the events
     :return: Result message
     """
-    _init_logger(msg)
-
+    global logger
+    logger = init_logger(msg, "UPDATE")
     logger.info(f"Update records to GOB Database {GOBStorageHandler.user_name} started")
 
     # Interpret the message header
@@ -189,36 +228,27 @@ def full_update(msg):
 
     storage = GOBStorageHandler(metadata)
 
-    # Get the max eventid of the entities and the last eventid of the events
-    entity_max_eventid, last_eventid = _get_event_ids(storage)
+    # Get events and recompares from message
+    events = message.contents["events"]
+    recompares = message.contents["recompares"]
 
-    if entity_max_eventid == last_eventid:
-        logger.info(f"Model is up to date")
-    else:
-        logger.warning(f"Model is out of date! Start application of unhandled events")
+    # Gather statistics of update process
+    stats = UpdateStatistics(events, recompares)
 
-    # Apply any yet unapplied events
-    _apply_events(storage, entity_max_eventid)
+    logger.info(f"Process {len(events)} events")
+    _process_events(storage, events, stats)
 
-    # Add new events
-    n_stored, n_skipped = update_events(storage, message)
-
-    # Get the max eventid of the entities and the last eventid of the events
-    entity_max_eventid, last_eventid = _get_event_ids(storage)
-
-    # Apply the new events
-    n_events_applied = _apply_events(storage, entity_max_eventid)
+    if recompares:
+        logger.info(f"Process {len(recompares)} recompares")
+        for data in recompares:
+            with storage.get_session():
+                event = recompare(storage, data)
+            _process_events(storage, [event], stats)
 
     # Build result message
-    results = {
-        "num_records": len(message.contents),
-    }
-    for result, fmt in [(n_stored, "num_{action}_events"),
-                        (n_skipped, "num_{action}_events_skipped"),
-                        (n_events_applied, "num_{action}_applied")]:
-        for action, n in result.items():
-            results[fmt.format(action=action.lower())] = n
+    results = stats.results()
 
+    stats.log()
     logger.info(f"Update completed", {'data': results})
 
     # Return the result message, with no log, no contents

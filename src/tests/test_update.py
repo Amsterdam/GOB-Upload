@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from gobcore.events.import_events import ADD, DELETE, CONFIRM, MODIFY
 
-from gobupload.update import full_update
+from gobupload.update import full_update, UpdateStatistics
 from gobupload.storage.handler import GOBStorageHandler
 from tests import fixtures
 
@@ -28,7 +28,7 @@ class TestUpdate(TestCase):
         message = fixtures.get_event_message_fixture()
         full_update(message)
 
-        self.mock_storage.add_event_to_storage.assert_called_with(message['contents'][0])
+        self.mock_storage.add_event_to_storage.assert_called_with(message['contents']['events'][0])
 
     @patch('gobupload.update.GobEvent')
     def test_fullupdate_creates_event_and_pops_ids(self, mock_event, mock):
@@ -56,7 +56,7 @@ class TestUpdate(TestCase):
             mock_event.return_value = gob_event
 
             message = fixtures.get_event_message_fixture(event_to_test.name)
-            id_to_pop = message['contents'][0]['data']['_source_id']
+            id_to_pop = message['contents']['events'][0]['data']['_source_id']
             gob_event.pop_ids.return_value = id_to_pop, id_to_pop
 
             self.mock_storage.get_events_starting_after.return_value = []
@@ -65,3 +65,16 @@ class TestUpdate(TestCase):
 
             self.mock_storage.add_event_to_storage.assert_called()
             self.mock_storage.get_events_starting_after.assert_called()
+
+
+    def test_statistics(self, mock):
+        stats = UpdateStatistics([1], [2])
+        stats.add_stored('STORED')
+        stats.add_skipped('SKIPPED')
+        stats.add_applied('APPLIED')
+        results = stats.results()
+        self.assertEqual(results['num_events'], 1)
+        self.assertEqual(results['num_recompares'], 1)
+        self.assertEqual(results['num_stored_events'], 1)
+        self.assertEqual(results['num_skipped_events_skipped'], 1)
+        self.assertEqual(results['num_applied_applied'], 1)
