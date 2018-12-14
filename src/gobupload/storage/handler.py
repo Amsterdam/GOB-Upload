@@ -200,6 +200,9 @@ class GOBStorageHandler():
         """
         return self.session.query(self.DbEntity).filter_by(**{key: value}).count() > 0
 
+    def get_collection_model(self):
+        return GOBModel().get_collection(self.metadata.catalogue, self.metadata.entity)
+
     @with_session
     def get_current_ids(self):
         """Overview of entities that are current
