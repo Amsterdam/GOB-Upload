@@ -13,6 +13,7 @@ from gobcore.typesystem import get_modifications
 from gobupload import init_logger
 from gobupload import get_report
 from gobupload.storage.handler import GOBStorageHandler
+from gobupload.enrich import enrich
 
 logger = None
 
@@ -40,12 +41,11 @@ def compare(msg):
 
     with storage.get_session():
         # Check any dependencies
-        depends_on = msg["header"].get("depends_on", {})
-        for key, value in depends_on.items():
-            # Check every dependency
-            if not storage.has_any_entity(key, value):
-                logger.error(f"Compare failed; dependency {value} not fulfilled.")
-                return None
+        if not meets_dependencies(storage, msg):
+            return None
+
+        # Enrich data
+        enrich(storage, msg, logger)
 
         # Convert msg contents in events
         events, recompares = _process_new_data(storage, entity_model, msg)
@@ -63,6 +63,22 @@ def compare(msg):
 
     # Return the result without log.
     return ImportMessage.create_import_message(msg["header"], None, msg_contents)
+
+
+def meets_dependencies(storage, msg):
+    """Check if all dependencies are met
+
+    :param storage: Storage handler
+    :param msg: Incoming message
+    :return: True if all dependencies are met, else False
+    """
+    depends_on = msg["header"].get("depends_on", {})
+    for key, value in depends_on.items():
+        # Check every dependency
+        if not storage.has_any_entity(key, value):
+            logger.error(f"Compare failed; dependency {value} not fulfilled.")
+            return False
+    return True
 
 
 def _process_new_data(storage, model, msg):
