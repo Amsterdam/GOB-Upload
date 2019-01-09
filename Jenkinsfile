@@ -39,6 +39,8 @@ node {
                 "--build-arg BUILD_ENV=acc" +
                 " src")
             image.push()
+            image.push("develop")
+            image.push("latest")
         }
     }
 }
