@@ -56,8 +56,8 @@ class TestCompare(TestCase):
         result = compare(message)
 
         # expectations: delete event is generated
-        self.assertEqual(len(result['contents']), 1)
-        self.assertEqual(result['contents'][0]['event'], 'DELETE')
+        self.assertEqual(len(result['contents']['events']), 1)
+        self.assertEqual(result['contents']['events'][0]['event'], 'DELETE')
 
     def test_compare_creates_add(self, storage_mock, model_mock):
         storage_mock.return_value = self.mock_storage
@@ -69,8 +69,8 @@ class TestCompare(TestCase):
         result = compare(message)
 
         # expectations: add event is generated
-        self.assertEqual(len(result['contents']), 1)
-        self.assertEqual(result['contents'][0]['event'], 'ADD')
+        self.assertEqual(len(result['contents']['events']), 1)
+        self.assertEqual(result['contents']['events'][0]['event'], 'ADD')
 
     def test_compare_creates_confirm(self, storage_mock, model_mock):
         storage_mock.return_value = self.mock_storage
@@ -83,12 +83,11 @@ class TestCompare(TestCase):
 
         self.mock_storage.get_current_ids.return_value = [entity]
         self.mock_storage.get_entity_or_none.return_value = entity
-
         result = compare(message)
 
         # expectations: confirm event is generated
-        self.assertEqual(len(result['contents']), 1)
-        self.assertEqual(result['contents'][0]['event'], 'CONFIRM')
+        self.assertEqual(len(result['contents']['events']), 1)
+        self.assertEqual(result['contents']['events'][0]['event'], 'CONFIRM')
 
     def test_compare_creates_modify(self, storage_mock, model_mock):
         storage_mock.return_value = self.mock_storage
@@ -121,11 +120,11 @@ class TestCompare(TestCase):
         result = compare(message)
 
         # expectations: modify event is generated
-        self.assertEqual(len(result['contents']), 1)
-        self.assertEqual(result['contents'][0]['event'], 'MODIFY')
+        self.assertEqual(len(result['contents']['events']), 1)
+        self.assertEqual(result['contents']['events'][0]['event'], 'MODIFY')
 
         # modificatinos dict has correct modifications.
-        modifications = result['contents'][0]['data']['modifications']
+        modifications = result['contents']['events'][0]['data']['modifications']
         self.assertEqual(len(modifications), 1)
         self.assertEqual(modifications[0]['key'], field_name)
         self.assertEqual(modifications[0]['old_value'], old_value)

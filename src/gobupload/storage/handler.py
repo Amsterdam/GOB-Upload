@@ -200,6 +200,9 @@ class GOBStorageHandler():
         """
         return self.session.query(self.DbEntity).filter_by(**{key: value}).count() > 0
 
+    def get_collection_model(self):
+        return GOBModel().get_collection(self.metadata.catalogue, self.metadata.entity)
+
     @with_session
     def get_current_ids(self):
         """Overview of entities that are current
@@ -214,6 +217,51 @@ class GOBStorageHandler():
             "_date_deleted": None
         }
         return self.session.query(self.DbEntity._source_id).filter_by(**filter).all()
+
+    @with_session
+    def get_column_values_for_key_value(self, column, key, value):
+        """Gets the distinct values for column within the given source for the given key-value
+
+        Example: get all values for column "identification" with "code" == "A" coming from source "AMSBI"
+
+        :param column: Name of the column for which to return the unique values
+        :param key: Name of the column to filter on its value
+        :param value: The value to filter the column on
+        :return: A list of all unique values for the given combination within the Storage handler source
+        """
+        filter = {
+            "_source": self.metadata.source,
+            key: value
+        }
+        attr = getattr(self.DbEntity, column)
+        return self.session.query(attr) \
+            .filter_by(**filter) \
+            .filter(attr.isnot(None)) \
+            .distinct(attr) \
+            .all()
+
+    @with_session
+    def get_last_column_value(self, template, column):
+        """Get the "last" value for column with column values that match the template
+
+        Example: Get the last value for "identification" with values that match "036%"
+
+        The last value is defined by the order_by clause.
+
+        :param template: A template string, eg "036%"
+        :param column: The column to filter on, eg "identification"
+        :return:
+        """
+        filter = {
+            "_source": self.metadata.source
+        }
+        attr = getattr(self.DbEntity, column)
+        return self.session.query(attr) \
+            .filter_by(**filter) \
+            .filter(attr.like(template)) \
+            .order_by(attr.desc()) \
+            .limit(1) \
+            .value(attr)
 
     @with_session
     def get_current_entity(self, entity, with_deleted=False):
