@@ -87,7 +87,7 @@ def _get_all_entities(update_model, relation):
             getattr(update_model, relation['field_name'])['bronwaarde'].astext.isnot(None)
         )
     elif relation['type'] == 'GOB.ManyReference':
-        # Get all entities where the value is an empty array
+        # Get all entities where the value is not an empty array
         return storage.session.query(update_model).filter(
             cast(getattr(update_model, relation['field_name']), Text) != '[]'
         )
@@ -120,7 +120,7 @@ SET {relation['field_name']} = enhanced.related
 FROM (
     SELECT {update_table}._id, jsonb_agg(value::JSONB ||
                                ('{{\"id\": \"'|| {source_table}._id ||'\"}}')::JSONB) as related
-    FROM {update_table}, json_array_elements({update_table}.{relation['field_name']})
+    FROM {update_table}, jsonb_array_elements({update_table}.{relation['field_name']})
     LEFT JOIN {source_table}
     ON value->>'bronwaarde' = {source_table}.{relation['destination_attribute']}
     GROUP BY {update_table}._id

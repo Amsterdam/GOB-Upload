@@ -137,7 +137,7 @@ SET field_name = enhanced.related
 FROM (
     SELECT catalog2_collection2._id, jsonb_agg(value::JSONB ||
                                ('{"id": "'|| catalog_collection._id ||'"}')::JSONB) as related
-    FROM catalog2_collection2, json_array_elements(catalog2_collection2.field_name)
+    FROM catalog2_collection2, jsonb_array_elements(catalog2_collection2.field_name)
     LEFT JOIN catalog_collection
     ON value->>'bronwaarde' = catalog_collection.identificatie
     GROUP BY catalog2_collection2._id
