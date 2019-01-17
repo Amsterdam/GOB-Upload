@@ -41,7 +41,7 @@ class TestEnrichGeounion(TestCase):
         self.assertEqual(msg["contents"], [])
 
     def test_enrich_simple_contents(self):
-        self.mock_storage.get_query_value.return_value = "value"
+        self.mock_storage.get_query_value.return_value = "POINT (1 2)"
         msg = self.mock_msg
         msg["contents"] = [
             {"x": [1, 2]}
@@ -53,10 +53,10 @@ SELECT ST_AsText(ST_Union(geometrie))
     FROM cat_col
 WHERE fld in ('1', '2')
 """)
-        self.assertEqual(msg["contents"][0]["geo"], "value")
+        self.assertEqual(msg["contents"][0]["geo"], "POINT (1.000 2.000)")
 
     def test_enrich_complex_contents(self):
-        self.mock_storage.get_query_value.return_value = "value"
+        self.mock_storage.get_query_value.return_value = "POINT (1 2)"
         msg = self.mock_msg
         msg["header"]["enrich"]["geo"]["on"] = "x.y"
         msg["contents"] = [
@@ -69,10 +69,10 @@ SELECT ST_AsText(ST_Union(geometrie))
     FROM cat_col
 WHERE fld in ('1', '2')
 """)
-        self.assertEqual(msg["contents"][0]["geo"], "value")
+        self.assertEqual(msg["contents"][0]["geo"], "POINT (1.000 2.000)")
 
     def test_enrich_mulit_complex_contents(self):
-        self.mock_storage.get_query_value.return_value = "value"
+        self.mock_storage.get_query_value.return_value = "POINT (1 2)"
         msg = self.mock_msg
         msg["header"]["enrich"]["geo"]["on"] = "x.y.z"
         msg["contents"] = [
@@ -85,7 +85,7 @@ SELECT ST_AsText(ST_Union(geometrie))
     FROM cat_col
 WHERE fld in ('1', '2')
 """)
-        self.assertEqual(msg["contents"][0]["geo"], "value")
+        self.assertEqual(msg["contents"][0]["geo"], "POINT (1.000 2.000)")
 
     def test_enrich_existing_contents(self):
         msg = self.mock_msg
