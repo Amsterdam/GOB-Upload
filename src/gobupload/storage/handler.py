@@ -360,3 +360,13 @@ class GOBStorageHandler():
             raise GOBException(f"Trying to '{event.action}' a deleted entity")
 
         return entity
+
+    def get_query_value(self, query):
+        """Execute a query and return the result value
+
+        The supplied query needs to resolve to a scalar value
+
+        :param query: Query string
+        :return: scalar value result
+        """
+        return self.engine.execute(query).scalar()
