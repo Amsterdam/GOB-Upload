@@ -8,6 +8,8 @@ During enrichment the missing data is added
 """
 import re
 
+from gobcore.model import GOBModel
+
 
 def enrich(storage, msg, logger):
     """
@@ -33,11 +35,17 @@ def enrich(storage, msg, logger):
             "issued": {}
         }
 
-    for data in msg["contents"]:
-        for column, specs in enrich.items():
-            # For now only autoid is supported
-            assert specs["type"] == "autoid", f"Type '{specs['type']}' invalid; only autoid enrichment is supported"
-            data[column], logging = _autoid(storage=storage, data=data, specs=specs, column=column, assigned=assigned)
+    enrichers = {
+        "geounion": {"func": _geounion, "description": "Generate geometry from other geometries"},
+        "autoid": {"func": _autoid, "description": "Generate identifications when missing"}
+    }
+
+    for column, specs in enrich.items():
+        enricher = enrichers[specs["type"]]
+        logger.info(f"Enrich: {enricher['description']}")
+        for data in msg["contents"]:
+            data[column], logging = enricher["func"](
+                storage=storage, data=data, specs=specs, column=column, assigned=assigned)
             if logging:
                 logger.info(logging)
 
@@ -70,6 +78,47 @@ def _get_current_value(storage, data, specs, column, assigned):
         return issued
 
 
+def _geounion(storage, data, specs, column, assigned):
+    """Calculate the sum of geometries
+
+    A geometry can consist of the addition of other geometries
+
+    :param storage: Storage handler
+    :param data: The data row to process
+    :param specs: The geounion specification
+    :param column: The column to populate
+    :param assigned: Not used
+    :return:
+    """
+    if data.get(column) is not None:
+        # Do not overwrite if a value for column already exists
+        return data[column], None
+
+    # example: "x.y" => all y values of data[x]
+    on_fields = specs["on"].split(".")
+    values = [value for value in data[on_fields[0]]]
+    for on_field in on_fields[1:]:
+        values = [value[on_field] for value in values]
+
+    # string quote the results, example [a, b] => ['a', 'b']
+    values = [f"'{value}'" for value in values]
+
+    # Derive the table from which to retrieve the geometries
+    # Derive the field that is used to match the values with the records in the other table
+    catalogue, collection, field = re.split(r'[\:\.]', specs["from"])
+    table_name = GOBModel().get_table_name(catalogue, collection)
+
+    # Derive the fieldname that contains the geometry in the other table
+    geometrie = specs["geometrie"]
+
+    query = f"""
+SELECT ST_AsText(ST_Union({geometrie}))
+    FROM {table_name}
+WHERE {field} in ({', '.join(values)})
+"""
+    return storage.get_query_value(query), None
+
+
 def _autoid(storage, data, specs, column, assigned):
     """
     Auto add id if missing
@@ -81,7 +130,7 @@ def _autoid(storage, data, specs, column, assigned):
     :param assigned: Any already assigned values
     :return:
     """
-    if data[column] is not None:
+    if data.get(column) is not None:
         # Do not overwrite if a value for column already exists
         return data[column], None
 

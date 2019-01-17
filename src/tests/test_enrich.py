@@ -11,7 +11,94 @@ class MockLogger():
         pass
 
 
-class TestEnrich(TestCase):
+class TestEnrichGeounion(TestCase):
+
+    def setUp(self):
+        self.mock_storage = MagicMock(spec=GOBStorageHandler)
+        self.mock_msg = {
+            "header": {
+                "enrich": {
+                    "geo": {
+                        "type": "geounion",
+                        "on": "x",
+                        "from": "cat:col:fld",
+                        "geometrie": "geometrie"
+                    }
+                }
+            },
+            "contents": []
+        }
+
+    def tearDown(self):
+        pass
+
+    def test_enrich_empty_contents(self):
+        msg = self.mock_msg
+        msg["contents"] = []
+        enrich(self.mock_storage, msg, MockLogger())
+
+        self.mock_storage.get_query_value.assert_not_called()
+        self.assertEqual(msg["contents"], [])
+
+    def test_enrich_simple_contents(self):
+        self.mock_storage.get_query_value.return_value = "value"
+        msg = self.mock_msg
+        msg["contents"] = [
+            {"x": [1, 2]}
+        ]
+        enrich(self.mock_storage, msg, MockLogger())
+
+        self.mock_storage.get_query_value.assert_called_with("""
+SELECT ST_AsText(ST_Union(geometrie))
+    FROM cat_col
+WHERE fld in ('1', '2')
+""")
+        self.assertEqual(msg["contents"][0]["geo"], "value")
+
+    def test_enrich_complex_contents(self):
+        self.mock_storage.get_query_value.return_value = "value"
+        msg = self.mock_msg
+        msg["header"]["enrich"]["geo"]["on"] = "x.y"
+        msg["contents"] = [
+            {"x": [{"y": 1}, {"y": 2}]}
+        ]
+        enrich(self.mock_storage, msg, MockLogger())
+
+        self.mock_storage.get_query_value.assert_called_with("""
+SELECT ST_AsText(ST_Union(geometrie))
+    FROM cat_col
+WHERE fld in ('1', '2')
+""")
+        self.assertEqual(msg["contents"][0]["geo"], "value")
+
+    def test_enrich_mulit_complex_contents(self):
+        self.mock_storage.get_query_value.return_value = "value"
+        msg = self.mock_msg
+        msg["header"]["enrich"]["geo"]["on"] = "x.y.z"
+        msg["contents"] = [
+            {"x": [{"y": {"z": 1}}, {"y": {"z": 2}}]}
+        ]
+        enrich(self.mock_storage, msg, MockLogger())
+
+        self.mock_storage.get_query_value.assert_called_with("""
+SELECT ST_AsText(ST_Union(geometrie))
+    FROM cat_col
+WHERE fld in ('1', '2')
+""")
+        self.assertEqual(msg["contents"][0]["geo"], "value")
+
+    def test_enrich_existing_contents(self):
+        msg = self.mock_msg
+        msg["contents"] = [
+            {"geo": "aap"}
+        ]
+        enrich(self.mock_storage, msg, MockLogger())
+
+        self.mock_storage.get_query_value.assert_not_called()
+        self.assertEqual(msg["contents"][0]["geo"], "aap")
+
+
+class TestEnrichAutoid(TestCase):
 
     def setUp(self):
         self.mock_storage = MagicMock(spec=GOBStorageHandler)
