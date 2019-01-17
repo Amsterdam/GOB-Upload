@@ -9,6 +9,7 @@ During enrichment the missing data is added
 import re
 
 from gobcore.model import GOBModel
+from gobcore.typesystem.gob_geotypes import Geometry
 
 
 def enrich(storage, msg, logger):
@@ -116,7 +117,10 @@ SELECT ST_AsText(ST_Union({geometrie}))
     FROM {table_name}
 WHERE {field} in ({', '.join(values)})
 """
-    return storage.get_query_value(query), None
+
+    result = storage.get_query_value(query)
+    result = Geometry.from_value(result)
+    return str(result), None
 
 
 def _autoid(storage, data, specs, column, assigned):
