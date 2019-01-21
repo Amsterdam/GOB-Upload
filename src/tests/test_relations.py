@@ -91,7 +91,7 @@ class TestRelations(TestCase):
         expected_query = f"""
 UPDATE catalog2_collection2
 SET field_name = field_name::JSONB ||
-                               ('{{\"id\": \"'|| catalog_collection._id ||'\"}}')::JSONB
+                               ('{{\"identificatie\": \"'|| catalog_collection._id ||'\"}}')::JSONB
 FROM catalog_collection
 WHERE field_name->>'bronwaarde' = catalog_collection.identificatie
 AND catalog2_collection2._application = 'source'
@@ -120,7 +120,7 @@ AND catalog2_collection2._application = 'source'
         expected_query = f"""
 UPDATE catalog2_collection2
 SET field_name = field_name::JSONB ||
-                               ('{{\"id\": \"'|| catalog_collection._id ||'\"}}')::JSONB
+                               ('{{\"identificatie\": \"'|| catalog_collection._id ||'\"}}')::JSONB
 FROM catalog_collection
 WHERE field_name->>'bronwaarde' = catalog_collection.identificatie
 AND catalog2_collection2._application = 'source'
@@ -138,7 +138,7 @@ UPDATE catalog2_collection2
 SET field_name = enhanced.related
 FROM (
     SELECT catalog2_collection2._id, jsonb_agg(value::JSONB ||
-                               ('{"id": "'|| catalog_collection._id ||'"}')::JSONB) as related
+                               ('{"identificatie": "'|| catalog_collection._id ||'"}')::JSONB) as related
     FROM catalog2_collection2, jsonb_array_elements(catalog2_collection2.field_name)
     LEFT JOIN catalog_collection
     ON value->>'bronwaarde' = catalog_collection.identificatie
@@ -159,12 +159,12 @@ UPDATE catalog2_collection2
 SET field_name = enhanced.related
 FROM (
     SELECT catalog2_collection2._id, jsonb_agg(value::JSONB ||
-                               ('{"id": "'|| sub._id ||'"}')::JSONB) as related
+                               ('{"identificatie": "'|| sub._id ||'"}')::JSONB) as related
     FROM catalog2_collection2, jsonb_array_elements(catalog2_collection2.field_name)
     LEFT JOIN (
         SELECT _id, identificatie
         FROM catalog_collection
-        WHERE datum_einde_geldigheid IS NULL
+        WHERE eind_geldigheid IS NULL
     ) AS sub
     ON value->>'bronwaarde' = sub.identificatie
     GROUP BY catalog2_collection2._id
@@ -185,9 +185,9 @@ AND catalog2_collection2._id = enhanced._id
 UPDATE catalog2_collection2
 SET field_name = enhanced.related
 FROM (
-    SELECT catalog2_collection2._id, ('{"id": "'|| catalog3_collection3._id ||'"}')::JSONB as related
+    SELECT catalog2_collection2._id, ('{"identificatie": "'|| catalog3_collection3._id ||'"}')::JSONB as related
     FROM catalog2_collection2
-    LEFT JOIN catalog2_collection2 ON             catalog2_collection2.field2->>'id' = catalog2_collection2._id LEFT JOIN catalog3_collection3 ON             catalog2_collection2.field3->>'id' = catalog3_collection3._id
+    LEFT JOIN catalog2_collection2 ON             catalog2_collection2.field2->>'identificatie' = catalog2_collection2._id LEFT JOIN catalog3_collection3 ON             catalog2_collection2.field3->>'identificatie' = catalog3_collection3._id
 
 ) AS enhanced
 WHERE catalog2_collection2._application = 'source'
