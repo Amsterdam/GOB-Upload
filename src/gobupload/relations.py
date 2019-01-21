@@ -108,25 +108,25 @@ def _equals(catalog_name, collection_name, relation):
         return f"""
 UPDATE {update_table}
 SET {relation['field_name']} = {relation['field_name']}::JSONB ||
-                               ('{{\"id\": \"'|| {source_table}._id ||'\"}}')::JSONB
+                               ('{{\"identificatie\": \"'|| {source_table}._id ||'\"}}')::JSONB
 FROM {source_table}
 WHERE {relation['field_name']}->>'bronwaarde' = {source_table}.{relation['destination_attribute']}
 AND {update_table}._application = '{relation['source']}'
 """
     elif relation['type'] == 'GOB.ManyReference':
-        # For models with state, take datum_einde_geldigheid in to account
+        # For models with state, take eind_geldigheid in to account
         if model.get_collection(catalog_name, collection_name).get('has_states'):
             return f"""
 UPDATE {update_table}
 SET {relation['field_name']} = enhanced.related
 FROM (
     SELECT {update_table}._id, jsonb_agg(value::JSONB ||
-                               ('{{\"id\": \"'|| sub._id ||'\"}}')::JSONB) as related
+                               ('{{\"identificatie\": \"'|| sub._id ||'\"}}')::JSONB) as related
     FROM {update_table}, jsonb_array_elements({update_table}.{relation['field_name']})
     LEFT JOIN (
         SELECT _id, {relation['destination_attribute']}
         FROM {source_table}
-        WHERE datum_einde_geldigheid IS NULL
+        WHERE eind_geldigheid IS NULL
     ) AS sub
     ON value->>'bronwaarde' = sub.{relation['destination_attribute']}
     GROUP BY {update_table}._id
@@ -140,7 +140,7 @@ UPDATE {update_table}
 SET {relation['field_name']} = enhanced.related
 FROM (
     SELECT {update_table}._id, jsonb_agg(value::JSONB ||
-                               ('{{\"id\": \"'|| {source_table}._id ||'\"}}')::JSONB) as related
+                               ('{{\"identificatie\": \"'|| {source_table}._id ||'\"}}')::JSONB) as related
     FROM {update_table}, jsonb_array_elements({update_table}.{relation['field_name']})
     LEFT JOIN {source_table}
     ON value->>'bronwaarde' = {source_table}.{relation['destination_attribute']}
@@ -190,7 +190,7 @@ def _through(catalog_name, collection_name, relation):
 UPDATE {update_table}
 SET {relation['field_name']} = enhanced.related
 FROM (
-    SELECT {update_table}._id, (\'{{"id": "\'|| {final_table}._id ||\'"}}\')::JSONB as related
+    SELECT {update_table}._id, (\'{{"identificatie": "\'|| {final_table}._id ||\'"}}\')::JSONB as related
     FROM {update_table}
     {joins_str}
 """
@@ -218,7 +218,7 @@ def _expand_joins_and_filters(update_table, chain):
         # Set the source_table to the next item in the chain
         source_table = model.get_table_name(chain_catalog, chain_collection)
         joins.append(f"LEFT JOIN {source_table} ON \
-            {chain_table}.{item['source_attribute']}->>'id' = {source_table}._id")
+            {chain_table}.{item['source_attribute']}->>'identificatie' = {source_table}._id")
         # Set the chain_table to the item we've just handled
         chain_table = model.get_table_name(chain_catalog, chain_collection)
 
