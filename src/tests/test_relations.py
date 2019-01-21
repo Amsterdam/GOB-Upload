@@ -128,7 +128,9 @@ AND catalog2_collection2._application = 'source'
 
         self.assertEqual(query, expected_query)
 
-    def test_equals_for_many_reference(self):
+    @patch('gobupload.relations.GOBModel.get_collection')
+    def test_equals_for_many_reference(self, mock_model):
+        mock_model.return_value = {}
         query = relations._equals('catalog', 'collection', self.mock_many_relation)
 
         expected_query = """
@@ -146,6 +148,32 @@ WHERE catalog2_collection2._application = 'source'
 AND catalog2_collection2._id = enhanced._id
 """
         self.assertEqual(query, expected_query)
+
+    @patch('gobupload.relations.GOBModel.get_collection')
+    def test_equals_for_many_reference_with_state(self, mock_model):
+        mock_model.return_value = {'has_states': True}
+        query = relations._equals('catalog', 'collection', self.mock_many_relation)
+
+        expected_query = """
+UPDATE catalog2_collection2
+SET field_name = enhanced.related
+FROM (
+    SELECT catalog2_collection2._id, jsonb_agg(value::JSONB ||
+                               ('{"id": "'|| sub._id ||'"}')::JSONB) as related
+    FROM catalog2_collection2, jsonb_array_elements(catalog2_collection2.field_name)
+    LEFT JOIN (
+        SELECT _id, identificatie
+        FROM catalog_collection
+        WHERE datum_einde_geldigheid IS NULL
+    ) AS sub
+    ON value->>'bronwaarde' = sub.identificatie
+    GROUP BY catalog2_collection2._id
+) AS enhanced
+WHERE catalog2_collection2._application = 'source'
+AND catalog2_collection2._id = enhanced._id
+"""
+        self.assertEqual(query, expected_query)
+
 
     def test_geo_in(self):
         relations._geo_in('catalog', 'collection', self.mock_many_relation)
