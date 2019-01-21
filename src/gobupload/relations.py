@@ -114,7 +114,28 @@ WHERE {relation['field_name']}->>'bronwaarde' = {source_table}.{relation['destin
 AND {update_table}._application = '{relation['source']}'
 """
     elif relation['type'] == 'GOB.ManyReference':
-        return f"""
+        # For models with state, take datum_einde_geldigheid in to account
+        if model.get_collection(catalog_name, collection_name).get('has_states'):
+            return f"""
+UPDATE {update_table}
+SET {relation['field_name']} = enhanced.related
+FROM (
+    SELECT {update_table}._id, jsonb_agg(value::JSONB ||
+                               ('{{\"id\": \"'|| sub._id ||'\"}}')::JSONB) as related
+    FROM {update_table}, jsonb_array_elements({update_table}.{relation['field_name']})
+    LEFT JOIN (
+        SELECT _id, {relation['destination_attribute']}
+        FROM {source_table}
+        WHERE datum_einde_geldigheid IS NULL
+    ) AS sub
+    ON value->>'bronwaarde' = sub.{relation['destination_attribute']}
+    GROUP BY {update_table}._id
+) AS enhanced
+WHERE {update_table}._application = '{relation['source']}'
+AND {update_table}._id = enhanced._id
+"""
+        else:
+            return f"""
 UPDATE {update_table}
 SET {relation['field_name']} = enhanced.related
 FROM (
