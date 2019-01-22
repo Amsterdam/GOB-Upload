@@ -46,7 +46,7 @@ class Logger:
         :return: Logger
         """
         if name in Logger.__inst_loggers:
-            raise Exception # Todo change Exception with more info
+            raise Exception  # Todo change Exception with more info
 
         self._name = name
         self.default_args = default_args
