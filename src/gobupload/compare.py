@@ -161,8 +161,8 @@ def _get_recompare(model, previous_ids, event, data):
         entity_id = data['_source_id']
         if previous_ids.get(entity_id):
             previous = previous_ids[entity_id]
-            assert previous["volgnummer"] < data["volgnummer"], \
-                f'Volgnummer should be sequential {previous["volgnummer"]} !< {data["volgnummer"]}'
+            assert int(previous["volgnummer"]) < int(data["volgnummer"]), \
+                f'Volgnummer should be sequential {entity_id} {previous["volgnummer"]} !< {data["volgnummer"]}'
             previous_ids[entity_id] = data  # Save this data as last previous data
             return data
         elif event['event'] != 'CONFIRM':
@@ -208,7 +208,7 @@ def _compare_new_data(model, storage, new_data=None, entity_id=None):
             # Skip any historic states for collections with state
             new_seqnr = new_data["volgnummer"]
             old_seqnr = entity.volgnummer
-            if new_seqnr < old_seqnr:
+            if int(new_seqnr) < int(old_seqnr):
                 return
     # calculate modifications, this will be an empty list if either data or entity is empty
     # or if all attributes are equal

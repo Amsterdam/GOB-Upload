@@ -272,7 +272,7 @@ class GOBStorageHandler():
         An entity to retrieve is evaluated within a source
         on the basis of its functional id (_id)
 
-        If the collection has states (has_states) then the datum_begin_geldigheid needs
+        If the collection has states (has_states) then the begin_geldigheid needs
         also to be considered
 
         :param entity: the new version of the entity
@@ -285,7 +285,7 @@ class GOBStorageHandler():
             collection["entity_id"]: entity[collection["entity_id"]]
         }
         if collection.get("has_states", False):
-            filter["datum_begin_geldigheid"] = entity["datum_begin_geldigheid"]
+            filter["begin_geldigheid"] = entity["begin_geldigheid"]
 
         entity_query = self.session.query(self.DbEntity).filter_by(**filter)
         if not with_deleted:

@@ -91,7 +91,7 @@ class TestRelations(TestCase):
         expected_query = f"""
 UPDATE catalog2_collection2
 SET field_name = field_name::JSONB ||
-                               ('{{\"id\": \"'|| catalog_collection._id ||'\"}}')::JSONB
+                               ('{{\"identificatie\": \"'|| catalog_collection._id ||'\"}}')::JSONB
 FROM catalog_collection
 WHERE field_name->>'bronwaarde' = catalog_collection.identificatie
 AND catalog2_collection2._application = 'source'
@@ -120,7 +120,7 @@ AND catalog2_collection2._application = 'source'
         expected_query = f"""
 UPDATE catalog2_collection2
 SET field_name = field_name::JSONB ||
-                               ('{{\"id\": \"'|| catalog_collection._id ||'\"}}')::JSONB
+                               ('{{\"identificatie\": \"'|| catalog_collection._id ||'\"}}')::JSONB
 FROM catalog_collection
 WHERE field_name->>'bronwaarde' = catalog_collection.identificatie
 AND catalog2_collection2._application = 'source'
@@ -128,7 +128,9 @@ AND catalog2_collection2._application = 'source'
 
         self.assertEqual(query, expected_query)
 
-    def test_equals_for_many_reference(self):
+    @patch('gobupload.relations.GOBModel.get_collection')
+    def test_equals_for_many_reference(self, mock_model):
+        mock_model.return_value = {}
         query = relations._equals('catalog', 'collection', self.mock_many_relation)
 
         expected_query = """
@@ -136,7 +138,7 @@ UPDATE catalog2_collection2
 SET field_name = enhanced.related
 FROM (
     SELECT catalog2_collection2._id, jsonb_agg(value::JSONB ||
-                               ('{"id": "'|| catalog_collection._id ||'"}')::JSONB) as related
+                               ('{"identificatie": "'|| catalog_collection._id ||'"}')::JSONB) as related
     FROM catalog2_collection2, jsonb_array_elements(catalog2_collection2.field_name)
     LEFT JOIN catalog_collection
     ON value->>'bronwaarde' = catalog_collection.identificatie
@@ -146,6 +148,32 @@ WHERE catalog2_collection2._application = 'source'
 AND catalog2_collection2._id = enhanced._id
 """
         self.assertEqual(query, expected_query)
+
+    @patch('gobupload.relations.GOBModel.get_collection')
+    def test_equals_for_many_reference_with_state(self, mock_model):
+        mock_model.return_value = {'has_states': True}
+        query = relations._equals('catalog', 'collection', self.mock_many_relation)
+
+        expected_query = """
+UPDATE catalog2_collection2
+SET field_name = enhanced.related
+FROM (
+    SELECT catalog2_collection2._id, jsonb_agg(value::JSONB ||
+                               ('{"identificatie": "'|| sub._id ||'"}')::JSONB) as related
+    FROM catalog2_collection2, jsonb_array_elements(catalog2_collection2.field_name)
+    LEFT JOIN (
+        SELECT _id, identificatie
+        FROM catalog_collection
+        WHERE eind_geldigheid IS NULL
+    ) AS sub
+    ON value->>'bronwaarde' = sub.identificatie
+    GROUP BY catalog2_collection2._id
+) AS enhanced
+WHERE catalog2_collection2._application = 'source'
+AND catalog2_collection2._id = enhanced._id
+"""
+        self.assertEqual(query, expected_query)
+
 
     def test_geo_in(self):
         relations._geo_in('catalog', 'collection', self.mock_many_relation)
@@ -157,9 +185,9 @@ AND catalog2_collection2._id = enhanced._id
 UPDATE catalog2_collection2
 SET field_name = enhanced.related
 FROM (
-    SELECT catalog2_collection2._id, ('{"id": "'|| catalog3_collection3._id ||'"}')::JSONB as related
+    SELECT catalog2_collection2._id, ('{"identificatie": "'|| catalog3_collection3._id ||'"}')::JSONB as related
     FROM catalog2_collection2
-    LEFT JOIN catalog2_collection2 ON             catalog2_collection2.field2->>'id' = catalog2_collection2._id LEFT JOIN catalog3_collection3 ON             catalog2_collection2.field3->>'id' = catalog3_collection3._id
+    LEFT JOIN catalog2_collection2 ON             catalog2_collection2.field2->>'identificatie' = catalog2_collection2._id LEFT JOIN catalog3_collection3 ON             catalog2_collection2.field3->>'identificatie' = catalog3_collection3._id
 
 ) AS enhanced
 WHERE catalog2_collection2._application = 'source'

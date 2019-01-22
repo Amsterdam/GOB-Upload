@@ -20,11 +20,11 @@ depends_on = None
 
 def upgrade():
     # Drop views to allow columns to be changed, GOB-Upload will recreate them
-    op.execute('drop view meetbouten_meetbouten_enhanced')
-    op.execute('drop view meetbouten_metingen_enhanced')
-    op.execute('drop view meetbouten_referentiepunten_enhanced')
-    op.execute('drop view meetbouten_rollagen_enhanced')
-    op.execute('drop view nap_peilmerken_enhanced')
+    op.execute('DROP VIEW IF EXISTS meetbouten_meetbouten_enhanced')
+    op.execute('DROP VIEW IF EXISTS meetbouten_metingen_enhanced')
+    op.execute('DROP VIEW IF EXISTS meetbouten_referentiepunten_enhanced')
+    op.execute('DROP VIEW IF EXISTS meetbouten_rollagen_enhanced')
+    op.execute('DROP VIEW IF EXISTS nap_peilmerken_enhanced')
 
     # Change all JSON columns to JSONB
     op.alter_column('meetbouten_meetbouten', 'nabij_nummeraanduiding', type_=postgresql.JSONB, postgresql_using='nabij_nummeraanduiding::text::jsonb')
@@ -55,11 +55,11 @@ def upgrade():
 
 def downgrade():
     # Drop views to allow columns to be changed, GOB-Upload will recreate them
-    op.execute('drop view meetbouten_meetbouten_enhanced')
-    op.execute('drop view meetbouten_metingen_enhanced')
-    op.execute('drop view meetbouten_referentiepunten_enhanced')
-    op.execute('drop view meetbouten_rollagen_enhanced')
-    op.execute('drop view nap_peilmerken_enhanced')
+    op.execute('DROP VIEW IF EXISTS meetbouten_meetbouten_enhanced')
+    op.execute('DROP VIEW IF EXISTS meetbouten_metingen_enhanced')
+    op.execute('DROP VIEW IF EXISTS meetbouten_referentiepunten_enhanced')
+    op.execute('DROP VIEW IF EXISTS meetbouten_rollagen_enhanced')
+    op.execute('DROP VIEW IF EXISTS nap_peilmerken_enhanced')
 
     # Change all JSONB columns to JSON
     op.alter_column('meetbouten_meetbouten', 'nabij_nummeraanduiding', type_=postgresql.JSONB, postgresql_using='nabij_nummeraanduiding::text::json')
