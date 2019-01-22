@@ -31,38 +31,68 @@ def get_report(contents, events, recompares):
     return counted_events
 
 
-class Logger():
+class Logger:
+    """Singleton Logger wrapper class
 
-    _logger = {}
+    Holds information to give context to subsequent logging.
+    """
+    __inst_loggers = {}
 
     def __init__(self, name, default_args):
+        """Initialize logger
+
+        :param msg: the processed message
+        :param name: name of the logger
+        :return: Logger
+        """
+        if name in Logger.__inst_loggers:
+            raise Exception # Todo change Exception with more info
+
         self._name = name
-        self._default_args = default_args
-        if Logger._logger.get(name) is None:
-            Logger._logger[name] = get_logger(name)
+        self.default_args = default_args
+        self._logger = get_logger(name)
+
+        Logger.__inst_loggers[name] = self
 
     def info(self, msg, kwargs={}):
-        Logger._logger[self._name].info(msg, extra={**(self._default_args), **kwargs})
+        self._logger.info(msg, extra={**self.default_args, **kwargs})
 
     def warning(self, msg, kwargs={}):
-        Logger._logger[self._name].warning(msg, extra={**(self._default_args), **kwargs})
+        self._logger.warning(msg, extra={**self.default_args, **kwargs})
 
     def error(self, msg, kwargs={}):
-        Logger._logger[self._name].error(msg, extra={**(self._default_args), **kwargs})
+        self._logger.error(msg, extra={**self.default_args, **kwargs})
 
+    @staticmethod
+    def init_logger(msg, name="INFO"):
+        """Initialize logger with extra data from msg.
+        If logger with name already is initialized then default_args are updated on that logger
+        with data from msg.
 
-def init_logger(msg, name):
-    """Provide for a logger for this message
+        :param msg: name of the logger
+        :param name: The name of the logger instance. This name will be part of every log record
+        :return: Logger
+        """
+        default_args = {
+            'process_id': msg['header']['process_id'],
+            'source': msg['header']['source'],
+            'application': msg['header']['application'],
+            'catalogue': msg['header']['catalogue'],
+            'entity': msg['header']['entity']
+        }
+        if name in Logger.__inst_loggers:
+            Logger.__inst_loggers[name].default_args = default_args
+            return Logger.__inst_loggers[name]
+        return Logger(name, default_args)
 
-    :param msg: the processed message
-    :param name: the name of the process
-    :return: Logger
-    """
-    default_args = {
-        'process_id': msg['header']['process_id'],
-        'source': msg['header']['source'],
-        'application': msg['header']['application'],
-        'catalogue': msg['header']['catalogue'],
-        'entity': msg['header']['entity']
-    }
-    return Logger(name, default_args)
+    @staticmethod
+    def get_logger(name="INFO"):
+        """Gets for a logger with name.
+        If no logger with name is present an new instance is setup.
+
+        :param name: The name of the logger instance. This name will be part of every log record
+        :return: Logger
+        """
+        if name not in Logger.__inst_loggers:
+            Logger(name, {})
+        return Logger.__inst_loggers[name]

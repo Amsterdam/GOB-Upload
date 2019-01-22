@@ -50,7 +50,6 @@ def enrich(storage, msg, logger):
             if logging:
                 logger.info(logging)
 
-
 def _get_current_value(storage, data, specs, column, assigned):
     """
     Get any current value (either stored or previously issued

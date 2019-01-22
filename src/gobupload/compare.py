@@ -10,12 +10,12 @@ from gobcore.events.import_message import ImportMessage
 from gobcore.model import GOBModel
 from gobcore.typesystem import get_modifications
 
-from gobupload import init_logger
+from gobupload import Logger
 from gobupload import get_report
 from gobupload.storage.handler import GOBStorageHandler
 from gobupload.enrich import enrich
 
-logger = None
+logger = Logger.get_logger(name="Compare")
 
 
 def compare(msg):
@@ -24,8 +24,7 @@ def compare(msg):
     :param msg: The new data, including header and summary
     :return: result message
     """
-    global logger
-    logger = init_logger(msg, "COMPARE")
+    logger = Logger.init_logger(msg, "Compare")
     logger.info(f"Compare to GOB Database {GOBStorageHandler.user_name} started")
 
     # Parse the message header

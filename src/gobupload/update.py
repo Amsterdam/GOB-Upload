@@ -7,11 +7,11 @@ import json
 from gobcore.events.import_message import ImportMessage, MessageMetaData
 from gobcore.events import GobEvent
 
-from gobupload import init_logger
+from gobupload import Logger
 from gobupload.storage.handler import GOBStorageHandler
 from gobupload.compare import recompare
 
-logger = None
+logger = Logger.get_logger(name="Update")
 
 
 class UpdateStatistics():
@@ -218,8 +218,8 @@ def full_update(msg):
     :param msg: the result of the application of the events
     :return: Result message
     """
-    global logger
-    logger = init_logger(msg, "UPDATE")
+
+    logger = Logger.init_logger(msg, "Update")
     logger.info(f"Update records to GOB Database {GOBStorageHandler.user_name} started")
 
     # Interpret the message header
