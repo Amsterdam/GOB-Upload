@@ -35,9 +35,21 @@ class Logger():
 
     _logger = {}
 
-    def __init__(self, name, default_args):
+    def configure(self, msg, name):
+        """Initialize logger for the processing of a message
+
+        :param msg: the processed message
+        :param name: the name of the process
+        :return: Logger
+        """
         self._name = name
-        self._default_args = default_args
+        self._default_args = {
+            'process_id': msg['header']['process_id'],
+            'source': msg['header']['source'],
+            'application': msg['header']['application'],
+            'catalogue': msg['header']['catalogue'],
+            'entity': msg['header']['entity']
+        }
         if Logger._logger.get(name) is None:
             Logger._logger[name] = get_logger(name)
 
@@ -51,18 +63,4 @@ class Logger():
         Logger._logger[self._name].error(msg, extra={**(self._default_args), **kwargs})
 
 
-def init_logger(msg, name):
-    """Provide for a logger for this message
-
-    :param msg: the processed message
-    :param name: the name of the process
-    :return: Logger
-    """
-    default_args = {
-        'process_id': msg['header']['process_id'],
-        'source': msg['header']['source'],
-        'application': msg['header']['application'],
-        'catalogue': msg['header']['catalogue'],
-        'entity': msg['header']['entity']
-    }
-    return Logger(name, default_args)
+logger = Logger()
