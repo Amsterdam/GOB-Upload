@@ -201,6 +201,9 @@ def _process_events(storage, events, stats):
     else:
         logger.warning(f"Model is out of date! Start application of unhandled events")
         _apply_events(storage, entity_max_eventid, stats)
+        logger.error(f"Further processing has stopped")
+        # New events will almost certainly be invalid. So stop further processing
+        return
 
     # Add new events
     _store_events(storage, events, stats)

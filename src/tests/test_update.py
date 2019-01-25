@@ -22,8 +22,10 @@ class TestUpdate(TestCase):
     def tearDown(self):
         logging.disable(logging.NOTSET)
 
-    def test_fullupdate_saves_event(self, mock):
+    @patch('gobupload.update._get_event_ids')
+    def test_fullupdate_saves_event(self, mock_ids, mock):
         mock.return_value = self.mock_storage
+        mock_ids.return_value = 0, 0
 
         message = fixtures.get_event_message_fixture()
         full_update(message)
@@ -31,8 +33,10 @@ class TestUpdate(TestCase):
         self.mock_storage.add_event_to_storage.assert_called_with(message['contents']['events'][0])
 
     @patch('gobupload.update.GobEvent')
-    def test_fullupdate_creates_event_and_pops_ids(self, mock_event, mock):
+    @patch('gobupload.update._get_event_ids')
+    def test_fullupdate_creates_event_and_pops_ids(self, mock_ids, mock_event, mock):
         mock.return_value = self.mock_storage
+        mock_ids.return_value = 0, 0
 
         gob_event = MagicMock(wrap=ADD)
         gob_event.pop_ids.return_value = '1', '2'
@@ -48,8 +52,29 @@ class TestUpdate(TestCase):
         self.mock_storage.get_events_starting_after.assert_called()
 
     @patch('gobupload.update.GobEvent')
-    def test_fullupdate_applies_events(self, mock_event, mock):
+    @patch('gobupload.update._get_event_ids')
+    def test_fullupdate_not_creates_event_and_pops_ids(self, mock_ids, mock_event, mock):
         mock.return_value = self.mock_storage
+        mock_ids.return_value = 1, 0
+
+        gob_event = MagicMock(wrap=ADD)
+        gob_event.pop_ids.return_value = '1', '2'
+        mock_event.return_value = gob_event
+
+        message = fixtures.get_event_message_fixture()
+
+        self.mock_storage.get_events_starting_after.return_value = []
+
+        full_update(message)
+
+        self.mock_storage.add_event_to_storage.assert_not_called()
+        self.mock_storage.get_events_starting_after.assert_called()
+
+    @patch('gobupload.update.GobEvent')
+    @patch('gobupload.update._get_event_ids')
+    def test_fullupdate_applies_events(self, mock_ids, mock_event, mock):
+        mock.return_value = self.mock_storage
+        mock_ids.return_value = 0, 0
 
         for event_to_test in [ADD, DELETE, MODIFY, CONFIRM]:
             gob_event = MagicMock(wrap=event_to_test)
