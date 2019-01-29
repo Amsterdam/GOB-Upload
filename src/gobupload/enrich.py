@@ -11,8 +11,10 @@ import re
 from gobcore.model import GOBModel
 from gobcore.typesystem.gob_geotypes import Geometry
 
+from gobupload import logger
 
-def enrich(storage, msg, logger):
+
+def enrich(storage, msg):
     """
     Enrich message msg
     A storage handler is provided for access to the current storage
@@ -21,7 +23,6 @@ def enrich(storage, msg, logger):
 
     :param storage: Storage handler
     :param msg: Incoming message
-    :param logger: Logger instance
     :return: None
     """
     enrich = msg["header"].get("enrich", {})
