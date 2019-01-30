@@ -63,7 +63,7 @@ class GobLogger:
             'catalogue': msg['header']['catalogue'],
             'entity': msg['header']['entity']
         }
-        # TODO add some commentary of in GOB-core
+
         if GobLogger._logger.get(name) is None:
             GobLogger._logger[name] = get_logger(name)
 
