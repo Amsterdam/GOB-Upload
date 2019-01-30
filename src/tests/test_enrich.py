@@ -1,17 +1,13 @@
 from unittest import TestCase
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from collections import namedtuple
 
 from gobupload.storage.handler import GOBStorageHandler
 from gobupload.enrich import enrich, _autoid
-from gobupload import logger
-
-magic_loggers = MagicMock()
-magic_loggers.get = MagicMock(return_value=None)
-logger.override_loggers(magic_loggers)
 
 
+@patch('gobupload.GobLogger', MagicMock())
 class TestEnrichGeounion(TestCase):
     def setUp(self):
         self.mock_storage = MagicMock(spec=GOBStorageHandler)
@@ -31,6 +27,7 @@ class TestEnrichGeounion(TestCase):
 
     def tearDown(self):
         pass
+
 
     def test_enrich_empty_contents(self):
         msg = self.mock_msg
@@ -98,6 +95,7 @@ WHERE fld in ('1', '2')
         self.assertEqual(msg["contents"][0]["geo"], "aap")
 
 
+@patch('gobupload.GobLogger', MagicMock())
 class TestEnrichAutoid(TestCase):
 
     def setUp(self):
