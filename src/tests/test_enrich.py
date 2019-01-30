@@ -5,11 +5,6 @@ from collections import namedtuple
 
 from gobupload.storage.handler import GOBStorageHandler
 from gobupload.enrich import enrich, _autoid
-from gobupload import logger
-
-magic_loggers = MagicMock()
-magic_loggers.get = MagicMock(return_value=None)
-logger.override_loggers(magic_loggers)
 
 
 class TestEnrichGeounion(TestCase):
