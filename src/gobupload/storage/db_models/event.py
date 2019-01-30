@@ -10,19 +10,12 @@ Todo: GOB. type logic encapsulation
 
 """
 import copy
+import json
 
-EVENTS = {
-    "eventid": "GOB.PKInteger",   # Unique identification of the event, numbered sequentially
-    "timestamp": "GOB.DateTime",  # datetime when the event as created
-    "entity": "GOB.String",       # the entity to which the event need to be applied
-    "action": "GOB.String",       # add, change, delete or confirm
-    "source": "GOB.String",       # the source of the entity, e.g. DIVA
-    "source_id": "GOB.String",    # the id of the entity in the source
-    "contents": "GOB.JSON"        # a json object that holds the contents for the action, the full entity for an Add
-}
+from gobcore.typesystem.json import GobTypeJSONEncoder
 
 
-def create_event(DbEvent, event, metadata):
+def build_db_event(DbEvent, event, metadata):
     """
     Method to fill the orm event entity with the required data,
     specifically placed here, to make sure all fields above are filled
@@ -36,15 +29,19 @@ def create_event(DbEvent, event, metadata):
 
     # todo: is this the right place to get the id (and event-name)?
     #   this is implicit knowledge of event data structure
-    source_id = event['data'][metadata.source_id_column]
-
+    source_id = event['data']['_source_id']
+    # Use the GOBType encoder to encode the Decimal values
+    json_contents = json.dumps(copy.deepcopy(event['data']), cls=GobTypeJSONEncoder)
     return DbEvent(
         timestamp=metadata.timestamp,
+        catalogue=metadata.catalogue,
         entity=metadata.entity,
+        version=metadata.version,
         action=event['event'],
         source=metadata.source,
+        application=metadata.application,
         source_id=source_id,
         # todo: should this be named data, instead of contents
-        # (contents is part of message, data is part of even)
-        contents=copy.deepcopy(event['data'])
+        # (contents is part of message, data is part of event)
+        contents=json_contents
     )
