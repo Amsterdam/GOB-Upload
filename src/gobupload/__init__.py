@@ -64,6 +64,7 @@ class GobLogger:
             'entity': msg['header']['entity']
         }
 
+
         # get_logger creates and adds a loghandler with the given name
         # Only one log handler should exist for the given name
         if GobLogger._logger.get(name) is None:
