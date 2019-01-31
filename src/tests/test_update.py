@@ -106,11 +106,11 @@ class TestUpdate(TestCase):
 
     def test_gob_event_action(self, mock_event):
         # setup initial event and data
-        dummy_event, data = fixtures.get_event_data_fixure()
+        dummy_event = fixtures.get_event_fixure()
 
         last_event_expected = 1
         for action_expected in ['ADD', 'DELETE', 'CONFIRM', 'MODIFY']:
-            data['_last_event'] = last_event_expected
+            data = {'_last_event': last_event_expected}
             dummy_event.action = action_expected
 
             # setup done, run gob event
@@ -125,11 +125,11 @@ class TestUpdate(TestCase):
 
     def test_gob_event_invalid_action(self, mock_event):
         # setup initial event and data
-        dummy_event, data = fixtures.get_event_data_fixure()
+        dummy_event = fixtures.get_event_fixure()
 
         last_event_expected = 1
         for action_expected in ['FOO', 'BAR']:
-            data['_last_event'] = last_event_expected
+            data = {'_last_event': last_event_expected}
             dummy_event.action = action_expected
 
             # Assert that Exception is thrown when events have invalid actions
