@@ -10,9 +10,6 @@ from gobupload.update import full_update, UpdateStatistics, _get_gob_event
 from gobupload.storage.handler import GOBStorageHandler
 from tests import fixtures
 
-from collections import namedtuple
-import datetime
-
 
 @patch('gobupload.update.GOBStorageHandler')
 class TestUpdate(TestCase):
@@ -108,23 +105,8 @@ class TestUpdate(TestCase):
         self.assertEqual(results['num_applied_applied'], 1)
 
     def test_gob_event_action(self, mock_event):
-        # setup event state
-        event = {
-            'sa_instance_state': '',
-            'version': '0.1',
-            'catalogue': 'test_catalogue',
-            'eventid': 20,
-            'application': 'TEST',
-            'source_id': 'id 2',
-            'action': None,
-            'entity': 'test_entity',
-            'timestamp': datetime.datetime(2019, 1, 30, 18, 7, 7),
-            'contents': '{"_last_event": 18, "_source_id": "id 2", "_entity_source_id": "id 2"}',
-            'source': 'test'
-        }
-
-        # setup data
-        data = {'_last_event': 1, '_source_id': 'id 2', '_entity_source_id': 'id 2'}
+        # setup initial event and data
+        event, data = fixtures.get_event_data_fixure()
 
         last_event_expected = 1
         for action_expected in ['ADD', 'DELETE', 'CONFIRM', 'MODIFY']:
@@ -132,35 +114,21 @@ class TestUpdate(TestCase):
             event['action'] = action_expected
 
             # from dictionary to object with attributes
-            dummy_event = namedtuple("mockEvent", event.keys())(*event.values())
+            dummy_event = fixtures.dict_to_object(event)
 
             # setup done, run gob event
             gob_event = _get_gob_event(dummy_event, data)
 
-            # assert action and lasst_event are as expected
+            # assert action and last_event are as expected
             self.assertEqual(action_expected, gob_event.name)
             self.assertEqual(last_event_expected, gob_event.last_event)
 
+            # Increase last event for next test
             last_event_expected += 1
 
     def test_gob_event_invalid_action(self, mock_event):
-        # setup event state
-        event = {
-            'sa_instance_state': '',
-            'version': '0.1',
-            'catalogue': 'test_catalogue',
-            'eventid': 20,
-            'application': 'TEST',
-            'source_id': 'id 2',
-            'action': None,
-            'entity': 'test_entity',
-            'timestamp': datetime.datetime(2019, 1, 30, 18, 7, 7),
-            'contents': '{"_last_event": 18, "_source_id": "id 2", "_entity_source_id": "id 2"}',
-            'source': 'test'
-        }
-
-        # setup data
-        data = {'_last_event': 1, '_source_id': 'id 2', '_entity_source_id': 'id 2'}
+        # setup initial event and data
+        event, data = fixtures.get_event_data_fixure()
 
         last_event_expected = 1
         for action_expected in ['FOO', 'BAR']:
@@ -168,7 +136,7 @@ class TestUpdate(TestCase):
             event['action'] = action_expected
 
             # from dictionary to object with attributes
-            dummy_event = namedtuple("mockEvent", event.keys())(*event.values())
+            dummy_event = fixtures.dict_to_object(event)
 
             # Assert that Exception is thrown when events have invalid actions
             self.assertRaises(GOBException, _get_gob_event, dummy_event, data)
