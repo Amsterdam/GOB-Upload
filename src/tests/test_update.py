@@ -127,11 +127,8 @@ class TestUpdate(TestCase):
         # setup initial event and data
         dummy_event = fixtures.get_event_fixure()
 
-        last_event_expected = 1
-        for action_expected in ['FOO', 'BAR', None, 1]:
-            data = {'_last_event': last_event_expected}
-            dummy_event.action = action_expected
+        for invalid_action in ['FOO', 'BAR', None, 1]:
+            dummy_event.action = invalid_action
 
             # Assert that Exception is thrown when events have invalid actions
-            self.assertRaises(GOBException, _get_gob_event, dummy_event, data)
-            last_event_expected += 1
+            self.assertRaises(GOBException, _get_gob_event, dummy_event, {})
