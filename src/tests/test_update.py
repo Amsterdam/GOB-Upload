@@ -128,7 +128,7 @@ class TestUpdate(TestCase):
         dummy_event = fixtures.get_event_fixure()
 
         last_event_expected = 1
-        for action_expected in ['FOO', 'BAR']:
+        for action_expected in ['FOO', 'BAR', None, 1]:
             data = {'_last_event': last_event_expected}
             dummy_event.action = action_expected
 
