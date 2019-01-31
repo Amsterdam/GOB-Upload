@@ -28,7 +28,6 @@ class TestEnrichGeounion(TestCase):
     def tearDown(self):
         pass
 
-
     def test_enrich_empty_contents(self):
         msg = self.mock_msg
         msg["contents"] = []
