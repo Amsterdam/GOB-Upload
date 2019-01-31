@@ -1,5 +1,8 @@
 import random
 import string
+import datetime
+
+from collections import namedtuple
 
 from gobcore.events import GOB_EVENTS, import_events, _get_event
 from gobcore.events.import_message import MessageMetaData
@@ -98,3 +101,21 @@ def get_event_message_fixture(event_name=None):
     message['header'] = metadata
 
     return message
+
+
+def get_event_data_fixure():
+    event = {
+        'version': '0.1',
+        'catalogue': 'test_catalogue',
+        'application': 'TEST',
+        'entity': 'test_entity',
+        'timestamp': datetime.datetime(2019, 1, 30, 18, 7, 7),
+        'source': 'test'
+    }
+
+    data = {'_last_event': 1, '_source_id': 'id 2', '_entity_source_id': 'id 2'}
+    return event, data
+
+
+def dict_to_object(event):
+    return namedtuple("mocked", event.keys())(*event.values())
