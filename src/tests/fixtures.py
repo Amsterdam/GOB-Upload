@@ -103,6 +103,13 @@ def get_event_message_fixture(event_name=None):
     return message
 
 
+def dict_to_object(dict):
+    class obj(object):
+        def __init__(self, dict):
+            self.__dict__ = dict
+    return obj(dict)
+
+
 def get_event_data_fixure():
     event = {
         'version': '0.1',
@@ -110,12 +117,9 @@ def get_event_data_fixure():
         'application': 'TEST',
         'entity': 'test_entity',
         'timestamp': datetime.datetime(2019, 1, 30, 18, 7, 7),
-        'source': 'test'
+        'source': 'test',
+        'action': None,
     }
 
-    data = {'_last_event': 1, '_source_id': 'id 2', '_entity_source_id': 'id 2'}
-    return event, data
-
-
-def dict_to_object(event):
-    return namedtuple("mocked", event.keys())(*event.values())
+    data = {'_last_event': 1}
+    return dict_to_object(event), data

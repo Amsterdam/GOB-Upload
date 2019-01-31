@@ -106,15 +106,12 @@ class TestUpdate(TestCase):
 
     def test_gob_event_action(self, mock_event):
         # setup initial event and data
-        event, data = fixtures.get_event_data_fixure()
+        dummy_event, data = fixtures.get_event_data_fixure()
 
         last_event_expected = 1
         for action_expected in ['ADD', 'DELETE', 'CONFIRM', 'MODIFY']:
             data['_last_event'] = last_event_expected
-            event['action'] = action_expected
-
-            # from dictionary to object with attributes
-            dummy_event = fixtures.dict_to_object(event)
+            dummy_event.action = action_expected
 
             # setup done, run gob event
             gob_event = _get_gob_event(dummy_event, data)
@@ -128,15 +125,12 @@ class TestUpdate(TestCase):
 
     def test_gob_event_invalid_action(self, mock_event):
         # setup initial event and data
-        event, data = fixtures.get_event_data_fixure()
+        dummy_event, data = fixtures.get_event_data_fixure()
 
         last_event_expected = 1
         for action_expected in ['FOO', 'BAR']:
             data['_last_event'] = last_event_expected
-            event['action'] = action_expected
-
-            # from dictionary to object with attributes
-            dummy_event = fixtures.dict_to_object(event)
+            dummy_event.action = action_expected
 
             # Assert that Exception is thrown when events have invalid actions
             self.assertRaises(GOBException, _get_gob_event, dummy_event, data)
