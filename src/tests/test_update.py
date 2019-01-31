@@ -170,6 +170,6 @@ class TestUpdate(TestCase):
             # from dictionary to object with attributes
             dummy_event = namedtuple("mockEvent", event.keys())(*event.values())
 
-            # Assert that Exception is thrown with invalid actipn
+            # Assert that Exception is thrown when events have invalid actions
             self.assertRaises(GOBException, _get_gob_event, dummy_event, data)
             last_event_expected += 1
