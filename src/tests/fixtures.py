@@ -104,13 +104,13 @@ def get_event_message_fixture(event_name=None):
 
 
 def dict_to_object(dict):
-    class obj(object):
+    class Obj(object):
         def __init__(self, dict):
             self.__dict__ = dict
-    return obj(dict)
+    return Obj(dict)
 
 
-def get_event_data_fixure():
+def get_event_fixure():
     event = {
         'version': '0.1',
         'catalogue': 'test_catalogue',
@@ -121,5 +121,4 @@ def get_event_data_fixure():
         'action': None,
     }
 
-    data = {'_last_event': 1}
-    return dict_to_object(event), data
+    return dict_to_object(event)
