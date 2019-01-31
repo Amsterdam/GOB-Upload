@@ -1,18 +1,14 @@
 from unittest import TestCase
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from collections import namedtuple
 
 from gobupload.storage.handler import GOBStorageHandler
 from gobupload.enrich import enrich, _autoid
 
-class MockLogger():
-    def info(self, msg):
-        pass
 
-
+@patch('gobupload.GobLogger', MagicMock())
 class TestEnrichGeounion(TestCase):
-
     def setUp(self):
         self.mock_storage = MagicMock(spec=GOBStorageHandler)
         self.mock_msg = {
@@ -35,7 +31,7 @@ class TestEnrichGeounion(TestCase):
     def test_enrich_empty_contents(self):
         msg = self.mock_msg
         msg["contents"] = []
-        enrich(self.mock_storage, msg, MockLogger())
+        enrich(self.mock_storage, msg)
 
         self.mock_storage.get_query_value.assert_not_called()
         self.assertEqual(msg["contents"], [])
@@ -46,7 +42,7 @@ class TestEnrichGeounion(TestCase):
         msg["contents"] = [
             {"x": [1, 2]}
         ]
-        enrich(self.mock_storage, msg, MockLogger())
+        enrich(self.mock_storage, msg)
 
         self.mock_storage.get_query_value.assert_called_with("""
 SELECT ST_AsText(ST_Union(geometrie))
@@ -62,7 +58,7 @@ WHERE fld in ('1', '2')
         msg["contents"] = [
             {"x": [{"y": 1}, {"y": 2}]}
         ]
-        enrich(self.mock_storage, msg, MockLogger())
+        enrich(self.mock_storage, msg)
 
         self.mock_storage.get_query_value.assert_called_with("""
 SELECT ST_AsText(ST_Union(geometrie))
@@ -78,7 +74,7 @@ WHERE fld in ('1', '2')
         msg["contents"] = [
             {"x": [{"y": {"z": 1}}, {"y": {"z": 2}}]}
         ]
-        enrich(self.mock_storage, msg, MockLogger())
+        enrich(self.mock_storage, msg)
 
         self.mock_storage.get_query_value.assert_called_with("""
 SELECT ST_AsText(ST_Union(geometrie))
@@ -92,12 +88,13 @@ WHERE fld in ('1', '2')
         msg["contents"] = [
             {"geo": "aap"}
         ]
-        enrich(self.mock_storage, msg, MockLogger())
+        enrich(self.mock_storage, msg)
 
         self.mock_storage.get_query_value.assert_not_called()
         self.assertEqual(msg["contents"][0]["geo"], "aap")
 
 
+@patch('gobupload.GobLogger', MagicMock())
 class TestEnrichAutoid(TestCase):
 
     def setUp(self):
@@ -123,7 +120,7 @@ class TestEnrichAutoid(TestCase):
         msg["contents"] = []
         self.mock_storage.get_column_values_for_key_value.return_value = None
         self.mock_storage.get_last_column_value.return_value = None
-        enrich(self.mock_storage, msg, MockLogger())
+        enrich(self.mock_storage, msg)
 
         self.assertEqual(msg["contents"], [])
 
@@ -134,7 +131,7 @@ class TestEnrichAutoid(TestCase):
         ]
         self.mock_storage.get_column_values_for_key_value.return_value = None
         self.mock_storage.get_last_column_value.return_value = None
-        enrich(self.mock_storage, msg, MockLogger())
+        enrich(self.mock_storage, msg)
 
         self.assertEqual(msg["contents"][0]["id"], "01230")
 
@@ -148,7 +145,7 @@ class TestEnrichAutoid(TestCase):
         ]
         self.mock_storage.get_column_values_for_key_value.return_value = None
         self.mock_storage.get_last_column_value.return_value = None
-        enrich(self.mock_storage, msg, MockLogger())
+        enrich(self.mock_storage, msg)
 
         self.assertEqual(msg["contents"][0]["id"], "01230")
         self.assertEqual(msg["contents"][1]["id"], "01231")
@@ -171,7 +168,7 @@ class TestEnrichAutoid(TestCase):
         ]
         self.mock_storage.get_column_values_for_key_value.return_value = None
         self.mock_storage.get_last_column_value.return_value = None
-        enrich(self.mock_storage, msg, MockLogger())
+        enrich(self.mock_storage, msg)
 
         self.assertEqual(msg["contents"][0]["id"], "01230")
         self.assertEqual(msg["contents"][9]["id"], "01239")
@@ -195,7 +192,7 @@ class TestEnrichAutoid(TestCase):
         self.mock_storage.get_last_column_value.return_value = None
 
         with self.assertRaises(AssertionError):
-            enrich(self.mock_storage, msg, MockLogger())
+            enrich(self.mock_storage, msg)
 
     def test_enrich_id_already_filled(self):
         msg = self.mock_msg
@@ -204,7 +201,7 @@ class TestEnrichAutoid(TestCase):
         ]
         self.mock_storage.get_column_values_for_key_value.return_value = None
         self.mock_storage.get_last_column_value.return_value = None
-        enrich(self.mock_storage, msg, MockLogger())
+        enrich(self.mock_storage, msg)
 
         self.assertEqual(msg["contents"][0]["id"], "123")
 
@@ -215,7 +212,7 @@ class TestEnrichAutoid(TestCase):
         ]
         self.mock_storage.get_column_values_for_key_value.return_value = None
         self.mock_storage.get_last_column_value.return_value = "123"
-        enrich(self.mock_storage, msg, MockLogger())
+        enrich(self.mock_storage, msg)
 
         # Check that the length is OK (padded with zeroes) and that 1 is added (123 => 124)
         self.assertEqual(msg["contents"][0]["id"], "00124")
@@ -230,7 +227,7 @@ class TestEnrichAutoid(TestCase):
             Record(id="123", code="A")
         ]
         self.mock_storage.get_last_column_value.return_value = None
-        enrich(self.mock_storage, msg, MockLogger())
+        enrich(self.mock_storage, msg)
 
         # Check that the length is OK (padded with zeroes) and that 1 is added (123 => 124)
         self.assertEqual(msg["contents"][0]["id"], "123")
@@ -247,7 +244,7 @@ class TestEnrichAutoid(TestCase):
         ]
         self.mock_storage.get_last_column_value.return_value = None
         with self.assertRaises(AssertionError):
-            enrich(self.mock_storage, msg, MockLogger())
+            enrich(self.mock_storage, msg)
 
     def test_autoid(self):
         pass

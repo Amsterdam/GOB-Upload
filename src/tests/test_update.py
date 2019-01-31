@@ -3,9 +3,10 @@ import logging
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
+from gobcore.exceptions import GOBException
 from gobcore.events.import_events import ADD, DELETE, CONFIRM, MODIFY
 
-from gobupload.update import full_update, UpdateStatistics
+from gobupload.update import full_update, UpdateStatistics, _get_gob_event
 from gobupload.storage.handler import GOBStorageHandler
 from tests import fixtures
 
@@ -91,7 +92,6 @@ class TestUpdate(TestCase):
             self.mock_storage.add_event_to_storage.assert_called()
             self.mock_storage.get_events_starting_after.assert_called()
 
-
     def test_statistics(self, mock):
         stats = UpdateStatistics([1], [2])
         stats.add_stored('STORED')
@@ -103,3 +103,32 @@ class TestUpdate(TestCase):
         self.assertEqual(results['num_stored_events'], 1)
         self.assertEqual(results['num_skipped_events_skipped'], 1)
         self.assertEqual(results['num_applied_applied'], 1)
+
+    def test_gob_event_action(self, mock_event):
+        # setup initial event and data
+        dummy_event = fixtures.get_event_fixure()
+
+        last_event_expected = 1
+        for action_expected in ['ADD', 'DELETE', 'CONFIRM', 'MODIFY']:
+            data = {'_last_event': last_event_expected}
+            dummy_event.action = action_expected
+
+            # setup done, run gob event
+            gob_event = _get_gob_event(dummy_event, data)
+
+            # assert action and last_event are as expected
+            self.assertEqual(action_expected, gob_event.name)
+            self.assertEqual(last_event_expected, gob_event.last_event)
+
+            # Increase last event for next test
+            last_event_expected += 1
+
+    def test_gob_event_invalid_action(self, mock_event):
+        # setup initial event and data
+        dummy_event = fixtures.get_event_fixure()
+
+        for invalid_action in ['FOO', 'BAR', None, 1]:
+            dummy_event.action = invalid_action
+
+            # Assert that Exception is thrown when events have invalid actions
+            self.assertRaises(GOBException, _get_gob_event, dummy_event, {})

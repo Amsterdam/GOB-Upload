@@ -31,38 +31,43 @@ def get_report(contents, events, recompares):
     return counted_events
 
 
-class Logger():
+class GobLogger:
+    """
+    GOB logger, used for application logging for the GOB system.
+    Holds information to give context to subsequent logging.
+    """
 
     _logger = {}
 
-    def __init__(self, name, default_args):
-        self._name = name
-        self._default_args = default_args
-        if Logger._logger.get(name) is None:
-            Logger._logger[name] = get_logger(name)
-
     def info(self, msg, kwargs={}):
-        Logger._logger[self._name].info(msg, extra={**(self._default_args), **kwargs})
+        GobLogger._logger[self._name].info(msg, extra={**self._default_args, **kwargs})
 
     def warning(self, msg, kwargs={}):
-        Logger._logger[self._name].warning(msg, extra={**(self._default_args), **kwargs})
+        GobLogger._logger[self._name].warning(msg, extra={**self._default_args, **kwargs})
 
     def error(self, msg, kwargs={}):
-        Logger._logger[self._name].error(msg, extra={**(self._default_args), **kwargs})
+        GobLogger._logger[self._name].error(msg, extra={**self._default_args, **kwargs})
+
+    def configure(self, msg, name):
+        """Configure the logger to store the relevant information for subsequent logging.
+        Should be called at the start of processing new item.
+
+        :param msg: the processed message
+        :param name: the name of the process
+        """
+        self._name = name
+        self._default_args = {
+            'process_id': msg['header']['process_id'],
+            'source': msg['header']['source'],
+            'application': msg['header']['application'],
+            'catalogue': msg['header']['catalogue'],
+            'entity': msg['header']['entity']
+        }
+
+        # get_logger creates and adds a loghandler with the given name
+        # Only one log handler should exist for the given name
+        if GobLogger._logger.get(name) is None:
+            GobLogger._logger[name] = get_logger(name)
 
 
-def init_logger(msg, name):
-    """Provide for a logger for this message
-
-    :param msg: the processed message
-    :param name: the name of the process
-    :return: Logger
-    """
-    default_args = {
-        'process_id': msg['header']['process_id'],
-        'source': msg['header']['source'],
-        'application': msg['header']['application'],
-        'catalogue': msg['header']['catalogue'],
-        'entity': msg['header']['entity']
-    }
-    return Logger(name, default_args)
+logger = GobLogger()
