@@ -3,11 +3,11 @@ import logging
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
+from gobcore.events import GOB
 from gobcore.model import GOBModel
-from gobupload.compare import compare
+from gobupload.compare import compare, _shallow_compare
 from gobupload.storage.handler import GOBStorageHandler
 from tests import fixtures
-
 
 @patch('gobupload.compare.GOBModel')
 @patch('gobupload.compare.GOBStorageHandler')
@@ -46,11 +46,11 @@ class TestCompare(TestCase):
         result = compare(message)
         self.assertNotEqual(result, None)
 
-    def test_compare_creates_delete(self, storage_mock, model_mock):
+    def test_compare_creates_delete(self, storage_mock, model_mock,):
         storage_mock.return_value = self.mock_storage
 
         # setup: one entity in db, none in message
-        self.mock_storage.get_current_ids.return_value = [fixtures.get_entity_fixture(_source_id=1)]
+        self.mock_storage.compare_temporary_data.return_value = [{'_source_id': 1, '_entity_source_id': 1, 'type': 'DELETE', '_last_event': 1, '_hash': '1234567890'}]
         message = fixtures.get_message_fixture(contents=[])
 
         result = compare(message)
@@ -63,8 +63,22 @@ class TestCompare(TestCase):
         storage_mock.return_value = self.mock_storage
 
         # setup: no entity in db, one in message
-        self.mock_storage.get_current_entity.return_value = None
         message = fixtures.get_message_fixture()
+        data = message["contents"][0]
+        self.mock_storage.compare_temporary_data.return_value = [{'_source_id': data['_source_id'], '_entity_source_id': data['_source_id'], 'type': 'ADD', '_last_event': 1, '_hash': '1234567890'}]
+
+        result = compare(message)
+
+        # expectations: add event is generated
+        self.assertEqual(len(result['contents']['events']), 1)
+        self.assertEqual(result['contents']['events'][0]['event'], 'ADD')
+
+    def test_compare_creates_add_if_database_empty(self, storage_mock, model_mock):
+        storage_mock.return_value = self.mock_storage
+
+        # setup: no entity in db, one in message
+        message = fixtures.get_message_fixture()
+        self.mock_storage.has_any_entity.return_value = False
 
         result = compare(message)
 
@@ -76,13 +90,9 @@ class TestCompare(TestCase):
         storage_mock.return_value = self.mock_storage
 
         # setup: message and database have the same entity
+        self.mock_storage.compare_temporary_data.return_value = [{'_source_id': 1, '_entity_source_id': 1, 'type': 'CONFIRM', '_last_event': 1, '_hash': '1234567890'}]
         message = fixtures.get_message_fixture()
-        data_object = message['contents'][0]
 
-        entity = fixtures.get_entity_fixture(**data_object)
-
-        self.mock_storage.get_current_ids.return_value = [entity]
-        self.mock_storage.get_entity_or_none.return_value = entity
         result = compare(message)
 
         # expectations: confirm event is generated
@@ -116,6 +126,8 @@ class TestCompare(TestCase):
                 }
             }
         }
+
+        self.mock_storage.compare_temporary_data.return_value = [{'_source_id': data_object['_source_id'], '_entity_source_id': data_object['_source_id'], 'type': 'MODIFY', '_last_event': 1, '_hash': '1234567890'}]
 
         result = compare(message)
 

@@ -13,18 +13,25 @@ Use it like this:
 import functools
 
 from gobcore.exceptions import GOBException
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, Table
 from sqlalchemy.engine.url import URL
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session
 
 from gobcore.model import GOBModel
+from gobcore.model.metadata import PRIVATE_META_FIELDS
+from gobcore.model.sa.gob import get_column
+from gobcore.typesystem import get_gob_type
 from gobcore.views import GOBViews
 
 from gobupload.config import GOB_DB
 from gobupload.storage.db_models.event import build_db_event
+from gobupload.storage import queries
 
 import alembic.config
+
+
+TEMPORARY_TABLE_SUFFIX = '_tmp'
 
 
 def with_session(func):
@@ -62,6 +69,7 @@ class GOBStorageHandler():
 
         """
         self.metadata = gob_metadata
+        self.gob_model = GOBModel()
 
         self.engine = create_engine(URL(**GOB_DB))
         self._get_reflected_base()
@@ -122,13 +130,103 @@ class GOBStorageHandler():
         for statement in statements:
             self.engine.execute(statement)
 
+    def create_temporary_table(self, data):
+        """ Create a new temporary table based on the current table for a collection
+
+        Message data is inserted to be compared with the current state
+
+        :param data: the imported data
+        :return:
+        """
+        collection = self.gob_model.get_collection(self.metadata.catalogue, self.metadata.entity)
+        table_name = self.gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
+        new_table_name = table_name + TEMPORARY_TABLE_SUFFIX
+
+        private_fields = ['_source_id', '_hash', '_application']
+        fields = [collection['entity_id']]
+        # If the collection has state, take begin_geldigheid into account
+        if collection.get('has_states'):
+            fields.append('begin_geldigheid')
+
+        # Try if the temporary table is already present
+        try:
+            new_table = self.base.metadata.tables[new_table_name]
+        except KeyError:
+            columns = [get_column(c, PRIVATE_META_FIELDS[c]) for c in private_fields]
+            columns.extend([get_column(c, collection['fields'][c]) for c in fields])
+            new_table = Table(new_table_name, self.base.metadata, *columns, extend_existing=True)
+            new_table.create(self.engine)
+        else:
+            # Truncate the table
+            self.engine.execute(f"TRUNCATE {new_table_name}")
+
+        # Fill the temporary table
+        insert_data = self._fill_temporary_table(data, private_fields, fields)
+
+        self.engine.execute(
+            new_table.insert(),
+            insert_data
+        )
+
+    def _fill_temporary_table(self, data, private_fields, fields):
+        """ Fill the temporary table with the data
+
+        :param data: the imported data
+        :param private_fields: private fields
+        :param fields: fields
+        :return: insert_data, a list of dicts
+        """
+        collection = self.gob_model.get_collection(self.metadata.catalogue, self.metadata.entity)
+        # Start inserting the temporary data
+        insert_data = []
+        for record in data:
+            # Add _application to data for comparison
+            record['_application'] = self.metadata.application
+            row = {}
+
+            for field in private_fields:
+                gob_type = get_gob_type(PRIVATE_META_FIELDS[field]['type'])
+                row[field] = gob_type.from_value(record[field]).to_db
+
+            for field in fields:
+                gob_type = get_gob_type(collection['fields'][field]['type'])
+                row[field] = gob_type.from_value(record[field]).to_db
+
+            insert_data.append(row)
+
+            # Remove application from the record
+            record.pop('_application', None)
+        return insert_data
+
+    def compare_temporary_data(self):
+        """ Compare the data in the temporay table to the current state
+
+        The created query compares each model field and returns the source_id, last_event
+        _hash and if the record should be a ADD, DELETE or MODIFY. CONFIRM records are not
+        included in the result, but can be derived from the message
+
+        :return: a list of dicts with source_id, hash, last_event and type
+        """
+        collection = self.gob_model.get_collection(self.metadata.catalogue, self.metadata.entity)
+        current = self.gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
+        temporary = current + TEMPORARY_TABLE_SUFFIX
+
+        # Get the result of comparison where data is equal to the current state
+        print(queries.get_comparison_query(current, temporary, collection))
+        result = self.engine.execute(queries.get_comparison_query(current, temporary, collection)).fetchall()
+
+        # Drop the temporary table
+        self.engine.execute(f"DROP TABLE IF EXISTS {temporary}")
+
+        return [dict(row) for row in result]
+
     @property
     def DbEvent(self):
         return getattr(self.base.classes, self.EVENTS_TABLE)
 
     @property
     def DbEntity(self):
-        table_name = GOBModel().get_table_name(self.metadata.catalogue, self.metadata.entity)
+        table_name = self.gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
         return getattr(self.base.classes, table_name)
 
     def _drop_table(self, table):
@@ -191,17 +289,20 @@ class GOBStorageHandler():
             .all()
 
     @with_session
-    def has_any_entity(self, key, value):
+    def has_any_entity(self, key=None, value=None):
         """Check if any entity exist with the given key-value combination
+        When no key-value combination is supplied check for any entity
 
         :param key: key value, e.g. "_source"
         :param value: value to loop for, e.g. "DIVA"
         :return: True if any entity exists, else False
         """
+        if not (key and value):
+            return self.session.query(self.DbEntity).count() > 0
         return self.session.query(self.DbEntity).filter_by(**{key: value}).count() > 0
 
     def get_collection_model(self):
-        return GOBModel().get_collection(self.metadata.catalogue, self.metadata.entity)
+        return self.gob_model.get_collection(self.metadata.catalogue, self.metadata.entity)
 
     @with_session
     def get_current_ids(self):
@@ -278,7 +379,7 @@ class GOBStorageHandler():
         :param entity: the new version of the entity
         :return: the stored version of the entity, or None if it doesn't exist
         """
-        collection = GOBModel().get_collection(self.metadata.catalogue, self.metadata.entity)
+        collection = self.gob_model.get_collection(self.metadata.catalogue, self.metadata.entity)
 
         filter = {
             "_source": self.metadata.source,
@@ -347,7 +448,7 @@ class GOBStorageHandler():
             #      "identificatie": "10281154"
             # }
 
-            collection = GOBModel().get_collection(self.metadata.catalogue, self.metadata.entity)
+            collection = self.gob_model.get_collection(self.metadata.catalogue, self.metadata.entity)
 
             id_column = collection["entity_id"]
             id_value = data["entity"][id_column]
