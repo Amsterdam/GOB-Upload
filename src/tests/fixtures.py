@@ -53,6 +53,7 @@ def get_event_fixture(metadata, event_name=None):
     gob_event = random_gob_event() if event_name is None else _get_event(event_name)
     data = get_event_data_fixture(gob_event, metadata)
     data["_last_event"] = None
+    data["_hash"] = None
     return gob_event.create_event(data["_source_id"], "", data)
 
 
@@ -60,7 +61,7 @@ def get_metadata_fixture():
     header = {key: random_string() for key in ["source", "timestamp", "version", "application"]}
     header["catalogue"] = "meetbouten"
     header["entity"] = "meetbouten"
-    header["id_column"] = "meetboutid"
+    header["id_column"] = "identificatie"
     header["model"] = {header['id_column']: {"type": "GOB.String"}}
     header["process_id"] = f"{header['timestamp']}.{header['source']}.{header['entity']}"
     return header
