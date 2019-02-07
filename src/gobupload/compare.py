@@ -5,10 +5,14 @@ Derive Add, Change, Delete and Confirm events by comparing a full set of new dat
 Todo: Event, action and mutation are used for the same subject. Use one name to improve maintainability.
 
 """
-from gobcore.events import get_event_for
+import hashlib
+import json
+
+from gobcore.events import _get_event, get_event_for, GOB
 from gobcore.events.import_message import ImportMessage
 from gobcore.model import GOBModel
 from gobcore.typesystem import get_modifications
+from gobcore.typesystem.json import GobTypeJSONEncoder
 
 from gobupload import logger
 from gobupload import get_report
@@ -44,11 +48,17 @@ def compare(msg):
         # Enrich data
         enrich(storage, msg)
 
-        # Convert msg contents in events
-        events, recompares = _process_new_data(storage, entity_model, msg)
+        # Add a hash to each record for comparision
+        add_hash(msg)
 
-        # Derive deletions from msg contents
-        events.extend(_process_deletions(storage, entity_model, msg))
+        # Perform a compare using a hash to detect differences between the current state and the new data
+        events, remaining_records = _shallow_compare(storage, entity_model, msg)
+
+        # Convert the remaining msg contents in events
+        modify_events, recompares = _process_new_data(storage, entity_model, remaining_records)
+
+        # Add the created modify events to the result
+        events.extend(modify_events)
 
     results = get_report(msg["contents"], events, recompares)
     logger.info(f"Message processed", kwargs={'data': results})
@@ -60,6 +70,18 @@ def compare(msg):
 
     # Return the result without log.
     return ImportMessage.create_import_message(msg["header"], None, msg_contents)
+
+
+def add_hash(msg):
+    """Add an md5 hash of the record to the record for comparison
+
+    :param msg: Incoming message
+    :return:
+    """
+    for record in msg["contents"]:
+        record['_hash'] = hashlib.md5(
+            json.dumps(record, sort_keys=True, cls=GobTypeJSONEncoder).encode('utf-8')
+        ).hexdigest()
 
 
 def meets_dependencies(storage, msg):
@@ -78,7 +100,69 @@ def meets_dependencies(storage, msg):
     return True
 
 
-def _process_new_data(storage, model, msg):
+def _shallow_compare(storage, model, msg):  # noqa: C901
+    """Shallow comparison
+
+    Compare the new data with the current state of the database. The result will be
+    ADD, CONFIRM and DELETE events. The remaining data will be MODIFY events and will
+    be checked on attribute level in the following functions.
+
+    :param storage: Storage handler instance for the collection being processed
+    :param model: GOB Model for the collection
+    :param msg:
+    :return: list ADD, CONFIRM and DELETE events
+             remaining records of the import data for further comparison
+    """
+    contents = msg["contents"]
+
+    # If there are no records in the database, all data should be ADD events
+    if not storage.has_any_entity():
+        events = [GOB.ADD.create_event(row['_source_id'], row['_source_id'], row) for row in contents]
+        return events, []
+
+    # Create temporary table with new data
+    storage.create_temporary_table(contents)
+
+    # Perform a shallow in-database comparison on _hash field
+    results = storage.compare_temporary_data()
+
+    data_by_source_id = {row['_source_id']: row for row in contents}
+
+    # Start creating events for ADD, DELETE and CONFIRM
+    events = []
+    remaining_records = []
+    for row in results:
+        # Get the data for this record and create the event
+        data = data_by_source_id.get(row["_source_id"])
+
+        if row['type'] == 'ADD':
+            data["_last_event"] = row['_last_event']
+            event = GOB.ADD.create_event(row['_source_id'], row['_source_id'], data)
+        elif row['type'] in ['CONFIRM', 'DELETE']:
+            # Get the GOB Event type by name
+            gob_event = _get_event(row['type'])
+
+            # Confirm and delete events only need the last event and hash
+            event = gob_event.create_event(
+                row['_source_id'],
+                row['_entity_source_id'],
+                {
+                    '_last_event': row['_last_event'],
+                    '_hash': row['_hash'],
+                }
+            )
+        elif row['type'] == 'MODIFY':
+            # Store the data of modify events for further processing and don't create an event
+            remaining_records.append(data)
+            event = None
+
+        if event:
+            events.append(event)
+
+    return events, remaining_records
+
+
+def _process_new_data(storage, model, contents):
     """Convert the data in the message into events and recompares
 
     Recompares occur when the message contains multiple new volgnummers for the same state
@@ -87,15 +171,15 @@ def _process_new_data(storage, model, msg):
 
     :param storage: Storage handler instance for the collection being processed
     :param model: GOB Model for the collection
-    :param msg:
+    :param contents: a list of imported records, remaining after first compare
     :return: list of events, list of recompares
     """
     previous_ids = {}
     events = []
     recompares = []
 
-    for data in msg["contents"]:
-        event = _compare_new_data(model, storage, new_data=data)
+    for data in contents:
+        event = _compare_new_data(model, storage, data)
         if event is None:
             # Skip historical states
             continue
@@ -110,32 +194,6 @@ def _process_new_data(storage, model, msg):
         events.append(event)
 
     return events, recompares
-
-
-def _process_deletions(storage, model, msg):
-    """Derive deletions
-
-    By comparing stored data with new data
-
-    :param storage: Storage handler instance for the collection being processed
-    :param model: GOB Model for the collection
-    :param msg:
-    :return: list of Delete Events
-    """
-    # Read new content into dictionary
-    new_entities = {data['_source_id']: data for data in msg["contents"]}
-
-    # Retrieve current ids for the same collection
-    current_ids = storage.get_current_ids()
-
-    # find deletes by comparing current ids to new entities
-    # if a current_id is not found in the new_entities it is interpreted as a deletion
-    deleted = {current._source_id: None for current in current_ids if current._source_id not in new_entities}
-
-    events = []
-    for entity_id, data in deleted.items():
-        events.append(_compare_new_data(model, storage, entity_id=entity_id))
-    return events
 
 
 def _get_recompare(model, previous_ids, event, data):
@@ -167,51 +225,34 @@ def _get_recompare(model, previous_ids, event, data):
             previous_ids[entity_id] = data
 
 
-def _dependencies_ok(storage, msg):
-    """Check any dependencies for the update of the collection
-
-    :param storage: Storage handler instance for the collection being processed
-    :param msg:
-    :return: True if all dependencies, if any, are fulfilled
-    """
-    # Check any dependencies
-    depends_on = msg["header"].get("depends_on", {})
-    for key, value in depends_on.items():
-        # Check every dependency, fail if any is not fulfilled
-        if not storage.has_any_entity(key, value):
-            return False
-    return True
-
-
-def _compare_new_data(model, storage, new_data=None, entity_id=None):
+def _compare_new_data(model, storage, data):
     """Compare new data with any existing data
+
+    Will only produce MODIFY events as ADD, CONFIRM and DELETE events allready have
+    been created by _shallow_compare.
 
     :param model: GOB Model for the collection
     :param storage: Storage handler instance for the collection being processed
-    :param new_data:
-    :param entity_id: entity if of existing data
+    :param data: The imported new data
     :return:
     """
-    assert not (new_data is None and entity_id is None), \
-        "One of new data or entity ID should be provided"
-    if new_data is None:
-        # Deletion
-        entity = storage.get_entity_or_none(entity_id)
-    else:
-        # Add, Confirm, Modify. Get current entity to compare with (None if ADD)
-        entity = storage.get_current_entity(new_data)
-        # Skip historic volgnummers
-        if entity is not None and model.get("has_states", False) is True:
-            # Skip any historic states for collections with state
-            new_seqnr = new_data["volgnummer"]
-            old_seqnr = entity.volgnummer
-            if int(new_seqnr) < int(old_seqnr):
-                return
-    # calculate modifications, this will be an empty list if either data or entity is empty
-    # or if all attributes are equal
-    modifications = get_modifications(entity, new_data, model['fields'])
+    assert data, "Data should be provided"
+
+    # Get current entity to compare with
+    entity = storage.get_current_entity(data)
+
+    # Skip historic volgnummers
+    if model.get("has_states", False):
+        # Skip any historic states for collections with state
+        new_seqnr = data["volgnummer"]
+        old_seqnr = entity.volgnummer
+        if int(new_seqnr) < int(old_seqnr):
+            return
+
+    # Calculate modifications
+    modifications = get_modifications(entity, data, model['fields'])
     # construct the event given the entity, data, and metadata
-    return get_event_for(entity, new_data, modifications)
+    return get_event_for(entity, data, modifications)
 
 
 def recompare(storage, data):
