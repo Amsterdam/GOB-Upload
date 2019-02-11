@@ -162,11 +162,11 @@ class GOBStorageHandler():
 
         # Fill the temporary table
         insert_data = self._fill_temporary_table(data, private_fields, fields)
-
-        self.engine.execute(
-            new_table.insert(),
-            insert_data
-        )
+        if(len(insert_data) > 0):
+            self.engine.execute(
+                new_table.insert(),
+                insert_data
+            )
 
     def _fill_temporary_table(self, data, private_fields, fields):
         """ Fill the temporary table with the data
@@ -212,7 +212,6 @@ class GOBStorageHandler():
         temporary = current + TEMPORARY_TABLE_SUFFIX
 
         # Get the result of comparison where data is equal to the current state
-        print(queries.get_comparison_query(current, temporary, collection))
         result = self.engine.execute(queries.get_comparison_query(current, temporary, collection)).fetchall()
 
         # Drop the temporary table
