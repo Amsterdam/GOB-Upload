@@ -142,7 +142,7 @@ class GOBStorageHandler():
         table_name = self.gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
         new_table_name = table_name + TEMPORARY_TABLE_SUFFIX
 
-        private_fields = ['_source_id', '_hash', '_application']
+        private_fields = ['_source_id', '_hash']
         fields = [collection['entity_id']]
         # If the collection has state, take begin_geldigheid into account
         if collection.get('has_states'):
@@ -180,8 +180,6 @@ class GOBStorageHandler():
         # Start inserting the temporary data
         insert_data = []
         for record in data:
-            # Add _application to data for comparison
-            record['_application'] = self.metadata.application
             row = {}
 
             for field in private_fields:
@@ -194,8 +192,6 @@ class GOBStorageHandler():
 
             insert_data.append(row)
 
-            # Remove application from the record
-            record.pop('_application', None)
         return insert_data
 
     def compare_temporary_data(self):
