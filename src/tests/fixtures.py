@@ -79,7 +79,12 @@ def get_entity_fixture(**kwargs):
 
 
 def get_data_object(metadata, **kwargs):
-    data_object = {'_source_id': random_string(), metadata["id_column"]: random_string()}
+    data_object = {
+        '_source_id': random_string(),
+        '_hash': random_string(),
+        metadata["id_column"]: random_string()
+    }
+
     for field, value in kwargs.items():
         metadata["model"][field] = {"type": "GOB.String"}
         data_object[field] = str(value)
