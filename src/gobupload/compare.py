@@ -13,8 +13,8 @@ from gobcore.events.import_message import ImportMessage
 from gobcore.model import GOBModel
 from gobcore.typesystem import get_modifications
 from gobcore.typesystem.json import GobTypeJSONEncoder
+from gobcore.logging.logger import logger
 
-from gobupload import logger
 from gobupload import get_report
 from gobupload.storage.handler import GOBStorageHandler
 from gobupload.enrich import enrich
