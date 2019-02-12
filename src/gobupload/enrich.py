@@ -11,7 +11,7 @@ import re
 from gobcore.model import GOBModel
 from gobcore.typesystem.gob_geotypes import Geometry
 
-from gobupload import logger
+from gobcore.logging.logger import logger
 
 
 def enrich(storage, msg):

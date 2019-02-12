@@ -6,8 +6,8 @@ import json
 
 from gobcore.events.import_message import ImportMessage, MessageMetaData
 from gobcore.events import GobEvent
+from gobcore.logging.logger import logger
 
-from gobupload import logger
 from gobupload.storage.handler import GOBStorageHandler
 from gobupload.compare import recompare
 

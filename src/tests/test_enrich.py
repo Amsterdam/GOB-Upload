@@ -7,7 +7,7 @@ from gobupload.storage.handler import GOBStorageHandler
 from gobupload.enrich import enrich, _autoid
 
 
-@patch('gobupload.GobLogger', MagicMock())
+@patch('gobupload.enrich.logger', MagicMock())
 class TestEnrichGeounion(TestCase):
     def setUp(self):
         self.mock_storage = MagicMock(spec=GOBStorageHandler)
@@ -94,7 +94,7 @@ WHERE fld in ('1', '2')
         self.assertEqual(msg["contents"][0]["geo"], "aap")
 
 
-@patch('gobupload.GobLogger', MagicMock())
+@patch('gobupload.enrich.logger', MagicMock())
 class TestEnrichAutoid(TestCase):
 
     def setUp(self):
