@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 from gobcore.exceptions import GOBException
 from gobcore.events.import_events import ADD, DELETE, CONFIRM, MODIFY
 
-from gobupload.update import full_update, UpdateStatistics, _get_gob_event
+from gobupload.update import full_update, UpdateStatistics, _get_gob_event, _get_event_ids
 from gobupload.storage.handler import GOBStorageHandler
 from tests import fixtures
 
@@ -22,6 +22,14 @@ class TestUpdate(TestCase):
 
     def tearDown(self):
         logging.disable(logging.NOTSET)
+
+    def test_get_event_ids(self, _):
+        mock_storage = MagicMock()
+        mock_storage.get_entity_max_eventid = MagicMock(return_value="max")
+        mock_storage.get_last_eventid = MagicMock(return_value="last")
+        max_id, last_id = _get_event_ids(mock_storage)
+        self.assertEqual(max_id, "max")
+        self.assertEqual(last_id, "last")
 
     @patch('gobupload.update._get_event_ids')
     def test_fullupdate_saves_event(self, mock_ids, mock):
