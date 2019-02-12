@@ -50,8 +50,9 @@ class TestCompare(TestCase):
         storage_mock.return_value = self.mock_storage
 
         # setup: one entity in db, none in message
-        self.mock_storage.compare_temporary_data.return_value = [{'_source_id': 1, '_entity_source_id': 1, 'type': 'DELETE', '_last_event': 1, '_hash': '1234567890'}]
         message = fixtures.get_message_fixture(contents=[])
+        entity = fixtures.get_entity_fixture(**{'_source_id': 2})
+        self.mock_storage.get_current_ids.return_value = [entity]
 
         result = compare(message)
 
@@ -65,6 +66,7 @@ class TestCompare(TestCase):
         # setup: no entity in db, one in message
         message = fixtures.get_message_fixture()
         data = message["contents"][0]
+        self.mock_storage.has_any_entity.return_value = True
         self.mock_storage.compare_temporary_data.return_value = [{'_source_id': data['_source_id'], '_entity_source_id': data['_source_id'], 'type': 'ADD', '_last_event': 1, '_hash': '1234567890'}]
 
         result = compare(message)

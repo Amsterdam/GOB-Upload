@@ -27,13 +27,7 @@ SELECT
     {current}._last_event,
     COALESCE({temporary}._hash, {current}._hash),
     CASE
-        WHEN (
-            {temporary}._source_id IS NULL AND
-            {temporary}._application = {current}._application
-        ) THEN 'DELETE'
-        WHEN (
-            {temporary}._source_id IS NULL
-        ) THEN 'SKIP'
+        WHEN {temporary}._source_id IS NULL THEN 'SKIP'
         WHEN {current}._source_id IS NULL THEN 'ADD'
         ELSE 'MODIFY'
     END AS type
