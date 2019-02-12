@@ -8,7 +8,7 @@ Todo: Event, action and mutation are used for the same subject. Use one name to 
 import hashlib
 import json
 
-from gobcore.events import _get_event, get_event_for, GOB
+from gobcore.events import get_event_for, GOB
 from gobcore.events.import_message import ImportMessage
 from gobcore.model import GOBModel
 from gobcore.typesystem import get_modifications
@@ -102,7 +102,7 @@ def meets_dependencies(storage, msg):
     return True
 
 
-def _shallow_compare(storage, model, msg):  # noqa: C901
+def _shallow_compare(storage, model, msg):
     """Shallow comparison
 
     Compare the new data with the current state of the database. The result will be
@@ -136,30 +136,23 @@ def _shallow_compare(storage, model, msg):  # noqa: C901
     for row in results:
         # Get the data for this record and create the event
         data = data_by_source_id.get(row["_source_id"])
-        event = None
 
         if row['type'] == 'ADD':
             data["_last_event"] = row['_last_event']
-            event = GOB.ADD.create_event(row['_source_id'], row['_source_id'], data)
-        elif row['type'] in ['CONFIRM', 'DELETE']:
-            # Get the GOB Event type by name
-            gob_event = _get_event(row['type'])
-
+            events.append(GOB.ADD.create_event(row['_source_id'], row['_source_id'], data))
+        elif row['type'] == 'CONFIRM':
             # Confirm and delete events only need the last event and hash
-            event = gob_event.create_event(
+            events.append(GOB.CONFIRM.create_event(
                 row['_source_id'],
                 row['_entity_source_id'],
                 {
                     '_last_event': row['_last_event'],
                     '_hash': row['_hash'],
                 }
-            )
+            ))
         elif row['type'] == 'MODIFY':
             # Store the data of modify events for further processing and don't create an event
             remaining_records.append(data)
-
-        if event:
-            events.append(event)
 
     # Add deletions which could not have been found by comparing in database
     events.extend(_process_deletions(storage, model, data_by_source_id.keys()))
@@ -177,11 +170,9 @@ def _process_deletions(storage, model, new_entities):
     """
     # Retrieve current ids for the same collection
     current_ids = storage.get_current_ids()
-
     # find deletes by comparing current ids to new entities
     # if a current_id is not found in the new_entities it is interpreted as a deletion
     deleted = {current._source_id: None for current in current_ids if current._source_id not in new_entities}
-
     events = []
     for entity_id, data in deleted.items():
         events.append(_compare_new_data(model, storage, entity_id=entity_id))
