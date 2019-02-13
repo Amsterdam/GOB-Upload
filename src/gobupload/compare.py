@@ -191,7 +191,6 @@ def _process_new_data(storage, model, contents):
     :param contents: a list of imported records, remaining after first compare
     :return: list of events, list of recompares
     """
-    previous_ids = {}
     events = []
     recompares = []
 
@@ -201,45 +200,10 @@ def _process_new_data(storage, model, contents):
             # Skip historical states
             continue
 
-        # Check for any multiple new volgnummers, use previous_ids to register volgnummers
-        recompare = _get_recompare(model, previous_ids, event, data)
-        if recompare is not None:
-            recompares.append(recompare)
-            continue
-
         # append the event to the events-list to be outputted
         events.append(event)
 
     return events, recompares
-
-
-def _get_recompare(model, previous_ids, event, data):
-    """Check for any recompares
-
-    Recompares occur when the message contains multiple new volgnummers for the same state
-    The volgnummers denote modifications or confirms to the state
-    They should be processed in order to have a consistent history for the state
-
-    If more than 1 sequence number (volgnummer) is in the same set, only the first can be compared
-    Later sequence numbers can only be compared if the previous has been applied first
-
-    :param model: GOB Model for the collection
-    :param previous_ids: dictionary with previous volgnummers
-    :param event: the event for the data
-    :param data:
-    :return: data if the data should be recompared after application of the other events, else None
-    """
-    if model.get("has_states", False):
-        entity_id = data['_source_id']
-        if previous_ids.get(entity_id):
-            previous = previous_ids[entity_id]
-            assert int(previous["volgnummer"]) < int(data["volgnummer"]), \
-                f'Volgnummer should be sequential {entity_id} {previous["volgnummer"]} !< {data["volgnummer"]}'
-            previous_ids[entity_id] = data  # Save this data as last previous data
-            return data
-        elif event['event'] != 'CONFIRM':
-            # Prevent multiple changes in one update
-            previous_ids[entity_id] = data
 
 
 def _compare_new_data(model, storage, new_data=None, entity_id=None):
@@ -258,26 +222,8 @@ def _compare_new_data(model, storage, new_data=None, entity_id=None):
     else:
         # Add, Confirm, Modify. Get current entity to compare with (None if ADD)
         entity = storage.get_current_entity(new_data)
-        # Skip historic volgnummers
-        if entity is not None and model.get("has_states", False) is True:
-            # Skip any historic states for collections with state
-            new_seqnr = new_data["volgnummer"]
-            old_seqnr = entity.volgnummer
-            if int(new_seqnr) < int(old_seqnr):
-                return
     # calculate modifications, this will be an empty list if either data or entity is empty
     # or if all attributes are equal
     modifications = get_modifications(entity, new_data, model['fields'])
     # construct the event given the entity, data, and metadata
     return get_event_for(entity, new_data, modifications)
-
-
-def recompare(storage, data):
-    """Recompare data with stored data
-
-    :param storage: Storage handler instance for the collection being processed
-    :param data:
-    :return:
-    """
-    model = storage.get_collection_model()
-    return _compare_new_data(model, storage, new_data=data)

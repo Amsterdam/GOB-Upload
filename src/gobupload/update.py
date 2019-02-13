@@ -9,7 +9,6 @@ from gobcore.events import GobEvent
 from gobcore.logging.logger import logger
 
 from gobupload.storage.handler import GOBStorageHandler
-from gobupload.compare import recompare
 
 
 class UpdateStatistics():
@@ -237,13 +236,6 @@ def full_update(msg):
 
     logger.info(f"Process {len(events)} events")
     _process_events(storage, events, stats)
-
-    if recompares:
-        logger.info(f"Process {len(recompares)} recompares")
-        for data in recompares:
-            with storage.get_session():
-                event = recompare(storage, data)
-            _process_events(storage, [event], stats)
 
     # Build result message
     results = stats.results()

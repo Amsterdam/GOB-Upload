@@ -1,7 +1,7 @@
 def get_comparison_query(current, temporary, collection):
-    # If the collection has_states, take begin_geldigheid into account
+    # If the collection has_states, take volgnummer into account
     entity_id = collection['entity_id']
-    using = f"{entity_id}, begin_geldigheid" if collection.get('has_states') else f"{entity_id}"
+    using = f"{entity_id}, volgnummer" if collection.get('has_states') else f"{entity_id}"
 
     return f"""
 SELECT
