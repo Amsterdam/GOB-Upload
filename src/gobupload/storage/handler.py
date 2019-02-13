@@ -146,7 +146,7 @@ class GOBStorageHandler():
         fields = [collection['entity_id']]
         # If the collection has state, take begin_geldigheid into account
         if collection.get('has_states'):
-            fields.append('begin_geldigheid')
+            fields.append('volgnummer')
 
         # Try if the temporary table is already present
         try:
@@ -368,20 +368,15 @@ class GOBStorageHandler():
         An entity to retrieve is evaluated within a source
         on the basis of its functional id (_id)
 
-        If the collection has states (has_states) then the begin_geldigheid needs
-        also to be considered
-
         :param entity: the new version of the entity
         :return: the stored version of the entity, or None if it doesn't exist
         """
-        collection = self.gob_model.get_collection(self.metadata.catalogue, self.metadata.entity)
-
-        filter = {
-            "_source": self.metadata.source,
-            collection["entity_id"]: entity[collection["entity_id"]]
+        fields = self.gob_model.get_functional_key_fields(self.metadata.catalogue, self.metadata.entity)
+        value = {
+            **entity,
+            "_source": self.metadata.source
         }
-        if collection.get("has_states", False):
-            filter["begin_geldigheid"] = entity["begin_geldigheid"]
+        filter = {field: value[field] for field in fields}
 
         entity_query = self.session.query(self.DbEntity).filter_by(**filter)
         if not with_deleted:
@@ -397,10 +392,13 @@ class GOBStorageHandler():
         :param with_deleted: boolean denoting if entities that are deleted should be considered (default: False)
         :return:
         """
-        filter = {
+        fields = self.gob_model.get_technical_key_fields(self.metadata.catalogue, self.metadata.entity)
+        value = {
             "_source": self.metadata.source,
             "_source_id": source_id
         }
+        filter = {field: value[field] for field in fields}
+
         entity_query = self.session.query(self.DbEntity).filter_by(**filter)
         if not with_deleted:
             entity_query = entity_query.filter_by(_date_deleted=None)
