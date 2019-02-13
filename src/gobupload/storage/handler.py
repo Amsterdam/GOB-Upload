@@ -144,7 +144,7 @@ class GOBStorageHandler():
 
         private_fields = ['_source_id', '_hash']
         fields = [collection['entity_id']]
-        # If the collection has state, take begin_geldigheid into account
+        # If the collection has state, take volgnummer into account
         if collection.get('has_states'):
             fields.append('volgnummer')
 
