@@ -74,7 +74,7 @@ class TestStorageHandler(unittest.TestCase):
 
         collection = {'entity_id': 'identificatie'}
 
-        query = queries.get_comparison_query(current, temporary, collection)
+        query = queries.get_comparison_query(current, temporary)
 
         self.storage.compare_temporary_data()
 

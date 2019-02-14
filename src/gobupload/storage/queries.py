@@ -1,8 +1,4 @@
-def get_comparison_query(current, temporary, collection):
-    # If the collection has_states, take volgnummer into account
-    entity_id = collection['entity_id']
-    using = f"{entity_id}, volgnummer" if collection.get('has_states') else f"{entity_id}"
-
+def get_comparison_query(current, temporary):
     return f"""
 SELECT
     {temporary}._source_id,
@@ -14,7 +10,7 @@ FROM {temporary}
 FULL OUTER JOIN (
     SELECT * FROM {current}
     WHERE _date_deleted IS NULL
-    ) AS {current} USING ({using})
+    ) AS {current} USING (_source_id)
 WHERE (
     {temporary}._hash
 ) IS NOT DISTINCT FROM (
@@ -35,7 +31,7 @@ FROM {temporary}
 FULL OUTER JOIN (
     SELECT * FROM {current}
     WHERE _date_deleted IS NULL
-    ) AS {current} USING ({using})
+    ) AS {current} USING (_source_id)
 WHERE (
     {temporary}._hash
 ) IS DISTINCT FROM (

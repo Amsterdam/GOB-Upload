@@ -19,7 +19,6 @@ from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session
 
 from gobcore.model import GOBModel
-from gobcore.model.metadata import PRIVATE_META_FIELDS
 from gobcore.model.sa.gob import get_column
 from gobcore.typesystem import get_gob_type
 from gobcore.views import GOBViews
@@ -142,18 +141,13 @@ class GOBStorageHandler():
         table_name = self.gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
         new_table_name = table_name + TEMPORARY_TABLE_SUFFIX
 
-        private_fields = ['_source_id', '_hash']
-        fields = [collection['entity_id']]
-        # If the collection has state, take volgnummer into account
-        if collection.get('has_states'):
-            fields.append('volgnummer')
+        fields = ['_source_id', '_hash', collection['entity_id']]
 
         # Try if the temporary table is already present
         try:
             new_table = self.base.metadata.tables[new_table_name]
         except KeyError:
-            columns = [get_column(c, PRIVATE_META_FIELDS[c]) for c in private_fields]
-            columns.extend([get_column(c, collection['fields'][c]) for c in fields])
+            columns = [get_column(c, collection['all_fields'][c]) for c in fields]
             new_table = Table(new_table_name, self.base.metadata, *columns, extend_existing=True)
             new_table.create(self.engine)
         else:
@@ -161,18 +155,17 @@ class GOBStorageHandler():
             self.engine.execute(f"TRUNCATE {new_table_name}")
 
         # Fill the temporary table
-        insert_data = self._fill_temporary_table(data, private_fields, fields)
+        insert_data = self._fill_temporary_table(data, fields)
         if(len(insert_data) > 0):
             self.engine.execute(
                 new_table.insert(),
                 insert_data
             )
 
-    def _fill_temporary_table(self, data, private_fields, fields):
+    def _fill_temporary_table(self, data, fields):
         """ Fill the temporary table with the data
 
         :param data: the imported data
-        :param private_fields: private fields
         :param fields: fields
         :return: insert_data, a list of dicts
         """
@@ -182,12 +175,8 @@ class GOBStorageHandler():
         for record in data:
             row = {}
 
-            for field in private_fields:
-                gob_type = get_gob_type(PRIVATE_META_FIELDS[field]['type'])
-                row[field] = gob_type.from_value(record[field]).to_db
-
             for field in fields:
-                gob_type = get_gob_type(collection['fields'][field]['type'])
+                gob_type = get_gob_type(collection['all_fields'][field]['type'])
                 row[field] = gob_type.from_value(record[field]).to_db
 
             insert_data.append(row)
@@ -203,12 +192,11 @@ class GOBStorageHandler():
 
         :return: a list of dicts with source_id, hash, last_event and type
         """
-        collection = self.gob_model.get_collection(self.metadata.catalogue, self.metadata.entity)
         current = self.gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
         temporary = current + TEMPORARY_TABLE_SUFFIX
 
         # Get the result of comparison where data is equal to the current state
-        result = self.engine.execute(queries.get_comparison_query(current, temporary, collection)).fetchall()
+        result = self.engine.execute(queries.get_comparison_query(current, temporary)).fetchall()
 
         # Drop the temporary table
         self.engine.execute(f"DROP TABLE IF EXISTS {temporary}")
