@@ -141,7 +141,7 @@ class GOBStorageHandler():
         table_name = self.gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
         new_table_name = table_name + TEMPORARY_TABLE_SUFFIX
 
-        fields = ['_source_id', '_hash', collection['entity_id']]
+        fields = ['_source_id', '_hash']
 
         # Try if the temporary table is already present
         try:
