@@ -5,7 +5,7 @@ from unittest.mock import call, MagicMock, patch
 from gobcore.events.import_message import ImportMessage
 from gobcore.model import GOBModel
 
-from gobupload.compare import add_hash
+from gobupload.compare import populate
 from gobupload.storage import queries
 from gobupload.storage.handler import GOBStorageHandler
 from tests import fixtures
@@ -17,8 +17,12 @@ class TestStorageHandler(unittest.TestCase):
     def setUp(self):
         self.mock_model = MagicMock(spec=GOBModel)
         self.msg = fixtures.get_message_fixture()
+        model = {
+            "entity_id": "identificatie",
+            "version": "1"
+        }
         # Add the hash to the message
-        add_hash(self.msg)
+        populate(self.msg, model)
 
         message = ImportMessage(self.msg)
         metadata = message.metadata

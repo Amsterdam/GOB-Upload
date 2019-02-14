@@ -432,22 +432,6 @@ class GOBStorageHandler():
             # Create an empty entity for the sepcified source and source_id
             entity = self.DbEntity(_source=self.metadata.source, _source_id=event.source_id)
 
-            # Example data (event contents)
-            # {
-            #     "entity": {"identificatie": "10281154", ... "_last_event": null},
-            #     "id_column": "identificatie",
-            #      "_last_event": null,
-            #      "_source_id": "10281154",
-            #      "identificatie": "10281154"
-            # }
-
-            collection = self.gob_model.get_collection(self.metadata.catalogue, self.metadata.entity)
-
-            id_column = collection["entity_id"]
-            id_value = data["entity"][id_column]
-            setattr(entity, id_column, id_value)
-            setattr(entity, '_id', id_value)
-            setattr(entity, '_version', event.version)
             self.session.add(entity)
 
         if entity._date_deleted is not None and event.action != "ADD":
