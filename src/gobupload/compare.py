@@ -48,8 +48,8 @@ def compare(msg):
         # Enrich data
         enrich(storage, msg)
 
-        # Add a hash to each record for comparision
-        add_hash(msg)
+        # Add required fields (_hash, _version, _id, ...) to each record
+        populate(msg, entity_model)
 
         # Perform a compare using a hash to detect differences between the current state and the new data
         events, remaining_records = _shallow_compare(storage, entity_model, msg)
@@ -72,17 +72,20 @@ def compare(msg):
     return ImportMessage.create_import_message(msg["header"], None, msg_contents)
 
 
-def add_hash(msg):
+def populate(msg, entity_model):
     """Add an md5 hash of the record to the record for comparison
 
     :param msg: Incoming message
     :return:
     """
+    id_column = entity_model["entity_id"]
+    version = entity_model["version"]
     for record in msg["contents"]:
+        record["_id"] = record[id_column]
+        record["_version"] = version
         record['_hash'] = hashlib.md5((
             json.dumps(record, sort_keys=True, cls=GobTypeJSONEncoder) +
-            msg['header']['application'] +
-            msg['header']['version']).encode('utf-8')
+            msg['header']['application']).encode('utf-8')
         ).hexdigest()
 
 

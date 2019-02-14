@@ -9,6 +9,8 @@ from gobupload.compare import compare, _shallow_compare
 from gobupload.storage.handler import GOBStorageHandler
 from tests import fixtures
 
+mock_model = MagicMock(spec=GOBModel)
+
 @patch('gobupload.compare.GOBModel')
 @patch('gobupload.compare.GOBStorageHandler')
 class TestCompare(TestCase):
@@ -16,7 +18,10 @@ class TestCompare(TestCase):
         # Disable logging to prevent test from connecting to RabbitMQ
         logging.disable(logging.CRITICAL)
         self.mock_storage = MagicMock(spec=GOBStorageHandler)
-        self.mock_model = MagicMock(spec=GOBModel)
+        mock_model.get_collection.return_value = {
+            "entity_id": "identificatie",
+            "version": 1
+        }
 
     def tearDown(self):
         logging.disable(logging.NOTSET)
@@ -62,6 +67,7 @@ class TestCompare(TestCase):
 
     def test_compare_creates_add(self, storage_mock, model_mock):
         storage_mock.return_value = self.mock_storage
+        model_mock.return_value = mock_model
 
         # setup: no entity in db, one in message
         message = fixtures.get_message_fixture()
@@ -77,6 +83,7 @@ class TestCompare(TestCase):
 
     def test_compare_creates_add_if_database_empty(self, storage_mock, model_mock):
         storage_mock.return_value = self.mock_storage
+        model_mock.return_value = mock_model
 
         # setup: no entity in db, one in message
         message = fixtures.get_message_fixture()
@@ -90,6 +97,7 @@ class TestCompare(TestCase):
 
     def test_compare_creates_confirm(self, storage_mock, model_mock):
         storage_mock.return_value = self.mock_storage
+        model_mock.return_value = mock_model
 
         # setup: message and database have the same entity
         self.mock_storage.compare_temporary_data.return_value = [{'_source_id': 1, '_entity_source_id': 1, 'type': 'CONFIRM', '_last_event': 1, '_hash': '1234567890'}]
@@ -103,7 +111,7 @@ class TestCompare(TestCase):
 
     def test_compare_creates_modify(self, storage_mock, model_mock):
         storage_mock.return_value = self.mock_storage
-        model_mock.return_value = self.mock_model
+        model_mock.return_value = mock_model
 
         # setup: message and database have entity with same id but different data
         field_name = fixtures.random_string()
@@ -121,7 +129,9 @@ class TestCompare(TestCase):
         self.mock_storage.get_current_entity.return_value = entity
 
         # Add the field to the model as well
-        self.mock_model.get_collection.return_value = {
+        mock_model.get_collection.return_value = {
+            "entity_id": "identificatie",
+            "version": 1,
             "fields": {
                 field_name: {
                     "type": "GOB.String"
