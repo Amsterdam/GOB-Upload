@@ -141,7 +141,8 @@ class GOBStorageHandler():
         table_name = self.gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
         new_table_name = table_name + TEMPORARY_TABLE_SUFFIX
 
-        fields = ['_source_id', '_hash']
+        fields = self.gob_model.get_functional_key_fields(self.metadata.catalogue, self.metadata.entity)
+        fields.extend(['_source_id', '_hash'])
 
         # Try if the temporary table is already present
         try:
@@ -174,10 +175,12 @@ class GOBStorageHandler():
         insert_data = []
         for record in data:
             row = {}
-
             for field in fields:
                 gob_type = get_gob_type(collection['all_fields'][field]['type'])
-                row[field] = gob_type.from_value(record[field]).to_db
+                if field == '_source':
+                    row[field] = gob_type.from_value(self.metadata.source).to_db
+                else:
+                    row[field] = gob_type.from_value(record[field]).to_db
 
             insert_data.append(row)
 
@@ -195,8 +198,10 @@ class GOBStorageHandler():
         current = self.gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
         temporary = current + TEMPORARY_TABLE_SUFFIX
 
+        fields = self.gob_model.get_functional_key_fields(self.metadata.catalogue, self.metadata.entity)
+
         # Get the result of comparison where data is equal to the current state
-        result = self.engine.execute(queries.get_comparison_query(current, temporary)).fetchall()
+        result = self.engine.execute(queries.get_comparison_query(current, temporary, fields)).fetchall()
 
         # Drop the temporary table
         self.engine.execute(f"DROP TABLE IF EXISTS {temporary}")

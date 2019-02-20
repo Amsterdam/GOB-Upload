@@ -72,9 +72,8 @@ class TestStorageHandler(unittest.TestCase):
         current = f'{self.msg["header"]["catalogue"]}_{self.msg["header"]["entity"]}'
         temporary = f'{self.msg["header"]["catalogue"]}_{self.msg["header"]["entity"]}_tmp'
 
-        collection = {'entity_id': 'identificatie'}
-
-        query = queries.get_comparison_query(current, temporary)
+        fields = ['_source', 'identificatie']
+        query = queries.get_comparison_query(current, temporary, fields)
 
         self.storage.compare_temporary_data()
 
