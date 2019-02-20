@@ -6,11 +6,13 @@ SELECT
     {current}._source_id AS _entity_source_id,
     {current}._last_event,
     {temporary}._hash,
-    'CONFIRM' AS type
+    CASE
+        WHEN test_catalogue_test_entity._date_deleted IS NULL THEN 'CONFIRM'
+        ELSE 'ADD'
+    END AS type
 FROM {temporary}
 FULL OUTER JOIN (
     SELECT * FROM {current}
-    WHERE _date_deleted IS NULL
     ) AS {current} USING ({using})
 WHERE (
     {temporary}._hash
@@ -25,13 +27,15 @@ SELECT
     COALESCE({temporary}._hash, {current}._hash),
     CASE
         WHEN {temporary}._source_id IS NULL THEN 'SKIP'
-        WHEN {current}._source_id IS NULL THEN 'ADD'
+        WHEN (
+            {current}._source_id IS NULL OR
+            {current}._date_deleted IS NOT NULL
+        ) THEN 'ADD'
         ELSE 'MODIFY'
     END AS type
 FROM {temporary}
 FULL OUTER JOIN (
     SELECT * FROM {current}
-    WHERE _date_deleted IS NULL
     ) AS {current} USING ({using})
 WHERE (
     {temporary}._hash

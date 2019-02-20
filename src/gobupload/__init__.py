@@ -20,12 +20,11 @@ def get_report(contents, events):
     for event in events:
         event_log = EVENT_LOG_MAPPING[event['event']]
         if event['event'] == 'BULKCONFIRM':
-            confirms = len(event['data']['confirms'])
-            counted_events[event_log] = counted_events.get(event_log, 0) + confirms
-            total_count += confirms
+            count = len(event['data']['confirms'])
         else:
-            counted_events[event_log] = counted_events.get(event_log, 0) + 1
-            total_count += 1
+            count = 1
+        counted_events[event_log] = counted_events.get(event_log, 0) + count
+        total_count += count
 
     counted_events['num_records'] = total_count
     skipped = len(contents) - total_count
