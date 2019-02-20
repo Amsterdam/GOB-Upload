@@ -1,4 +1,5 @@
-def get_comparison_query(current, temporary):
+def get_comparison_query(current, temporary, fields):
+    using = ",".join(fields)
     return f"""
 SELECT
     {temporary}._source_id,
@@ -10,7 +11,7 @@ FROM {temporary}
 FULL OUTER JOIN (
     SELECT * FROM {current}
     WHERE _date_deleted IS NULL
-    ) AS {current} USING (_source_id)
+    ) AS {current} USING ({using})
 WHERE (
     {temporary}._hash
 ) IS NOT DISTINCT FROM (
@@ -31,7 +32,7 @@ FROM {temporary}
 FULL OUTER JOIN (
     SELECT * FROM {current}
     WHERE _date_deleted IS NULL
-    ) AS {current} USING (_source_id)
+    ) AS {current} USING ({using})
 WHERE (
     {temporary}._hash
 ) IS DISTINCT FROM (
