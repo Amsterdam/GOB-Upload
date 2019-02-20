@@ -109,6 +109,23 @@ class TestCompare(TestCase):
         self.assertEqual(len(result['contents']['events']), 1)
         self.assertEqual(result['contents']['events'][0]['event'], 'CONFIRM')
 
+    def test_compare_creates_bulkconfirm(self, storage_mock, model_mock):
+        storage_mock.return_value = self.mock_storage
+        model_mock.return_value = mock_model
+
+        # setup: message and database have the same entities
+        self.mock_storage.compare_temporary_data.return_value = [
+            {'_source_id': 1, '_entity_source_id': 1, 'type': 'CONFIRM', '_last_event': 1, '_hash': '1234567890'},
+            {'_source_id': 1, '_entity_source_id': 1, 'type': 'CONFIRM', '_last_event': 1, '_hash': '1234567890'}
+        ]
+        message = fixtures.get_message_fixture()
+
+        result = compare(message)
+
+        # expectations: confirm event is generated
+        self.assertEqual(len(result['contents']['events']), 1)
+        self.assertEqual(result['contents']['events'][0]['event'], 'BULKCONFIRM')
+
     def test_compare_creates_modify(self, storage_mock, model_mock):
         storage_mock.return_value = self.mock_storage
         model_mock.return_value = mock_model

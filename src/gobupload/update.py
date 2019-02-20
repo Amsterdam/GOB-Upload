@@ -5,7 +5,7 @@ Process events and apply the event on the current state of the entity
 import json
 
 from gobcore.events.import_message import ImportMessage, MessageMetaData
-from gobcore.events import GobEvent
+from gobcore.events import GobEvent, GOB
 from gobcore.logging.logger import logger
 
 from gobupload.storage.handler import GOBStorageHandler
@@ -13,12 +13,11 @@ from gobupload.storage.handler import GOBStorageHandler
 
 class UpdateStatistics():
 
-    def __init__(self, events, recompares):
+    def __init__(self, events):
         self.stored = {}
         self.skipped = {}
         self.applied = {}
         self.events = events
-        self.recompares = recompares
 
     def add_stored(self, action):
         self.stored[action] = self.stored.get(action, 0) + 1
@@ -37,8 +36,6 @@ class UpdateStatistics():
         results = {
             "num_events": len(self.events)
         }
-        if self.recompares:
-            results["num_recompares"] = len(self.recompares)
         for result, fmt in [(self.stored, "num_{action}_events"),
                             (self.skipped, "num_{action}_events_skipped"),
                             (self.applied, "num_{action}_applied")]:
@@ -79,6 +76,8 @@ def _get_gob_event(event, data):
     # Construct the event out of the reconstructed event data
     gob_event = GobEvent(event_msg, MessageMetaData(msg_header))
 
+    # Store the id of the event in the gob_event
+    gob_event.id = event.eventid
     return gob_event
 
 
@@ -94,6 +93,9 @@ def _apply_events(storage, start_after, stats):
         # Get the unhandled events
         unhandled_events = storage.get_events_starting_after(start_after)
 
+        # Get the list of current entities by _source_id
+        entities = storage.get_last_events()
+
         # Log the number of events that is going to be applied (if any)
         n_events = len(unhandled_events)
         applied = {}
@@ -102,25 +104,36 @@ def _apply_events(storage, start_after, stats):
 
         logger.info(f"Apply {n_events} events")
 
-        for event in unhandled_events:
+        new_add_events = []
 
+        for event in unhandled_events:
             # Parse the json data of the event
             data = json.loads(event.contents)
-
-            # Get the entity to which the event should be applied, create if ADD event
-            entity = storage.get_entity_for_update(event, data)
-
             # Reconstruct the gob event out of the database event
             gob_event = _get_gob_event(event, data)
 
-            # apply the event on the entity
-            gob_event.apply_to(entity)
+            if isinstance(gob_event, GOB.BULKCONFIRM):
+                storage.bulk_update_confirms(gob_event, event.eventid)
+            else:
+                # Save new ADD events to insert in bulk
+                if data['_entity_source_id'] not in entities:
+                    new_add_events.append(gob_event)
+                else:
+                    # Get the entity to which the event should be applied, create if ADD event
+                    entity = storage.get_entity_for_update(event, data)
 
-            # and register the last event that has updated this entity
-            entity._last_event = event.eventid
+                    # apply the event on the entity
+                    gob_event.apply_to(entity)
+
+                    # and register the last event that has updated this entity
+                    entity._last_event = event.eventid
 
             # Collect statistics about the actions that have been applied
             stats.add_applied(event.action)
+
+        if new_add_events:
+            # Process bulk_add_events
+            storage.bulk_add_entities(new_add_events)
 
 
 def _get_event_ids(storage):
@@ -139,6 +152,7 @@ def _store_events(storage, events, stats):
     """Store events in GOB
 
     Only valid events are stored, other events are skipped (with an associated warning)
+    The events are added in bulk in the database
 
     :param storage: GOB (events + entities)
     :param events: the events to process
@@ -148,38 +162,72 @@ def _store_events(storage, events, stats):
     with storage.get_session():
         logger.info(f"Create {len(events)} events")
 
+        entities = storage.get_last_events()
+
+        # If there are no entities in the DB, we can apply the ADD events without evaluating _last_event
+        if len(entities) == 0:
+            storage.bulk_add_events(events)
+            return
+
+        valid_events = []
         for event in events:
-            _store_event(storage, event, stats)
+            event_type = event['event']
+            source_id = event['data']['_entity_source_id']
+
+            if _validate_event(entities, event, stats):
+                valid_events.append(event)
+                stats.add_stored(event_type)
+            else:
+                logger.warning(f"Skip outdated {event_type} event",
+                               {
+                                    "id": "Skip outdated event",
+                                    "data": {
+                                        "action": "{event_type}",
+                                        "source_id": source_id
+                                    }
+                                })
+                stats.add_skipped(event_type)
+
+        # Insert all valid events in bulk to the database
+        storage.bulk_add_events(valid_events)
 
 
-def _store_event(storage, event, stats):
-    """Store the events
+def _validate_event(entities, event, stats):
+    """Validate an event to the current entities and add the statistics
 
-    Only store valid events (not outdated)
-
-    :param storage: GOB (events + entities)
-    :param event: the event to process
-    :param stats: update statitics for this action
-    :return:
+    :param entities: a list of current entities with _source_id and _last_event
+    :param event: the event to validate
+    :param stats: the UpdateStatistics instance to register stats with
+    :return: if the event is valid according to it's _last_event
     """
-    source_id = event["data"]["_entity_source_id"]
-    entity = storage.get_entity_or_none(source_id)
+    event_type = event['event']
+    valid = False
 
-    action = event['event']
-
-    # Is the comparison that has lead to this event based upon the current version of the entity?
-    last_event = event["data"]["_last_event"]
-    is_valid = last_event is None if entity is None else entity._last_event == last_event
-
-    if is_valid:
-        # Store the event in the database
-        storage.add_event_to_storage(event)
-        stats.add_stored(action)
+    if event_type == 'BULKCONFIRM':
+        for confirm in event['data']['confirms']:
+            source_id = confirm['_source_id']
+            last_event = confirm['_last_event']
+            # If the last_event doesn't match, remove from confirms in BULKCONFIRM
+            if last_event != entities.get(source_id, None):
+                event['data'].remove(confirm)
+                logger.warning(f"Skip outdated record in BULKCONFIRM event, source id: {source_id}",
+                               {
+                                    "id": "Skip outdated record in BULKCONFIRM event",
+                                    "data": {
+                                        "action": "CONFIRM", "source_id": source_id
+                                    }
+                                })
+            # Event is valid if there are still records in the BULKCONFIRM
+            if len(event['data']) > 0:
+                valid = True
     else:
-        # Report warning
-        logger.warning(f"Skip outdated {action} event, source id: {source_id}",
-                       {"id": "Skip outdated event", "data": {"action": action, "source_id": source_id}})
-        stats.add_skipped(action)
+        source_id = event['data']['_entity_source_id']
+        last_event = event['data']['_last_event']
+
+        # Check if last_events matches the entities last_event
+        if last_event == entities.get(source_id, None):
+            valid = True
+    return valid
 
 
 def _process_events(storage, events, stats):
@@ -227,12 +275,11 @@ def full_update(msg):
 
     storage = GOBStorageHandler(metadata)
 
-    # Get events and recompares from message
+    # Get events from message
     events = message.contents["events"]
-    recompares = message.contents["recompares"]
 
     # Gather statistics of update process
-    stats = UpdateStatistics(events, recompares)
+    stats = UpdateStatistics(events)
 
     logger.info(f"Process {len(events)} events")
     _process_events(storage, events, stats)
