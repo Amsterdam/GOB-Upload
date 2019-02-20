@@ -55,17 +55,16 @@ def compare(msg):
         events, remaining_records = _shallow_compare(storage, entity_model, msg)
 
         # Convert the remaining msg contents in events
-        modify_events, recompares = _process_new_data(storage, entity_model, remaining_records)
+        modify_events = _process_new_data(storage, entity_model, remaining_records)
 
         # Add the created modify events to the result
         events.extend(modify_events)
 
-    results = get_report(msg["contents"], events, recompares)
+    results = get_report(msg["contents"], events)
     logger.info(f"Message processed", kwargs={'data': results})
 
     msg_contents = {
-        "events": events,
-        "recompares": recompares
+        "events": events
     }
 
     # Return the result without log.
@@ -133,8 +132,25 @@ def _shallow_compare(storage, model, msg):
 
     data_by_source_id = {row['_source_id']: row for row in contents}
 
-    # Start creating events for ADD, DELETE and CONFIRM
+    events, remaining_records = _process_compare_results(results, data_by_source_id)
+
+    # Add deletions which could not have been found by comparing in database
+    events.extend(_process_deletions(storage, model, data_by_source_id.keys()))
+
+    return events, remaining_records
+
+
+def _process_compare_results(results, data_by_source_id):
+    """Process the results of the in database compare
+
+    Creates the ADD, DELETE and CONFIRM records and returns them with the remaining records
+
+    :param results: the result rows from the database comparison
+    :param data_by_source_id: a mapping of import data by source_id
+    :return: list of events, list of remaining records
+    """
     events = []
+    confirms = []
     remaining_records = []
     for row in results:
         # Get the data for this record and create the event
@@ -144,23 +160,40 @@ def _shallow_compare(storage, model, msg):
             data["_last_event"] = row['_last_event']
             events.append(GOB.ADD.create_event(row['_source_id'], row['_source_id'], data))
         elif row['type'] == 'CONFIRM':
-            # Confirm and delete events only need the last event and hash
-            events.append(GOB.CONFIRM.create_event(
-                row['_source_id'],
-                row['_entity_source_id'],
-                {
-                    '_last_event': row['_last_event'],
-                    '_hash': row['_hash'],
-                }
-            ))
+            confirms.append({
+                '_source_id': row['_source_id'],
+                '_last_event': row['_last_event']
+            })
         elif row['type'] == 'MODIFY':
             # Store the data of modify events for further processing and don't create an event
             remaining_records.append(data)
 
-    # Add deletions which could not have been found by comparing in database
-    events.extend(_process_deletions(storage, model, data_by_source_id.keys()))
+    if confirms:
+        events.append(_create_confirm_event(confirms))
 
     return events, remaining_records
+
+
+def _create_confirm_event(confirms):
+    """Create the CONFIRM or BULKCONFIRM event
+
+    Given a list of confirms, this will return either a single CONFIRM or a
+    BULKCONFIRM
+
+    :param confirms: a list of dicts with _source_id, _last_event
+    :return: a CONFIRM or BULKCONFIRM event
+    """
+    # Create a BULKCONFIRM event if multiple confirms are found
+    if len(confirms) > 1:
+        event = GOB.BULKCONFIRM.create_event(confirms)
+    # Create a CONFIRM event if one confirm is found
+    else:
+        source_id = confirms[0]['_source_id']
+        data = {
+            '_last_event': confirms[0]['_last_event']
+        }
+        event = GOB.CONFIRM.create_event(source_id, source_id, data)
+    return event
 
 
 def _process_deletions(storage, model, new_entities):
@@ -183,30 +216,21 @@ def _process_deletions(storage, model, new_entities):
 
 
 def _process_new_data(storage, model, contents):
-    """Convert the data in the message into events and recompares
-
-    Recompares occur when the message contains multiple new volgnummers for the same state
-    The volgnummers denote modifications or confirms to the state
-    They should be processed in order to have a consistent history for the state
+    """Convert the remaining data in the message into events
 
     :param storage: Storage handler instance for the collection being processed
     :param model: GOB Model for the collection
     :param contents: a list of imported records, remaining after first compare
-    :return: list of events, list of recompares
+    :return: list of events
     """
     events = []
-    recompares = []
 
     for data in contents:
         event = _compare_new_data(model, storage, data)
-        if event is None:
-            # Skip historical states
-            continue
-
         # append the event to the events-list to be outputted
         events.append(event)
 
-    return events, recompares
+    return events
 
 
 def _compare_new_data(model, storage, new_data=None, entity_id=None):

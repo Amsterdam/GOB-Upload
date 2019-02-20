@@ -10,21 +10,23 @@ Use it like this:
     with storage.get_session():
         entity = storage.get_entity_for_update(entity_id, source_id, gob_event)
 """
+import copy
 import functools
+import json
 
-from gobcore.exceptions import GOBException
-from sqlalchemy import create_engine, Table
+from sqlalchemy import create_engine, Table, update
 from sqlalchemy.engine.url import URL
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session
 
+from gobcore.exceptions import GOBException
 from gobcore.model import GOBModel
 from gobcore.model.sa.gob import get_column
 from gobcore.typesystem import get_gob_type
+from gobcore.typesystem.json import GobTypeJSONEncoder
 from gobcore.views import GOBViews
 
 from gobupload.config import GOB_DB
-from gobupload.storage.db_models.event import build_db_event
 from gobupload.storage import queries
 
 import alembic.config
@@ -308,6 +310,18 @@ class GOBStorageHandler():
         return self.session.query(self.DbEntity._source_id).filter_by(**filter).all()
 
     @with_session
+    def get_last_events(self):
+        """Overview of all last applied events for the current collection
+
+        :return: a dict of ids with last_event for the collection
+        """
+        filter = {
+            "_source": self.metadata.source
+        }
+        result = self.session.query(self.DbEntity._source_id, self.DbEntity._last_event).filter_by(**filter).all()
+        return {row._source_id: row._last_event for row in result}
+
+    @with_session
     def get_column_values_for_key_value(self, column, key, value):
         """Gets the distinct values for column within the given source for the given key-value
 
@@ -398,14 +412,72 @@ class GOBStorageHandler():
 
         return entity_query.one_or_none()
 
-    @with_session
-    def add_event_to_storage(self, event):
-        """Adds an instance of event to the session, for storage
+    def bulk_add_entities(self, events):
+        """Adds all applied ADD events to the storage
 
-        :param event: instance of DbEvent to store
+        :param events: list of gob events
         """
-        entity = build_db_event(self.DbEvent, event, self.metadata)
-        self.session.add(entity)
+        insert_data = []
+        for event in events:
+            entity = event.get_attribute_dict()
+            # Set the the _last_event
+            entity['_last_event'] = event.id
+            insert_data.append(entity)
+        table = self.DbEntity.__table__
+        self.bulk_insert(table, insert_data)
+
+    def bulk_add_events(self, events):
+        """Adds all ADD events to the session, for storage
+
+        :param events: list of events
+        """
+        # Create the ADD event insert list
+        insert_data = []
+        for event in events:
+            row = {
+                'timestamp': self.metadata.timestamp,
+                'catalogue': self.metadata.catalogue,
+                'entity': self.metadata.entity,
+                'version': self.metadata.version,
+                'action': event['event'],
+                'source': self.metadata.source,
+                'application': self.metadata.application,
+                'source_id': event['data'].get('_source_id'),
+                'contents': json.dumps(copy.deepcopy(event['data']), cls=GobTypeJSONEncoder),
+            }
+            insert_data.append(row)
+        table = self.base.metadata.tables[self.EVENTS_TABLE]
+
+        self.bulk_insert(table, insert_data)
+
+    def bulk_update_confirms(self, event, eventid):
+        """ Confirm entities in bulk
+
+        Takes a BULKCONFIRM event and updates all source_ids with the bulkconfirm event's
+        id and timestamp
+
+        :param event: the BULKCONFIRM event
+        :param eventid: the id of the event to store as _last_event
+        :return:
+        """
+        source_ids = [record['_source_id'] for record in event._data['confirms']]
+        stmt = update(self.DbEntity).where(self.DbEntity._source_id.in_(source_ids)).\
+            values({event.timestamp_field: event._metadata.timestamp, '_last_event': eventid})
+        self.engine.execute(stmt)
+
+    def bulk_insert(self, table, insert_data):
+        """ A generic bulk insert function
+
+        Takes a list of dictionaries and the database table to insert into
+
+        :param table: the table to insert into
+        :param insert_data: the data to insert
+        :return:
+        """
+        self.engine.execute(
+            table.insert(),
+            insert_data
+        )
 
     def get_entity_for_update(self, event, data):
         """Get an entity to work with. Changes to the entity will be persisted on leaving session context
