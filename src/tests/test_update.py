@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 from gobcore.exceptions import GOBException
 from gobcore.events.import_events import ADD, DELETE, CONFIRM, MODIFY
 
-from gobupload.update import full_update, UpdateStatistics, _get_gob_event, _get_event_ids
+from gobupload.update import full_update, UpdateStatistics, _get_gob_event, _get_event_ids, _store_events, _apply_events
 from gobupload.storage.handler import GOBStorageHandler
 from tests import fixtures
 
@@ -39,7 +39,7 @@ class TestUpdate(TestCase):
         message = fixtures.get_event_message_fixture()
         full_update(message)
 
-        self.mock_storage.add_event_to_storage.assert_called_with(message['contents']['events'][0])
+        self.mock_storage.bulk_add_events.assert_called_with(message['contents']['events'])
 
     @patch('gobupload.update.GobEvent')
     @patch('gobupload.update._get_event_ids')
@@ -57,7 +57,7 @@ class TestUpdate(TestCase):
 
         full_update(message)
 
-        self.mock_storage.add_event_to_storage.assert_called()
+        self.mock_storage.bulk_add_events.assert_called()
         self.mock_storage.get_events_starting_after.assert_called()
 
     @patch('gobupload.update.GobEvent')
@@ -76,7 +76,7 @@ class TestUpdate(TestCase):
 
         full_update(message)
 
-        self.mock_storage.add_event_to_storage.assert_not_called()
+        self.mock_storage.bulk_add_events.assert_not_called()
         self.mock_storage.get_events_starting_after.assert_called()
 
     @patch('gobupload.update.GobEvent')
@@ -97,17 +97,16 @@ class TestUpdate(TestCase):
 
             full_update(message)
 
-            self.mock_storage.add_event_to_storage.assert_called()
+            self.mock_storage.bulk_add_events.assert_called()
             self.mock_storage.get_events_starting_after.assert_called()
 
     def test_statistics(self, mock):
-        stats = UpdateStatistics([1], [2])
+        stats = UpdateStatistics([1])
         stats.add_stored('STORED')
         stats.add_skipped('SKIPPED')
         stats.add_applied('APPLIED')
         results = stats.results()
         self.assertEqual(results['num_events'], 1)
-        self.assertEqual(results['num_recompares'], 1)
         self.assertEqual(results['num_stored_events'], 1)
         self.assertEqual(results['num_skipped_events_skipped'], 1)
         self.assertEqual(results['num_applied_applied'], 1)
@@ -140,3 +139,26 @@ class TestUpdate(TestCase):
 
             # Assert that Exception is thrown when events have invalid actions
             self.assertRaises(GOBException, _get_gob_event, dummy_event, {})
+
+    def test_store_events(self, mock):
+        metadata = fixtures.get_metadata_fixture()
+        event = fixtures.get_event_fixture(metadata)
+        event['data']['_last_event'] = fixtures.random_string()
+        event['data']['_entity_source_id'] = event['data']['_source_id']
+
+        self.mock_storage.get_last_events.return_value = {event['data']['_source_id']: event['data']['_last_event']}
+        mock.return_value = self.mock_storage
+        stats = UpdateStatistics([1])
+
+        _store_events(self.mock_storage, [event], stats)
+
+    def test_apply_events(self, mock):
+        event = fixtures.get_event_fixure()
+        event.contents = '{"_entity_source_id": "{fixtures.random_string()}"}'
+        mock.return_value = self.mock_storage
+        self.mock_storage.get_events_starting_after.return_value = [event]
+        stats = MagicMock()
+
+        _apply_events(self.mock_storage, 1, stats)
+
+        stats.add_applied.assert_called()

@@ -10,22 +10,23 @@ Use it like this:
     with storage.get_session():
         entity = storage.get_entity_for_update(entity_id, source_id, gob_event)
 """
+import copy
 import functools
+import json
 
-from gobcore.exceptions import GOBException
-from sqlalchemy import create_engine, Table
+from sqlalchemy import create_engine, Table, update
 from sqlalchemy.engine.url import URL
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session
 
+from gobcore.exceptions import GOBException
 from gobcore.model import GOBModel
-from gobcore.model.metadata import PRIVATE_META_FIELDS
 from gobcore.model.sa.gob import get_column
 from gobcore.typesystem import get_gob_type
+from gobcore.typesystem.json import GobTypeJSONEncoder
 from gobcore.views import GOBViews
 
 from gobupload.config import GOB_DB
-from gobupload.storage.db_models.event import build_db_event
 from gobupload.storage import queries
 
 import alembic.config
@@ -142,18 +143,14 @@ class GOBStorageHandler():
         table_name = self.gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
         new_table_name = table_name + TEMPORARY_TABLE_SUFFIX
 
-        private_fields = ['_source_id', '_hash']
-        fields = [collection['entity_id']]
-        # If the collection has state, take begin_geldigheid into account
-        if collection.get('has_states'):
-            fields.append('begin_geldigheid')
+        fields = self.gob_model.get_functional_key_fields(self.metadata.catalogue, self.metadata.entity)
+        fields.extend(['_source_id', '_hash'])
 
         # Try if the temporary table is already present
         try:
             new_table = self.base.metadata.tables[new_table_name]
         except KeyError:
-            columns = [get_column(c, PRIVATE_META_FIELDS[c]) for c in private_fields]
-            columns.extend([get_column(c, collection['fields'][c]) for c in fields])
+            columns = [get_column(c, collection['all_fields'][c]) for c in fields]
             new_table = Table(new_table_name, self.base.metadata, *columns, extend_existing=True)
             new_table.create(self.engine)
         else:
@@ -161,18 +158,17 @@ class GOBStorageHandler():
             self.engine.execute(f"TRUNCATE {new_table_name}")
 
         # Fill the temporary table
-        insert_data = self._fill_temporary_table(data, private_fields, fields)
+        insert_data = self._fill_temporary_table(data, fields)
         if(len(insert_data) > 0):
             self.engine.execute(
                 new_table.insert(),
                 insert_data
             )
 
-    def _fill_temporary_table(self, data, private_fields, fields):
+    def _fill_temporary_table(self, data, fields):
         """ Fill the temporary table with the data
 
         :param data: the imported data
-        :param private_fields: private fields
         :param fields: fields
         :return: insert_data, a list of dicts
         """
@@ -181,14 +177,12 @@ class GOBStorageHandler():
         insert_data = []
         for record in data:
             row = {}
-
-            for field in private_fields:
-                gob_type = get_gob_type(PRIVATE_META_FIELDS[field]['type'])
-                row[field] = gob_type.from_value(record[field]).to_db
-
             for field in fields:
-                gob_type = get_gob_type(collection['fields'][field]['type'])
-                row[field] = gob_type.from_value(record[field]).to_db
+                gob_type = get_gob_type(collection['all_fields'][field]['type'])
+                if field == '_source':
+                    row[field] = gob_type.from_value(self.metadata.source).to_db
+                else:
+                    row[field] = gob_type.from_value(record[field]).to_db
 
             insert_data.append(row)
 
@@ -203,12 +197,13 @@ class GOBStorageHandler():
 
         :return: a list of dicts with source_id, hash, last_event and type
         """
-        collection = self.gob_model.get_collection(self.metadata.catalogue, self.metadata.entity)
         current = self.gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
         temporary = current + TEMPORARY_TABLE_SUFFIX
 
+        fields = self.gob_model.get_functional_key_fields(self.metadata.catalogue, self.metadata.entity)
+
         # Get the result of comparison where data is equal to the current state
-        result = self.engine.execute(queries.get_comparison_query(current, temporary, collection)).fetchall()
+        result = self.engine.execute(queries.get_comparison_query(current, temporary, fields)).fetchall()
 
         # Drop the temporary table
         self.engine.execute(f"DROP TABLE IF EXISTS {temporary}")
@@ -315,6 +310,18 @@ class GOBStorageHandler():
         return self.session.query(self.DbEntity._source_id).filter_by(**filter).all()
 
     @with_session
+    def get_last_events(self):
+        """Overview of all last applied events for the current collection
+
+        :return: a dict of ids with last_event for the collection
+        """
+        filter = {
+            "_source": self.metadata.source
+        }
+        result = self.session.query(self.DbEntity._source_id, self.DbEntity._last_event).filter_by(**filter).all()
+        return {row._source_id: row._last_event for row in result}
+
+    @with_session
     def get_column_values_for_key_value(self, column, key, value):
         """Gets the distinct values for column within the given source for the given key-value
 
@@ -368,20 +375,15 @@ class GOBStorageHandler():
         An entity to retrieve is evaluated within a source
         on the basis of its functional id (_id)
 
-        If the collection has states (has_states) then the begin_geldigheid needs
-        also to be considered
-
         :param entity: the new version of the entity
         :return: the stored version of the entity, or None if it doesn't exist
         """
-        collection = self.gob_model.get_collection(self.metadata.catalogue, self.metadata.entity)
-
-        filter = {
-            "_source": self.metadata.source,
-            collection["entity_id"]: entity[collection["entity_id"]]
+        fields = self.gob_model.get_functional_key_fields(self.metadata.catalogue, self.metadata.entity)
+        value = {
+            **entity,
+            "_source": self.metadata.source
         }
-        if collection.get("has_states", False):
-            filter["begin_geldigheid"] = entity["begin_geldigheid"]
+        filter = {field: value[field] for field in fields}
 
         entity_query = self.session.query(self.DbEntity).filter_by(**filter)
         if not with_deleted:
@@ -397,24 +399,85 @@ class GOBStorageHandler():
         :param with_deleted: boolean denoting if entities that are deleted should be considered (default: False)
         :return:
         """
-        filter = {
+        fields = self.gob_model.get_technical_key_fields(self.metadata.catalogue, self.metadata.entity)
+        value = {
             "_source": self.metadata.source,
             "_source_id": source_id
         }
+        filter = {field: value[field] for field in fields}
+
         entity_query = self.session.query(self.DbEntity).filter_by(**filter)
         if not with_deleted:
             entity_query = entity_query.filter_by(_date_deleted=None)
 
         return entity_query.one_or_none()
 
-    @with_session
-    def add_event_to_storage(self, event):
-        """Adds an instance of event to the session, for storage
+    def bulk_add_entities(self, events):
+        """Adds all applied ADD events to the storage
 
-        :param event: instance of DbEvent to store
+        :param events: list of gob events
         """
-        entity = build_db_event(self.DbEvent, event, self.metadata)
-        self.session.add(entity)
+        insert_data = []
+        for event in events:
+            entity = event.get_attribute_dict()
+            # Set the the _last_event
+            entity['_last_event'] = event.id
+            insert_data.append(entity)
+        table = self.DbEntity.__table__
+        self.bulk_insert(table, insert_data)
+
+    def bulk_add_events(self, events):
+        """Adds all ADD events to the session, for storage
+
+        :param events: list of events
+        """
+        # Create the ADD event insert list
+        insert_data = []
+        for event in events:
+            row = {
+                'timestamp': self.metadata.timestamp,
+                'catalogue': self.metadata.catalogue,
+                'entity': self.metadata.entity,
+                'version': self.metadata.version,
+                'action': event['event'],
+                'source': self.metadata.source,
+                'application': self.metadata.application,
+                'source_id': event['data'].get('_source_id'),
+                'contents': json.dumps(copy.deepcopy(event['data']), cls=GobTypeJSONEncoder),
+            }
+            insert_data.append(row)
+        table = self.base.metadata.tables[self.EVENTS_TABLE]
+
+        self.bulk_insert(table, insert_data)
+
+    def bulk_update_confirms(self, event, eventid):
+        """ Confirm entities in bulk
+
+        Takes a BULKCONFIRM event and updates all source_ids with the bulkconfirm event's
+        id and timestamp
+
+        :param event: the BULKCONFIRM event
+        :param eventid: the id of the event to store as _last_event
+        :return:
+        """
+        source_ids = [record['_source_id'] for record in event._data['confirms']]
+        stmt = update(self.DbEntity).where(self.DbEntity._source_id.in_(source_ids)).\
+            values({event.timestamp_field: event._metadata.timestamp, '_last_event': eventid})
+        self.engine.execute(stmt)
+
+    def bulk_insert(self, table, insert_data):
+        """ A generic bulk insert function
+
+        Takes a list of dictionaries and the database table to insert into
+
+        :param table: the table to insert into
+        :param insert_data: the data to insert
+        :return:
+        """
+        self.engine.execute(
+            table.insert(),
+            insert_data
+        )
 
     def get_entity_for_update(self, event, data):
         """Get an entity to work with. Changes to the entity will be persisted on leaving session context
@@ -434,22 +497,6 @@ class GOBStorageHandler():
             # Create an empty entity for the sepcified source and source_id
             entity = self.DbEntity(_source=self.metadata.source, _source_id=event.source_id)
 
-            # Example data (event contents)
-            # {
-            #     "entity": {"identificatie": "10281154", ... "_last_event": null},
-            #     "id_column": "identificatie",
-            #      "_last_event": null,
-            #      "_source_id": "10281154",
-            #      "identificatie": "10281154"
-            # }
-
-            collection = self.gob_model.get_collection(self.metadata.catalogue, self.metadata.entity)
-
-            id_column = collection["entity_id"]
-            id_value = data["entity"][id_column]
-            setattr(entity, id_column, id_value)
-            setattr(entity, '_id', id_value)
-            setattr(entity, '_version', event.version)
             self.session.add(entity)
 
         if entity._date_deleted is not None and event.action != "ADD":

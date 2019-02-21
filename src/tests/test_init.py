@@ -7,7 +7,6 @@ class TestInit(TestCase):
     def test_report(self):
         report = get_report(
             contents=[1, 2, 3],
-            events=[{"event": "ADD"}],
-            recompares=[4])
+            events=[{"event": "ADD"}])
         self.assertEqual(report['num_records'], 1)
-        self.assertEqual(report['num_skipped_historical'], 1)
+        self.assertEqual(report['num_skipped_historical'], 2)

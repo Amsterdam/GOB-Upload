@@ -4,7 +4,7 @@ import datetime
 
 from collections import namedtuple
 
-from gobcore.events import GOB_EVENTS, import_events, _get_event
+from gobcore.events import GOB, GOB_EVENTS, import_events, _get_event
 from gobcore.events.import_message import MessageMetaData
 
 
@@ -39,7 +39,10 @@ def get_message_fixture(contents=None, **kwargs):
 
 
 def random_gob_event():
-    return random.choice(GOB_EVENTS)
+    # Choose a random event, but not BULKCONFIRM
+    events = GOB_EVENTS.copy()
+    events.remove(GOB.BULKCONFIRM)
+    return random.choice(events)
 
 
 def get_event_data_fixture(gob_event, metadata):
@@ -54,7 +57,7 @@ def get_event_fixture(metadata, event_name=None):
     data = get_event_data_fixture(gob_event, metadata)
     data["_last_event"] = None
     data["_hash"] = None
-    return gob_event.create_event(data["_source_id"], "", data)
+    return gob_event.create_event(data["_source_id"], data["_source_id"], data)
 
 
 def get_metadata_fixture():
@@ -79,8 +82,10 @@ def get_entity_fixture(**kwargs):
 
 
 def get_data_object(metadata, **kwargs):
+    source_id = random_string()
     data_object = {
-        '_source_id': random_string(),
+        '_source_id': source_id,
+        '_entity_source_id': source_id,
         '_hash': random_string(),
         metadata["id_column"]: random_string()
     }
@@ -113,6 +118,7 @@ def dict_to_object(dict):
     class Obj(object):
         def __init__(self, dict):
             self.__dict__ = dict
+            self.eventid = 1
     return Obj(dict)
 
 
@@ -124,7 +130,8 @@ def get_event_fixure():
         'entity': 'test_entity',
         'timestamp': datetime.datetime(2019, 1, 30, 18, 7, 7),
         'source': 'test',
-        'action': None,
+        'action': 'ADD',
+        'source_id': random_string()
     }
 
     return dict_to_object(event)

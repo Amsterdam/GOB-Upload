@@ -1,19 +1,18 @@
-def get_comparison_query(current, temporary, collection):
-    # If the collection has_states, take begin_geldigheid into account
-    entity_id = collection['entity_id']
-    using = f"{entity_id}, begin_geldigheid" if collection.get('has_states') else f"{entity_id}"
-
+def get_comparison_query(current, temporary, fields):
+    using = ",".join(fields)
     return f"""
 SELECT
     {temporary}._source_id,
     {current}._source_id AS _entity_source_id,
     {current}._last_event,
     {temporary}._hash,
-    'CONFIRM' AS type
+    CASE
+        WHEN {current}._date_deleted IS NULL THEN 'CONFIRM'
+        ELSE 'ADD'
+    END AS type
 FROM {temporary}
 FULL OUTER JOIN (
     SELECT * FROM {current}
-    WHERE _date_deleted IS NULL
     ) AS {current} USING ({using})
 WHERE (
     {temporary}._hash
@@ -28,13 +27,15 @@ SELECT
     COALESCE({temporary}._hash, {current}._hash),
     CASE
         WHEN {temporary}._source_id IS NULL THEN 'SKIP'
-        WHEN {current}._source_id IS NULL THEN 'ADD'
+        WHEN (
+            {current}._source_id IS NULL OR
+            {current}._date_deleted IS NOT NULL
+        ) THEN 'ADD'
         ELSE 'MODIFY'
     END AS type
 FROM {temporary}
 FULL OUTER JOIN (
     SELECT * FROM {current}
-    WHERE _date_deleted IS NULL
     ) AS {current} USING ({using})
 WHERE (
     {temporary}._hash
