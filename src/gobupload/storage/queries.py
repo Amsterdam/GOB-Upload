@@ -7,7 +7,7 @@ SELECT
     {current}._last_event,
     {temporary}._hash,
     CASE
-        WHEN test_catalogue_test_entity._date_deleted IS NULL THEN 'CONFIRM'
+        WHEN {current}._date_deleted IS NULL THEN 'CONFIRM'
         ELSE 'ADD'
     END AS type
 FROM {temporary}
