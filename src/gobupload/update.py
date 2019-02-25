@@ -17,6 +17,8 @@ class UpdateStatistics():
         self.stored = {}
         self.skipped = {}
         self.applied = {}
+        self.bulkconfirm_stored = None
+        self.bulkconfirm_applied = None
         self.events = events
 
     def add_stored(self, action):
@@ -27,6 +29,12 @@ class UpdateStatistics():
 
     def add_applied(self, action):
         self.applied[action] = self.applied.get(action, 0) + 1
+
+    def add_bulkconfirm_applied(self, num_records):
+        self.bulkconfirm_applied = num_records
+
+    def add_bulkconfirm_stored(self, num_records):
+        self.bulkconfirm_stored = num_records
 
     def results(self):
         """Get statistics in a dictionary
@@ -41,6 +49,13 @@ class UpdateStatistics():
                             (self.applied, "num_{action}_applied")]:
             for action, n in result.items():
                 results[fmt.format(action=action.lower())] = n
+
+        if self.bulkconfirm_stored:
+            results['bulkconfirm_records_stored'] = self.bulkconfirm_stored
+
+        if self.bulkconfirm_applied:
+            results['bulkconfirm_records_applied'] = self.bulkconfirm_applied
+
         return results
 
     def log(self):
@@ -114,6 +129,7 @@ def _apply_events(storage, start_after, stats):
 
             if isinstance(gob_event, GOB.BULKCONFIRM):
                 storage.bulk_update_confirms(gob_event, event.eventid)
+                stats.add_bulkconfirm_applied(len(gob_event._data['confirms']))
             else:
                 # Save new ADD events to insert in bulk
                 if data['_entity_source_id'] not in entities:
@@ -177,6 +193,8 @@ def _store_events(storage, events, stats):
             if _validate_event(entities, event, stats):
                 valid_events.append(event)
                 stats.add_stored(event_type)
+                if(event_type == 'BULKCONFIRM'):
+                    stats.add_bulkconfirm_stored(len(event['data']['confirms']))
             else:
                 logger.warning(f"Skip outdated {event_type} event",
                                {

@@ -105,11 +105,17 @@ class TestUpdate(TestCase):
         stats.add_stored('STORED')
         stats.add_skipped('SKIPPED')
         stats.add_applied('APPLIED')
+
+        stats.add_bulk_applied(10)
+        stats.add_bulk_stored(10)
+
         results = stats.results()
         self.assertEqual(results['num_events'], 1)
         self.assertEqual(results['num_stored_events'], 1)
         self.assertEqual(results['num_skipped_events_skipped'], 1)
         self.assertEqual(results['num_applied_applied'], 1)
+        self.assertEqual(results['bulkconfirm_records_stored'], 10)
+        self.assertEqual(results['bulkconfirm_records_applied'], 10)
 
     def test_gob_event_action(self, mock_event):
         # setup initial event and data
