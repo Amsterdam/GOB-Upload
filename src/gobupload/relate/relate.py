@@ -1,40 +1,63 @@
+"""
+GOB Relations
+
+GOB Relations are defined in GOB Model.
+The exact nature of a relation depends on the application that delivers the data.
+This can be found in GOB Sources
+
+This module uses the information in GOB Model and GOB Sources to get the relation data.
+In time this information can change.
+
+GOB Compare will then evaluate the data and translate the data into events.
+
+"""
 import datetime
 
-from gobcore.model import GOBModel
-from gobcore.sources import GOBSources
-
-from gobupload.storage.handler import GOBStorageHandler
+from gobupload.storage.relate import get_relations
 
 
+# Relations can have missing begin and end dates.
+# Begin-of-time and end-of-time are used to cope with this.
 _BEGIN_OF_TIME = datetime.date.min
 _END_OF_TIME = datetime.date.max
 
 
 def _handle_state_relation(state, relation):
-    print("STATE", state)
-    print("RELATION", relation)
-    print(f"{state['src_id']} {relation.get('begin_geldigheid')} - {relation.get('eind_geldigheid')} : {relation['dst']}")
+    """
+    Process a state (src) with its relations
+
+    :param state:
+    :param relation:
+    :return:
+    """
     if relation.get('begin_geldigheid', 'begin') == relation.get('eind_geldigheid', 'eind'):
         return []
     else:
         if relation.get('begin_geldigheid') == _BEGIN_OF_TIME:
             relation['begin_geldigheid'] = None
         return [{
-        "src_id": state["src_id"],
-        "begin_geldigheid": relation.get('begin_geldigheid'),
-        "eind_geldigheid": relation.get('eind_geldigheid'),
-        "dst": relation['dst']
-    }]
+            "src_id": state["src_id"],
+            "begin_geldigheid": relation.get('begin_geldigheid'),
+            "eind_geldigheid": relation.get('eind_geldigheid'),
+            "dst": relation['dst']
+        }]
 
 
 def _handle_state(state, relations):
+    """
+    Handle each state (src) and its corresponding relations and transform it in a sorted and closed
+    sequence of timeslots
+
+    :param state:
+    :param relations:
+    :return:
+    """
     relations.sort(key=lambda r: (r["begin_geldigheid"] if r["begin_geldigheid"] else _BEGIN_OF_TIME,
                                   r["eind_geldigheid"] if r["eind_geldigheid"] else _END_OF_TIME))
 
     relation = {}
     results = []
     for row in relations:
-        print("ROW", row)
         if relation.get('begin_geldigheid') == row.get('begin_geldigheid'):
             relation['dst'] = relation.get('dst', [])
             relation['dst'].extend(row['dst'])
@@ -57,19 +80,26 @@ def _handle_state(state, relations):
     return results
 
 
-def _get_id(row, id, volgnummer):
-    return f"{row[id]}.{row[volgnummer]}" if row.get(volgnummer) else row[id]
-
-
 def _get_src_id(row):
-    return _get_id(row, 'src__id', 'src_volgnummer')
+    """
+    Get the unique source id for a given row
+    If the source has states the volgnummer is included
 
-
-def _get_dst_id(row):
-    return _get_id(row, 'dst__id', 'dst_volgnummer')
+    :param row:
+    :return:
+    """
+    return f"{row['src__id']}.{row['src_volgnummer']}" if row.get('src_volgnummer') else row['src__id']
 
 
 def _get_relation(begin_geldigheid, eind_geldigheid, dst):
+    """
+    Compose relation data for the given timeslot and destination
+
+    :param begin_geldigheid:
+    :param eind_geldigheid:
+    :param dst:
+    :return:
+    """
     return {
         "begin_geldigheid": begin_geldigheid,
         "eind_geldigheid": eind_geldigheid,
@@ -77,118 +107,71 @@ def _get_relation(begin_geldigheid, eind_geldigheid, dst):
     }
 
 
-def _get_match(field, spec):
-    field_name = spec['field_name']
-    if field['type'] == "GOB.ManyReference":
-        # destination field value in source bronwaarden
-        return f"ANY(ARRAY(SELECT x->>'bronwaarde' FROM jsonb_array_elements(src.{field_name}) as x))"
-    else:
-        # destination field value = source bronwaarde
-        return f"src.{field_name}->>'bronwaarde'"
+def _close_state(state, relations, previous_end, results):
+    """
+    If the source has a longer lifetime than the destination add an empty relation at the end
+
+    :param state:
+    :param relations:
+    :param previous_end:
+    :param results:
+    :return:
+    """
+    if relations:
+        if previous_end != state["end"]:
+            # Add an empty last relation
+            relations.append(_get_relation(previous_end, state["end"], {}))
+        results.extend(_handle_state(state, relations))
 
 
-def _get_relations(src_catalog_name, src_collection_name, src_field_name):
+def _get_id(row, id, volgnummer):
+    """
+    The identification of a src or dst is its id and an optional volgnummer
 
-    # Get the source catalog, collection and field for the given names
-    model = GOBModel()
-    src_catalog = model.get_catalog(src_catalog_name)
-    src_collection = model.get_collection(src_catalog_name, src_collection_name)
-    src_field = src_collection['all_fields'].get(src_field_name)
-    src_table_name = model.get_table_name(src_catalog_name, src_collection_name)
+    :param row:
+    :param id:
+    :param volgnummer:
+    :return:
+    """
+    return {
+        "id": row[id],
+        "volgnummer": row.get(volgnummer)
+    }
 
-    # Get the relations for the given catalog, collection and field names
-    sources = GOBSources()
-    relation_specs = sources.get_field_relation(src_catalog_name, src_collection_name, src_field_name)
 
-    # Get the destination catalog and collection names
-    dst_catalog_name, dst_collection_name = src_field['ref'].split(':')
-    dst_table_name = model.get_table_name(dst_catalog_name, dst_collection_name)
+def _add_relations_before_dst_begin(src_begin, dst_begin, relations):
+    """
+    If the destination begins later than the source begins, add an empty relation
 
-    # Check if source or destination has states (volgnummer, begin_geldigheid, eind_geldigheid)
-    src_has_states = model.has_states(src_catalog_name, src_collection_name)
-    dst_has_states = model.has_states(dst_catalog_name, dst_collection_name)
+    :param src_begin:
+    :param dst_begin:
+    :param relations:
+    :return: The new destination begin
+    """
+    if src_begin is None and dst_begin:
+        relations.append(_get_relation(_BEGIN_OF_TIME, dst_begin, {}))
 
-    # And get the source and destination fields to select
-    BASE_FIELDS = ["_id"]
-    STATE_FIELDS = ["volgnummer", "begin_geldigheid", "eind_geldigheid"]
+    if src_begin and dst_begin:
+        # Compare begin of source and destination
+        if src_begin < dst_begin:
+            # Insert empty relation until begin of destination
+            relations.append(_get_relation(src_begin, dst_begin, {}))
+        # Adjust destination begin to be equal or after source begin
+        dst_begin = max(src_begin, dst_begin)
 
-    src_fields = list(BASE_FIELDS)
-    if src_has_states:
-        src_fields.extend(STATE_FIELDS)
-
-    dst_fields = list(BASE_FIELDS)
-    if dst_has_states:
-        dst_fields.extend(STATE_FIELDS)
-
-    # Get the fields that are required to match upon (multiple may exist, one per application)
-    dst_match_fields = [spec['destination_attribute'] for spec in relation_specs]
-
-    # Define the join of source and destination, src:bronwaarde = dst:field:value
-    join_on = ([f"(src._application = '{spec['source']}' AND " +
-                f"dst.{spec['destination_attribute']} = {_get_match(src_field, spec)})" for spec in relation_specs])
-
-    # If more matches have been defined that catch any of the matches
-    if len(join_on) > 1:
-        join_on = [f"({' OR '.join(join_on)})"]
-
-    # If both collections have states then join with corresponding geldigheid intervals
-    if src_has_states and dst_has_states:
-        join_on.extend([
-            "(dst.begin_geldigheid < src.eind_geldigheid OR src.eind_geldigheid is NULL)",
-            "(dst.eind_geldigheid > src.begin_geldigheid OR dst.eind_geldigheid is NULL)"
-        ])
-
-    # Main order is on src id
-    order_by = ["src._id"]
-    if src_has_states:
-        # then on source volgnummer and begin geldigheid
-        order_by.extend(["src.volgnummer", "src.begin_geldigheid"])
-    if dst_has_states:
-        # then on destination begin and eind geldigheid
-        order_by.extend(["dst.begin_geldigheid, dst.eind_geldigheid"])
-
-    # Build a properly formatted select statement
-    comma_join = ',\n    '
-    and_join = ' AND\n    '
-    query = f"""
-SELECT
-    {comma_join.join([f'src.{field} AS src_{field}' for field in src_fields])},
-    {comma_join.join([f'dst.{field} AS dst_{field}' for field in dst_fields])}
-FROM {src_table_name} AS src
-LEFT OUTER JOIN (
-SELECT
-    {comma_join.join([f'{field}' for field in dst_fields])},
-    {comma_join.join([f'{field}' for field in dst_match_fields])}
-FROM {dst_table_name}) AS dst
-ON
-    {and_join.join(join_on)}
-ORDER BY
-    {', '.join(order_by)}
-"""
-
-    print(query)
-    # 1
-    # A06.1 : 2006-06-12 - 2007-06-12 : ['B1']
-    # A06.1 : 2007-06-12 - 2011-12-28 : ['B1', 'A1']
-    # 2
-    # A06.2 : 2011-12-28 - 2012-01-01 : ['B1', 'A2']
-    # A06.2 : 2012-01-01 - 2014-01-01 : ['A2']
-    # A06.2 : 2014-01-01 - 2015-01-01 : []
-    # 3
-    # A06.3 : 2015-01-01 - 2017-01-01 : ['A3', 'B2']
-    # A06.3 : 2017-01-01 - None : ['B2']
-
-    # Execute the query and return the result as a list of dictionaries
-    storage = GOBStorageHandler()
-    engine = storage.engine
-    relations = engine.execute(query).fetchall()
-    relations = [dict(row) for row in relations]
-    return relations
+    return dst_begin
 
 
 def _handle_relations(rows):
+    """
+    The relation data that is retrieved from the database is transformed into relation data
+    with timeslots that cover the complete lifetime of the source field.
+
+    :param rows: database query results
+    :return: array with relations ordered by timeslot
+    """
     if not rows:
-        print("ERROR: No relations!")
+        print("Warning: No relations found")
         return []
 
     state = {}
@@ -199,29 +182,18 @@ def _handle_relations(rows):
 
         # Get the source specs
         src = _get_src_id(row)
-        src_id = {
-            "id": row['src__id'],
-            "volgnummer": row.get("src_volgnummer")
-        }
+        src_id = _get_id(row, 'src__id', 'src_volgnummer')
         src_begin = row.get("src_begin_geldigheid")
         src_end = row.get("src_eind_geldigheid")
 
         # Get the destination specs
-        dst = _get_dst_id(row)
-        dst_id = {
-            "id": row['dst__id'],
-            "volgnummer": row.get("dst_volgnummer")
-        }
+        dst_id = _get_id(row, 'dst__id', 'dst_volgnummer')
         dst_begin = row.get("dst_begin_geldigheid", src_begin)
         dst_end = row.get("dst_eind_geldigheid", src_end)
 
         if src != previous.get("src"):
-            # end any current state
-            if relations:
-                if previous["dst_end"] != state["end"]:
-                    # Add an empty last relation
-                    relations.append(_get_relation(previous["dst_end"], state["end"], {}))
-                results.extend(_handle_state(state, relations))
+            # end any current state on change of source (id + volgnummer)
+            _close_state(state, relations, previous.get("dst_end"), results)
             # start new state
             state = {
                 "src": src,
@@ -231,16 +203,7 @@ def _handle_relations(rows):
             }
             relations = []
 
-        if src_begin is None and dst_begin:
-            relations.append(_get_relation(_BEGIN_OF_TIME, dst_begin, {}))
-
-        if src_begin and dst_begin:
-            # Compare begin of source and destination
-            if src_begin < dst_begin:
-                # Insert empty relation until begin of destination
-                relations.append(_get_relation(src_begin, dst_begin, {}))
-            # Adjust destination begin to be equal or after source begin
-            dst_begin = max(src_begin, dst_begin)
+        dst_begin = _add_relations_before_dst_begin(src_begin, dst_begin, relations)
 
         # Take the minimum eind_geldigheid of src_id and dst
         if dst_end is None:
@@ -255,16 +218,19 @@ def _handle_relations(rows):
             "dst_end": dst_end
         }
 
-    if relations:
-        if previous["dst_end"] != state["end"]:
-            # Add an empty last relation
-            relations.append(_get_relation(previous["dst_end"], state["end"], {}))
-        results.extend(_handle_state(state, relations))
+    _close_state(state, relations, previous["dst_end"], results)
 
-    print(rows[0])
     return results
 
 
 def relate(catalog_name, collection_name, field_name):
-    relations = _get_relations(catalog_name, collection_name, field_name)
-    _handle_relations(relations)
+    """
+    Get all relations for the given catalog, collection and field
+
+    :param catalog_name:
+    :param collection_name:
+    :param field_name:
+    :return: the relations for the given catalog, collection and field
+    """
+    relations = get_relations(catalog_name, collection_name, field_name)
+    return _handle_relations(relations)
