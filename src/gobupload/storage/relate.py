@@ -46,7 +46,9 @@ def _get_fields(has_states):
     :param has_states:
     :return:
     """
-    BASE_FIELDS = ["_id"]
+    # Functional identification
+    BASE_FIELDS = ["_source", "_id"]
+    # State fields for collections with states
     STATE_FIELDS = ["volgnummer", "begin_geldigheid", "eind_geldigheid"]
 
     fields = list(BASE_FIELDS)
