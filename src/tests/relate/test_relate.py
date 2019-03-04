@@ -39,11 +39,14 @@ class TestRelations(TestCase):
         ]
         expect = """
 SELECT
+    src._source AS src__source,
     src._id AS src__id,
+    dst._source AS dst__source,
     dst._id AS dst__id
 FROM catalog_collection AS src
 LEFT OUTER JOIN (
 SELECT
+    _source,
     _id,
     dst_attr
 FROM dst_catalogue_dst_collection) AS dst
@@ -77,10 +80,12 @@ ORDER BY
         ]
         expect = """
 SELECT
+    src._source AS src__source,
     src._id AS src__id,
     src.volgnummer AS src_volgnummer,
     src.begin_geldigheid AS src_begin_geldigheid,
     src.eind_geldigheid AS src_eind_geldigheid,
+    dst._source AS dst__source,
     dst._id AS dst__id,
     dst.volgnummer AS dst_volgnummer,
     dst.begin_geldigheid AS dst_begin_geldigheid,
@@ -88,6 +93,7 @@ SELECT
 FROM catalog_collection AS src
 LEFT OUTER JOIN (
 SELECT
+    _source,
     _id,
     volgnummer,
     begin_geldigheid,
@@ -127,10 +133,12 @@ ORDER BY
         ]
         expect = """
 SELECT
+    src._source AS src__source,
     src._id AS src__id,
     src.volgnummer AS src_volgnummer,
     src.begin_geldigheid AS src_begin_geldigheid,
     src.eind_geldigheid AS src_eind_geldigheid,
+    dst._source AS dst__source,
     dst._id AS dst__id,
     dst.volgnummer AS dst_volgnummer,
     dst.begin_geldigheid AS dst_begin_geldigheid,
@@ -138,6 +146,7 @@ SELECT
 FROM catalog_collection AS src
 LEFT OUTER JOIN (
 SELECT
+    _source,
     _id,
     volgnummer,
     begin_geldigheid,
@@ -182,10 +191,12 @@ ORDER BY
         ]
         expect = """
 SELECT
+    src._source AS src__source,
     src._id AS src__id,
     src.volgnummer AS src_volgnummer,
     src.begin_geldigheid AS src_begin_geldigheid,
     src.eind_geldigheid AS src_eind_geldigheid,
+    dst._source AS dst__source,
     dst._id AS dst__id,
     dst.volgnummer AS dst_volgnummer,
     dst.begin_geldigheid AS dst_begin_geldigheid,
@@ -193,6 +204,7 @@ SELECT
 FROM catalog_collection AS src
 LEFT OUTER JOIN (
 SELECT
+    _source,
     _id,
     volgnummer,
     begin_geldigheid,
@@ -251,14 +263,14 @@ class TestRelateNoStates(TestCase):
 
     def test_single(self):
         relations = [
-            {'src__id': 'src_1', 'dst__id': 'dst_1'}
+            {'src__source': 'src_src_1', 'src__id': 'src_1', 'dst__source': 'src_dst_1', 'dst__id': 'dst_1'}
         ]
         expect = [
             {
-                "src_id": {'id': 'src_1', 'volgnummer': None},
+                "src_id": {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
                 "begin_geldigheid": None,
                 "eind_geldigheid": None,
-                "dst": [{'id': 'dst_1', 'volgnummer': None}]
+                "dst": [{'source': 'src_dst_1', 'id': 'dst_1', 'volgnummer': None}]
             }
         ]
         result = _handle_relations(relations)
@@ -266,21 +278,21 @@ class TestRelateNoStates(TestCase):
 
     def test_single_more(self):
         relations = [
-            {'src__id': 'src_1', 'dst__id': 'dst_1'},
-            {'src__id': 'src_2', 'dst__id': 'dst_2'}
+            {'src__source': 'src_src_1', 'src__id': 'src_1', 'dst__source': 'src_dst_1', 'dst__id': 'dst_1'},
+            {'src__source': 'src_src_1', 'src__id': 'src_2', 'dst__source': 'src_dst_1', 'dst__id': 'dst_2'}
         ]
         expect = [
             {
-                "src_id": {'id': 'src_1', 'volgnummer': None},
+                "src_id": {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
                 "begin_geldigheid": None,
                 "eind_geldigheid": None,
-                "dst": [{'id': 'dst_1', 'volgnummer': None}]
+                "dst": [{'source': 'src_dst_1', 'id': 'dst_1', 'volgnummer': None}]
             },
             {
-                "src_id": {'id': 'src_2', 'volgnummer': None},
+                "src_id": {'source': 'src_src_1', 'id': 'src_2', 'volgnummer': None},
                 "begin_geldigheid": None,
                 "eind_geldigheid": None,
-                "dst": [{'id': 'dst_2', 'volgnummer': None}]
+                "dst": [{'source': 'src_dst_1', 'id': 'dst_2', 'volgnummer': None}]
             }
         ]
         result = _handle_relations(relations)
@@ -288,15 +300,15 @@ class TestRelateNoStates(TestCase):
 
     def test_many(self):
         relations = [
-            {'src__id': 'src_1', 'dst__id': 'dst_1'},
-            {'src__id': 'src_1', 'dst__id': 'dst_2'}
+            {'src__source': 'src_src_1', 'src__id': 'src_1', 'dst__source': 'src_dst_1', 'dst__id': 'dst_1'},
+            {'src__source': 'src_src_1', 'src__id': 'src_1', 'dst__source': 'src_dst_1', 'dst__id': 'dst_2'}
         ]
         expect = [
             {
-                "src_id": {'id': 'src_1', 'volgnummer': None},
+                "src_id": {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
                 "begin_geldigheid": None,
                 "eind_geldigheid": None,
-                "dst": [{'id': 'dst_1', 'volgnummer': None}, {'id': 'dst_2', 'volgnummer': None}]
+                "dst": [{'source': 'src_dst_1', 'id': 'dst_1', 'volgnummer': None}, {'source': 'src_dst_1', 'id': 'dst_2', 'volgnummer': None}]
             }
         ]
         result = _handle_relations(relations)
@@ -304,23 +316,23 @@ class TestRelateNoStates(TestCase):
 
     def test_many_more(self):
         relations = [
-            {'src__id': 'src_1', 'dst__id': 'dst_1'},
-            {'src__id': 'src_1', 'dst__id': 'dst_2'},
-            {'src__id': 'src_2', 'dst__id': 'dst_3'},
-            {'src__id': 'src_2', 'dst__id': 'dst_4'}
+            {'src__source': 'src_src_1', 'src__id': 'src_1', 'dst__source': 'src_dst_1', 'dst__id': 'dst_1'},
+            {'src__source': 'src_src_1', 'src__id': 'src_1', 'dst__source': 'src_dst_1', 'dst__id': 'dst_2'},
+            {'src__source': 'src_src_1', 'src__id': 'src_2', 'dst__source': 'src_dst_1', 'dst__id': 'dst_3'},
+            {'src__source': 'src_src_1', 'src__id': 'src_2', 'dst__source': 'src_dst_1', 'dst__id': 'dst_4'}
         ]
         expect = [
             {
-                "src_id": {'id': 'src_1', 'volgnummer': None},
+                "src_id": {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
                 "begin_geldigheid": None,
                 "eind_geldigheid": None,
-                "dst": [{'id': 'dst_1', 'volgnummer': None}, {'id': 'dst_2', 'volgnummer': None}]
+                "dst": [{'source': 'src_dst_1', 'id': 'dst_1', 'volgnummer': None}, {'source': 'src_dst_1', 'id': 'dst_2', 'volgnummer': None}]
             },
             {
-                "src_id": {'id': 'src_2', 'volgnummer': None},
+                "src_id": {'source': 'src_src_1', 'id': 'src_2', 'volgnummer': None},
                 "begin_geldigheid": None,
                 "eind_geldigheid": None,
-                "dst": [{'id': 'dst_3', 'volgnummer': None}, {'id': 'dst_4', 'volgnummer': None}]
+                "dst": [{'source': 'src_dst_1', 'id': 'dst_3', 'volgnummer': None}, {'source': 'src_dst_1', 'id': 'dst_4', 'volgnummer': None}]
             }
         ]
         result = _handle_relations(relations)
@@ -337,10 +349,12 @@ class TestRelateBothStates(TestCase):
     def test_single(self):
         relations = [
             {
+                'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2006, 1, 1),
                 'src_eind_geldigheid': datetime.date(2011, 1, 1),
+                'dst__source': 'dst_src_1',
                 'dst__id': 'dst_1',
                 'dst_volgnummer': '1',
                 'dst_begin_geldigheid': datetime.date(2006, 1, 1),
@@ -349,10 +363,10 @@ class TestRelateBothStates(TestCase):
         ]
         expect = [
             {
-                'src_id': {'id': 'src_1', 'volgnummer': '1'},
+                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
-                'dst': [{'id': 'dst_1', 'volgnummer': '1'}]
+                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
             }
         ]
         result = _handle_relations(relations)
@@ -361,10 +375,12 @@ class TestRelateBothStates(TestCase):
     def test_empty_start(self):
         relations = [
             {
+                'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2006, 1, 1),
                 'src_eind_geldigheid': datetime.date(2011, 1, 1),
+                'dst__source': 'dst_src_1',
                 'dst__id': 'dst_1',
                 'dst_volgnummer': '1',
                 'dst_begin_geldigheid': datetime.date(2007, 1, 1),
@@ -373,16 +389,16 @@ class TestRelateBothStates(TestCase):
         ]
         expect = [
             {
-                'src_id': {'id': 'src_1', 'volgnummer': '1'},
+                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2007, 1, 1),
                 'dst': []
             },
             {
-                'src_id': {'id': 'src_1', 'volgnummer': '1'},
+                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2007, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
-                'dst': [{'id': 'dst_1', 'volgnummer': '1'}]
+                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
             }
         ]
         result = _handle_relations(relations)
@@ -391,10 +407,12 @@ class TestRelateBothStates(TestCase):
     def test_empty_end(self):
         relations = [
             {
+                'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2006, 1, 1),
                 'src_eind_geldigheid': datetime.date(2011, 1, 1),
+                'dst__source': 'dst_src_1',
                 'dst__id': 'dst_1',
                 'dst_volgnummer': '1',
                 'dst_begin_geldigheid': datetime.date(2006, 1, 1),
@@ -403,13 +421,13 @@ class TestRelateBothStates(TestCase):
         ]
         expect = [
             {
-                'src_id': {'id': 'src_1', 'volgnummer': '1'},
+                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2010, 1, 1),
-                'dst': [{'id': 'dst_1', 'volgnummer': '1'}]
+                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
             },
             {
-                'src_id': {'id': 'src_1', 'volgnummer': '1'},
+                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2010, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
                 'dst': []
@@ -422,10 +440,12 @@ class TestRelateBothStates(TestCase):
     def test_empty_begin_end(self):
         relations = [
             {
+                'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2006, 1, 1),
                 'src_eind_geldigheid': datetime.date(2011, 1, 1),
+                'dst__source': 'dst_src_1',
                 'dst__id': 'dst_1',
                 'dst_volgnummer': '1',
                 'dst_begin_geldigheid': datetime.date(2007, 1, 1),
@@ -434,19 +454,19 @@ class TestRelateBothStates(TestCase):
         ]
         expect = [
             {
-                'src_id': {'id': 'src_1', 'volgnummer': '1'},
+                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2007, 1, 1),
                 'dst': []
             },
             {
-                'src_id': {'id': 'src_1', 'volgnummer': '1'},
+                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2007, 1, 1),
                 'eind_geldigheid': datetime.date(2010, 1, 1),
-                'dst': [{'id': 'dst_1', 'volgnummer': '1'}]
+                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
             },
             {
-                'src_id': {'id': 'src_1', 'volgnummer': '1'},
+                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2010, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
                 'dst': []
@@ -459,10 +479,12 @@ class TestRelateBothStates(TestCase):
     def test_before(self):
         relations = [
             {
+                'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2006, 1, 1),
                 'src_eind_geldigheid': datetime.date(2011, 1, 1),
+                'dst__source': 'dst_src_1',
                 'dst__id': 'dst_1',
                 'dst_volgnummer': '1',
                 'dst_begin_geldigheid': datetime.date(2000, 1, 1),
@@ -471,7 +493,7 @@ class TestRelateBothStates(TestCase):
         ]
         expect = [
             {
-                'src_id': {'id': 'src_1', 'volgnummer': '1'},
+                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
                 'dst': []
@@ -484,10 +506,12 @@ class TestRelateBothStates(TestCase):
     def test_after(self):
         relations = [
             {
+                'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2006, 1, 1),
                 'src_eind_geldigheid': datetime.date(2011, 1, 1),
+                'dst__source': 'dst_src_1',
                 'dst__id': 'dst_1',
                 'dst_volgnummer': '1',
                 'dst_begin_geldigheid': datetime.date(2011, 1, 1),
@@ -496,7 +520,7 @@ class TestRelateBothStates(TestCase):
         ]
         expect = [
             {
-                'src_id': {'id': 'src_1', 'volgnummer': '1'},
+                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
                 'dst': []
@@ -509,10 +533,12 @@ class TestRelateBothStates(TestCase):
     def test_before_and_after(self):
         relations = [
             {
+                'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2006, 1, 1),
                 'src_eind_geldigheid': datetime.date(2011, 1, 1),
+                'dst__source': 'dst_src_1',
                 'dst__id': 'dst_1',
                 'dst_volgnummer': '1',
                 'dst_begin_geldigheid': datetime.date(2001, 1, 1),
@@ -521,10 +547,10 @@ class TestRelateBothStates(TestCase):
         ]
         expect = [
             {
-                'src_id': {'id': 'src_1', 'volgnummer': '1'},
+                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
-                'dst': [{'id': 'dst_1', 'volgnummer': '1'}]
+                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
             }
         ]
         result = _handle_relations(relations)
@@ -534,20 +560,24 @@ class TestRelateBothStates(TestCase):
     def test_more(self):
         relations = [
             {
+                'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2006, 1, 1),
                 'src_eind_geldigheid': datetime.date(2011, 1, 1),
+                'dst__source': 'dst_src_1',
                 'dst__id': 'dst_1',
                 'dst_volgnummer': '1',
                 'dst_begin_geldigheid': datetime.date(2006, 1, 1),
                 'dst_eind_geldigheid': datetime.date(2007, 1, 1)
             },
             {
+                'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2006, 1, 1),
                 'src_eind_geldigheid': datetime.date(2011, 1, 1),
+                'dst__source': 'dst_src_1',
                 'dst__id': 'dst_1',
                 'dst_volgnummer': '2',
                 'dst_begin_geldigheid': datetime.date(2007, 1, 1),
@@ -556,16 +586,16 @@ class TestRelateBothStates(TestCase):
         ]
         expect = [
             {
-                'src_id': {'id': 'src_1', 'volgnummer': '1'},
+                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2007, 1, 1),
-                'dst': [{'id': 'dst_1', 'volgnummer': '1'}]
+                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
             },
             {
-                'src_id': {'id': 'src_1', 'volgnummer': '1'},
+                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2007, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
-                'dst': [{'id': 'dst_1', 'volgnummer': '2'}]
+                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '2'}]
             }
         ]
         result = _handle_relations(relations)
@@ -574,30 +604,36 @@ class TestRelateBothStates(TestCase):
     def test_many(self):
         relations = [
             {
+                'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2006, 1, 1),
                 'src_eind_geldigheid': datetime.date(2012, 1, 1),
+                'dst__source': 'dst_src_1',
                 'dst__id': 'dst_1',
                 'dst_volgnummer': '1',
                 'dst_begin_geldigheid': datetime.date(2006, 1, 1),
                 'dst_eind_geldigheid': datetime.date(2011, 1, 1)
             },
             {
+                'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2006, 1, 1),
                 'src_eind_geldigheid': datetime.date(2012, 1, 1),
+                'dst__source': 'dst_src_1',
                 'dst__id': 'dst_2',
                 'dst_volgnummer': '1',
                 'dst_begin_geldigheid': datetime.date(2006, 1, 1),
                 'dst_eind_geldigheid': datetime.date(2011, 1, 1)
             },
             {
+                'src__source': 'src_src_1',
                 'src__id': 'src_2',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2006, 1, 1),
                 'src_eind_geldigheid': datetime.date(2012, 1, 1),
+                'dst__source': 'dst_src_1',
                 'dst__id': 'dst_2',
                 'dst_volgnummer': '1',
                 'dst_begin_geldigheid': datetime.date(2006, 1, 1),
@@ -606,22 +642,22 @@ class TestRelateBothStates(TestCase):
         ]
         expect = [
             {
-                'src_id': {'id': 'src_1', 'volgnummer': '1'},
+                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
-                'dst': [{'id': 'dst_1', 'volgnummer': '1'}, {'id': 'dst_2', 'volgnummer': '1'}]
+                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}, {'source': 'dst_src_1', 'id': 'dst_2', 'volgnummer': '1'}]
             },
             {
-                'src_id': {'id': 'src_1', 'volgnummer': '1'},
+                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2011, 1, 1),
                 'eind_geldigheid': datetime.date(2012, 1, 1),
                 'dst': []
             },
             {
-                'src_id': {'id': 'src_2', 'volgnummer': '1'},
+                'src_id': {'source': 'src_src_1', 'id': 'src_2', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2012, 1, 1),
-                'dst': [{'id': 'dst_2', 'volgnummer': '1'}]
+                'dst': [{'source': 'dst_src_1', 'id': 'dst_2', 'volgnummer': '1'}]
             }
         ]
         result = _handle_relations(relations)
@@ -631,20 +667,24 @@ class TestRelateBothStates(TestCase):
     def test_many_with_diff(self):
         relations = [
             {
+                'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2006, 1, 1),
                 'src_eind_geldigheid': datetime.date(2011, 1, 1),
+                'dst__source': 'dst_src_1',
                 'dst__id': 'dst_1',
                 'dst_volgnummer': '1',
                 'dst_begin_geldigheid': datetime.date(2006, 1, 1),
                 'dst_eind_geldigheid': datetime.date(2008, 1, 1)
             },
             {
+                'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2006, 1, 1),
                 'src_eind_geldigheid': datetime.date(2011, 1, 1),
+                'dst__source': 'dst_src_1',
                 'dst__id': 'dst_2',
                 'dst_volgnummer': '1',
                 'dst_begin_geldigheid': datetime.date(2006, 1, 1),
@@ -653,16 +693,16 @@ class TestRelateBothStates(TestCase):
         ]
         expect = [
             {
-                'src_id': {'id': 'src_1', 'volgnummer': '1'},
+                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2008, 1, 1),
-                'dst': [{'id': 'dst_1', 'volgnummer': '1'}, {'id': 'dst_2', 'volgnummer': '1'}]
+                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}, {'source': 'dst_src_1', 'id': 'dst_2', 'volgnummer': '1'}]
             },
             {
-                'src_id': {'id': 'src_1', 'volgnummer': '1'},
+                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2008, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
-                'dst': [{'id': 'dst_2', 'volgnummer': '1'}]
+                'dst': [{'source': 'dst_src_1', 'id': 'dst_2', 'volgnummer': '1'}]
             }
         ]
         result = _handle_relations(relations)
@@ -680,7 +720,9 @@ class TestRelateNoStatesWithStates(TestCase):
     def test_single(self):
         relations = [
             {
+                'src__source': 'src_src_1',
                 'src__id': 'src_1',
+                'dst__source': 'dst_src_1',
                 'dst__id': 'dst_1',
                 'dst_volgnummer': '1',
                 'dst_begin_geldigheid': datetime.date(2006, 1, 1),
@@ -689,19 +731,19 @@ class TestRelateNoStatesWithStates(TestCase):
         ]
         expect = [
             {
-                'src_id': {'id': 'src_1', 'volgnummer': None},
+                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
                 'begin_geldigheid': None,
                 'eind_geldigheid': datetime.date(2006, 1, 1),
                 'dst': []
             },
             {
-                'src_id': {'id': 'src_1', 'volgnummer': None},
+                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
-                'dst': [{'id': 'dst_1', 'volgnummer': '1'}]
+                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
             },
             {
-                'src_id': {'id': 'src_1', 'volgnummer': None},
+                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
                 'begin_geldigheid': datetime.date(2011, 1, 1),
                 'eind_geldigheid': None,
                 'dst': []
@@ -722,19 +764,21 @@ class TestRelateWithStatesNoStates(TestCase):
     def test_single(self):
         relations = [
             {
+                'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2005, 1, 1),
                 'src_eind_geldigheid': datetime.date(2011, 1, 1),
+                'dst__source': 'dst_src_1',
                 'dst__id': 'dst_1'
             }
         ]
         expect = [
             {
-                'src_id': {'id': 'src_1', 'volgnummer': '1'},
+                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2005, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
-                'dst': [{'id': 'dst_1', 'volgnummer': None}]
+                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': None}]
             }
         ]
         result = _handle_relations(relations)
@@ -743,26 +787,31 @@ class TestRelateWithStatesNoStates(TestCase):
     def test_many(self):
         relations = [
             {
+                'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2005, 1, 1),
                 'src_eind_geldigheid': datetime.date(2011, 1, 1),
+                'dst__source': 'dst_src_1',
                 'dst__id': 'dst_1'
             },
             {
+                'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2005, 1, 1),
                 'src_eind_geldigheid': datetime.date(2011, 1, 1),
+                'dst__source': 'dst_src_1',
                 'dst__id': 'dst_2'
             }
         ]
         expect = [
             {
-                'src_id': {'id': 'src_1', 'volgnummer': '1'},
+                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2005, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
-                'dst': [{'id': 'dst_1', 'volgnummer': None}, {'id': 'dst_2', 'volgnummer': None}]
+                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': None},
+                        {'source': 'dst_src_1', 'id': 'dst_2', 'volgnummer': None}]
             }
         ]
         result = _handle_relations(relations)
@@ -771,32 +820,36 @@ class TestRelateWithStatesNoStates(TestCase):
     def test_multiple_volgnummer(self):
         relations = [
             {
+                'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2005, 1, 1),
                 'src_eind_geldigheid': datetime.date(2011, 1, 1),
+                'dst__source': 'dst_src_1',
                 'dst__id': 'dst_1'
             },
             {
+                'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '2',
                 'src_begin_geldigheid': datetime.date(2007, 1, 1),
                 'src_eind_geldigheid': datetime.date(2011, 1, 1),
+                'dst__source': 'dst_src_1',
                 'dst__id': 'dst_2'
             }
         ]
         expect = [
             {
-                'src_id': {'id': 'src_1', 'volgnummer': '1'},
+                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2005, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
-                'dst': [{'id': 'dst_1', 'volgnummer': None}]
+                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': None}]
             },
             {
-                'src_id': {'id': 'src_1', 'volgnummer': '2'},
+                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '2'},
                 'begin_geldigheid': datetime.date(2007, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
-                'dst': [{'id': 'dst_2', 'volgnummer': None}]
+                'dst': [{'source': 'dst_src_1', 'id': 'dst_2', 'volgnummer': None}]
             }
         ]
         result = _handle_relations(relations)

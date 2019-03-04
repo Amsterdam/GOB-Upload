@@ -124,7 +124,7 @@ def _close_state(state, relations, previous_end, results):
         results.extend(_handle_state(state, relations))
 
 
-def _get_id(row, id, volgnummer):
+def _get_id(row, source, id, volgnummer):
     """
     The identification of a src or dst is its id and an optional volgnummer
 
@@ -134,6 +134,7 @@ def _get_id(row, id, volgnummer):
     :return:
     """
     return {
+        "source": row[source],
         "id": row[id],
         "volgnummer": row.get(volgnummer)
     }
@@ -182,12 +183,12 @@ def _handle_relations(rows):
 
         # Get the source specs
         src = _get_src_id(row)
-        src_id = _get_id(row, 'src__id', 'src_volgnummer')
+        src_id = _get_id(row, 'src__source', 'src__id', 'src_volgnummer')
         src_begin = row.get("src_begin_geldigheid")
         src_end = row.get("src_eind_geldigheid")
 
         # Get the destination specs
-        dst_id = _get_id(row, 'dst__id', 'dst_volgnummer')
+        dst_id = _get_id(row, 'dst__source', 'dst__id', 'dst_volgnummer')
         dst_begin = row.get("dst_begin_geldigheid", src_begin)
         dst_end = row.get("dst_eind_geldigheid", src_end)
 
