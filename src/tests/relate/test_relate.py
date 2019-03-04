@@ -434,7 +434,6 @@ class TestRelateBothStates(TestCase):
             }
         ]
         result = _handle_relations(relations)
-        print("RESULT", result)
         self.assertEqual(result, expect)
 
     def test_empty_begin_end(self):
@@ -473,7 +472,6 @@ class TestRelateBothStates(TestCase):
             }
         ]
         result = _handle_relations(relations)
-        print("RESULT", result)
         self.assertEqual(result, expect)
 
     def test_before(self):
@@ -500,7 +498,6 @@ class TestRelateBothStates(TestCase):
             }
         ]
         result = _handle_relations(relations)
-        print("RESULT", result)
         self.assertEqual(result, expect)
 
     def test_after(self):
@@ -527,7 +524,6 @@ class TestRelateBothStates(TestCase):
             }
         ]
         result = _handle_relations(relations)
-        print("RESULT", result)
         self.assertEqual(result, expect)
 
     def test_before_and_after(self):
@@ -554,7 +550,6 @@ class TestRelateBothStates(TestCase):
             }
         ]
         result = _handle_relations(relations)
-        print("RESULT", result)
         self.assertEqual(result, expect)
 
     def test_more(self):
@@ -661,7 +656,6 @@ class TestRelateBothStates(TestCase):
             }
         ]
         result = _handle_relations(relations)
-        print("RESULT", result)
         self.assertEqual(result, expect)
 
     def test_many_with_diff(self):
@@ -706,7 +700,6 @@ class TestRelateBothStates(TestCase):
             }
         ]
         result = _handle_relations(relations)
-        print("RESULT", result)
         self.assertEqual(result, expect)
 
 class TestRelateNoStatesWithStates(TestCase):
@@ -750,7 +743,6 @@ class TestRelateNoStatesWithStates(TestCase):
             }
         ]
         result = _handle_relations(relations)
-        print("RESULT", result)
         self.assertEqual(result, expect)
 
 class TestRelateWithStatesNoStates(TestCase):
@@ -853,6 +845,47 @@ class TestRelateWithStatesNoStates(TestCase):
             }
         ]
         result = _handle_relations(relations)
-        print("RESULT", result)
         self.assertEqual(result, expect)
 
+class TestRelateDateTime(TestCase):
+
+    def setUp(self):
+        pass
+
+    def tearDown(self):
+        pass
+
+    def test_single(self):
+        relations = [
+            {
+                'src__source': 'src_src_1',
+                'src__id': 'src_1',
+                'dst__source': 'dst_src_1',
+                'dst__id': 'dst_1',
+                'dst_volgnummer': '1',
+                'dst_begin_geldigheid': datetime.datetime(2006, 1, 1, 12, 0, 0),
+                'dst_eind_geldigheid': datetime.datetime(2011, 1, 1, 12, 0, 0)
+            }
+        ]
+        expect = [
+            {
+                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
+                'begin_geldigheid': None,
+                'eind_geldigheid': datetime.datetime(2006, 1, 1, 12, 0, 0),
+                'dst': []
+            },
+            {
+                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
+                'begin_geldigheid': datetime.datetime(2006, 1, 1, 12, 0, 0),
+                'eind_geldigheid': datetime.datetime(2011, 1, 1, 12, 0, 0),
+                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
+            },
+            {
+                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
+                'begin_geldigheid': datetime.datetime(2011, 1, 1, 12, 0, 0),
+                'eind_geldigheid': None,
+                'dst': []
+            }
+        ]
+        result = _handle_relations(relations)
+        self.assertEqual(result, expect)

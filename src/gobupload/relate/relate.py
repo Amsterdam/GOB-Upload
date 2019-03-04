@@ -18,8 +18,10 @@ from gobupload.storage.relate import get_relations
 
 # Relations can have missing begin and end dates.
 # Begin-of-time and end-of-time are used to cope with this.
-_BEGIN_OF_TIME = datetime.date.min
-_END_OF_TIME = datetime.date.max
+_BEGIN_OF_TIME = datetime.datetime.min
+_END_OF_TIME = datetime.datetime.max
+# Dates compare at start of day
+_START_OF_DAY = datetime.time(0, 0, 0)
 
 
 def _handle_state_relation(state, relation):
@@ -43,6 +45,17 @@ def _handle_state_relation(state, relation):
         }]
 
 
+def _dates_sort(row):
+    start_validity = row["begin_geldigheid"]
+    end_validity = row["eind_geldigheid"]
+    if isinstance(start_validity, datetime.date):
+        start_validity = datetime.datetime.combine(start_validity, _START_OF_DAY)
+    if isinstance(end_validity, datetime.date):
+        end_validity = datetime.datetime.combine(end_validity, _START_OF_DAY)
+    return (start_validity if start_validity else _BEGIN_OF_TIME,
+            end_validity if end_validity else _END_OF_TIME)
+
+
 def _handle_state(state, relations):
     """
     Handle each state (src) and its corresponding relations and transform it in a sorted and closed
@@ -52,8 +65,7 @@ def _handle_state(state, relations):
     :param relations:
     :return:
     """
-    relations.sort(key=lambda r: (r["begin_geldigheid"] if r["begin_geldigheid"] else _BEGIN_OF_TIME,
-                                  r["eind_geldigheid"] if r["eind_geldigheid"] else _END_OF_TIME))
+    relations.sort(key=_dates_sort)
 
     relation = {}
     results = []
