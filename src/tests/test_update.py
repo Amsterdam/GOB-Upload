@@ -106,8 +106,8 @@ class TestUpdate(TestCase):
         stats.add_skipped('SKIPPED')
         stats.add_applied('APPLIED')
 
-        stats.add_bulk_applied(10)
-        stats.add_bulk_stored(10)
+        stats.add_bulkconfirm_applied(10)
+        stats.add_bulkconfirm_stored(10)
 
         results = stats.results()
         self.assertEqual(results['num_events'], 1)
