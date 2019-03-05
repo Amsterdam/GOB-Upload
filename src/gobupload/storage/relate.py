@@ -2,10 +2,17 @@
 Module contains the storage related logic for GOB Relations
 
 """
+import datetime
+
 from gobupload.storage.handler import GOBStorageHandler
 
 from gobcore.model import GOBModel
+from gobcore.model.metadata import FIELD
 from gobcore.sources import GOBSources
+
+
+# Dates compare at start of day
+_START_OF_DAY = datetime.time(0, 0, 0)
 
 
 def _get_match(field, spec):
@@ -26,6 +33,54 @@ def _get_match(field, spec):
         return f"src.{field_name}->>'bronwaarde'"
 
 
+def date_to_datetime(value):
+    """
+    Convert a date value to a datetime value
+
+    :param value: a date value
+    :return: The corresponding datetime value
+    """
+    return datetime.datetime.combine(value, _START_OF_DAY)
+
+
+def _get_date_origin_fields():
+    """
+    Get all date fieldnames
+
+    :return: A list of date fieldnames
+    """
+    DATE_FIELDS = [FIELD.START_VALIDITY, FIELD.END_VALIDITY]
+    ORIGINS = ["src", "dst"]
+
+    date_origin_fields = []
+    for date_field in DATE_FIELDS:
+        for origin in ORIGINS:
+            date_origin_fields.append(f"{origin}_{date_field}")
+
+    return date_origin_fields
+
+
+def _convert_row(row):
+    """
+    Convert a database row to a dictionary.
+
+    If any of the date fields has a datetime value, convert all date values to datetime values
+    :param row: A database row
+    :return: A dictionary
+    """
+    result = dict(row)
+    date_origin_fields = _get_date_origin_fields()
+
+    has_datetimes = True in [isinstance(result.get(field), datetime.datetime) for field in date_origin_fields]
+    if has_datetimes:
+        for date_origin_field in date_origin_fields:
+            value = result.get(date_origin_field)
+            if value and not isinstance(value, datetime.datetime):
+                result[date_origin_field] = datetime.datetime.combine(value, _START_OF_DAY)
+
+    return result
+
+
 def _get_data(query):
     """
     Execute the query and return the result as a list of dictionaries
@@ -36,7 +91,7 @@ def _get_data(query):
     storage = GOBStorageHandler()
     engine = storage.engine
     data = engine.execute(query).fetchall()
-    return [dict(row) for row in data]
+    return [_convert_row(row) for row in data]
 
 
 def _get_fields(has_states):
@@ -47,9 +102,9 @@ def _get_fields(has_states):
     :return:
     """
     # Functional identification
-    BASE_FIELDS = ["_source", "_id"]
+    BASE_FIELDS = [FIELD.SOURCE, FIELD.ID]
     # State fields for collections with states
-    STATE_FIELDS = ["volgnummer", "begin_geldigheid", "eind_geldigheid"]
+    STATE_FIELDS = [FIELD.SEQNR, FIELD.START_VALIDITY, FIELD.END_VALIDITY]
 
     fields = list(BASE_FIELDS)
     if has_states:
@@ -92,7 +147,7 @@ def get_relations(src_catalog_name, src_collection_name, src_field_name):
     dst_match_fields = [spec['destination_attribute'] for spec in relation_specs]
 
     # Define the join of source and destination, src:bronwaarde = dst:field:value
-    join_on = ([f"(src._application = '{spec['source']}' AND " +
+    join_on = ([f"(src.{FIELD.APPLICATION} = '{spec['source']}' AND " +
                 f"dst.{spec['destination_attribute']} = {_get_match(src_field, spec)})" for spec in relation_specs])
 
     # Build a properly formatted select statement
@@ -107,18 +162,18 @@ def get_relations(src_catalog_name, src_collection_name, src_field_name):
     # If both collections have states then join with corresponding geldigheid intervals
     if src_has_states and dst_has_states:
         join_on.extend([
-            "(dst.begin_geldigheid < src.eind_geldigheid OR src.eind_geldigheid is NULL)",
-            "(dst.eind_geldigheid > src.begin_geldigheid OR dst.eind_geldigheid is NULL)"
+            f"(dst.{FIELD.START_VALIDITY} < src.{FIELD.END_VALIDITY} OR src.{FIELD.END_VALIDITY} is NULL)",
+            f"(dst.{FIELD.END_VALIDITY} > src.{FIELD.START_VALIDITY} OR dst.{FIELD.END_VALIDITY} is NULL)"
         ])
 
     # Main order is on src id
     order_by = ["src._id"]
     if src_has_states:
         # then on source volgnummer and begin geldigheid
-        order_by.extend(["src.volgnummer", "src.begin_geldigheid"])
+        order_by.extend([f"src.{FIELD.SEQNR}", f"src.{FIELD.START_VALIDITY}"])
     if dst_has_states:
         # then on destination begin and eind geldigheid
-        order_by.extend(["dst.begin_geldigheid, dst.eind_geldigheid"])
+        order_by.extend([f"dst.{FIELD.START_VALIDITY}", f"dst.{FIELD.END_VALIDITY}"])
 
     query = f"""
 SELECT
