@@ -10,6 +10,26 @@ In time this information can change.
 
 GOB Compare will then evaluate the data and translate the data into events.
 
+The result is organized as list of:
+{
+    'src': {
+        'source': 'functional source',
+        'id': 'functional id',
+        'volgnummer': 'any value' or None
+    },
+    'begin_geldigheid': any date/datetime or None,
+    'eind_geldigheid': any date/datetime or None,
+    'dst': [
+        {
+            'source': 'functional source',
+            'id': 'functional id',
+            'volgnummer': 'any value' or None
+        },
+        ...
+    ]
+}
+
+
 """
 import datetime
 
@@ -38,7 +58,7 @@ def _handle_state_relation(state, relation):
         if relation.get('begin_geldigheid') == _BEGIN_OF_TIME:
             relation['begin_geldigheid'] = None
         return [{
-            "src_id": state["src_id"],
+            "src": state["src_id"],
             "begin_geldigheid": relation.get('begin_geldigheid'),
             "eind_geldigheid": relation.get('eind_geldigheid'),
             "dst": relation['dst']
