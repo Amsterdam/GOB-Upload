@@ -13,15 +13,15 @@ GOB Compare will then evaluate the data and translate the data into events.
 """
 import datetime
 
-from gobupload.storage.relate import get_relations
+from gobcore.model.metadata import FIELD
+
+from gobupload.storage.relate import get_relations, date_to_datetime
 
 
 # Relations can have missing begin and end dates.
 # Begin-of-time and end-of-time are used to cope with this.
 _BEGIN_OF_TIME = datetime.datetime.min
 _END_OF_TIME = datetime.datetime.max
-# Dates compare at start of day
-_START_OF_DAY = datetime.time(0, 0, 0)
 
 
 def _handle_state_relation(state, relation):
@@ -46,12 +46,19 @@ def _handle_state_relation(state, relation):
 
 
 def _dates_sort(row):
+    """
+    Sort on start validity and then end validity
+
+    Always sort on datetime, to allow for datetime - date comparisons
+    :param row:
+    :return: tuple(start-validity, end-validity)
+    """
     start_validity = row["begin_geldigheid"]
     end_validity = row["eind_geldigheid"]
     if isinstance(start_validity, datetime.date):
-        start_validity = datetime.datetime.combine(start_validity, _START_OF_DAY)
+        start_validity = date_to_datetime(start_validity)
     if isinstance(end_validity, datetime.date):
-        end_validity = datetime.datetime.combine(end_validity, _START_OF_DAY)
+        end_validity = date_to_datetime(end_validity)
     return (start_validity if start_validity else _BEGIN_OF_TIME,
             end_validity if end_validity else _END_OF_TIME)
 
@@ -100,7 +107,9 @@ def _get_src_id(row):
     :param row:
     :return:
     """
-    return f"{row['src__id']}.{row['src_volgnummer']}" if row.get('src_volgnummer') else row['src__id']
+    src_id = f"src_{FIELD.ID}"
+    src_volgnummer = f"src_{FIELD.SEQNR}"
+    return f"{row[src_id]}.{row[src_volgnummer]}" if row.get(src_volgnummer) else row[src_id]
 
 
 def _get_relation(begin_geldigheid, eind_geldigheid, dst):
@@ -195,14 +204,14 @@ def _handle_relations(rows):
 
         # Get the source specs
         src = _get_src_id(row)
-        src_id = _get_id(row, 'src__source', 'src__id', 'src_volgnummer')
-        src_begin = row.get("src_begin_geldigheid")
-        src_end = row.get("src_eind_geldigheid")
+        src_id = _get_id(row, f"src_{FIELD.SOURCE}", f"src_{FIELD.ID}", f"src_{FIELD.SEQNR}")
+        src_begin = row.get(f"src_{FIELD.START_VALIDITY}")
+        src_end = row.get(f"src_{FIELD.END_VALIDITY}")
 
         # Get the destination specs
-        dst_id = _get_id(row, 'dst__source', 'dst__id', 'dst_volgnummer')
-        dst_begin = row.get("dst_begin_geldigheid", src_begin)
-        dst_end = row.get("dst_eind_geldigheid", src_end)
+        dst_id = _get_id(row, f"dst_{FIELD.SOURCE}", f"dst_{FIELD.ID}", f"dst_{FIELD.SEQNR}")
+        dst_begin = row.get(f"dst_{FIELD.START_VALIDITY}", src_begin)
+        dst_end = row.get(f"dst_{FIELD.END_VALIDITY}", src_end)
 
         if src != previous.get("src"):
             # end any current state on change of source (id + volgnummer)
