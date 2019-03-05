@@ -267,7 +267,7 @@ class TestRelateNoStates(TestCase):
         ]
         expect = [
             {
-                "src_id": {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
+                "src": {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
                 "begin_geldigheid": None,
                 "eind_geldigheid": None,
                 "dst": [{'source': 'src_dst_1', 'id': 'dst_1', 'volgnummer': None}]
@@ -283,13 +283,13 @@ class TestRelateNoStates(TestCase):
         ]
         expect = [
             {
-                "src_id": {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
+                "src": {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
                 "begin_geldigheid": None,
                 "eind_geldigheid": None,
                 "dst": [{'source': 'src_dst_1', 'id': 'dst_1', 'volgnummer': None}]
             },
             {
-                "src_id": {'source': 'src_src_1', 'id': 'src_2', 'volgnummer': None},
+                "src": {'source': 'src_src_1', 'id': 'src_2', 'volgnummer': None},
                 "begin_geldigheid": None,
                 "eind_geldigheid": None,
                 "dst": [{'source': 'src_dst_1', 'id': 'dst_2', 'volgnummer': None}]
@@ -305,7 +305,7 @@ class TestRelateNoStates(TestCase):
         ]
         expect = [
             {
-                "src_id": {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
+                "src": {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
                 "begin_geldigheid": None,
                 "eind_geldigheid": None,
                 "dst": [{'source': 'src_dst_1', 'id': 'dst_1', 'volgnummer': None}, {'source': 'src_dst_1', 'id': 'dst_2', 'volgnummer': None}]
@@ -323,13 +323,13 @@ class TestRelateNoStates(TestCase):
         ]
         expect = [
             {
-                "src_id": {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
+                "src": {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
                 "begin_geldigheid": None,
                 "eind_geldigheid": None,
                 "dst": [{'source': 'src_dst_1', 'id': 'dst_1', 'volgnummer': None}, {'source': 'src_dst_1', 'id': 'dst_2', 'volgnummer': None}]
             },
             {
-                "src_id": {'source': 'src_src_1', 'id': 'src_2', 'volgnummer': None},
+                "src": {'source': 'src_src_1', 'id': 'src_2', 'volgnummer': None},
                 "begin_geldigheid": None,
                 "eind_geldigheid": None,
                 "dst": [{'source': 'src_dst_1', 'id': 'dst_3', 'volgnummer': None}, {'source': 'src_dst_1', 'id': 'dst_4', 'volgnummer': None}]
@@ -363,7 +363,7 @@ class TestRelateBothStates(TestCase):
         ]
         expect = [
             {
-                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
+                'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
                 'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
@@ -389,13 +389,13 @@ class TestRelateBothStates(TestCase):
         ]
         expect = [
             {
-                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
+                'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2007, 1, 1),
                 'dst': []
             },
             {
-                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
+                'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2007, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
                 'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
@@ -421,13 +421,13 @@ class TestRelateBothStates(TestCase):
         ]
         expect = [
             {
-                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
+                'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2010, 1, 1),
                 'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
             },
             {
-                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
+                'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2010, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
                 'dst': []
@@ -453,19 +453,19 @@ class TestRelateBothStates(TestCase):
         ]
         expect = [
             {
-                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
+                'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2007, 1, 1),
                 'dst': []
             },
             {
-                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
+                'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2007, 1, 1),
                 'eind_geldigheid': datetime.date(2010, 1, 1),
                 'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
             },
             {
-                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
+                'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2010, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
                 'dst': []
@@ -491,7 +491,7 @@ class TestRelateBothStates(TestCase):
         ]
         expect = [
             {
-                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
+                'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
                 'dst': []
@@ -517,7 +517,7 @@ class TestRelateBothStates(TestCase):
         ]
         expect = [
             {
-                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
+                'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
                 'dst': []
@@ -543,7 +543,7 @@ class TestRelateBothStates(TestCase):
         ]
         expect = [
             {
-                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
+                'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
                 'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
@@ -581,13 +581,13 @@ class TestRelateBothStates(TestCase):
         ]
         expect = [
             {
-                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
+                'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2007, 1, 1),
                 'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
             },
             {
-                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
+                'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2007, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
                 'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '2'}]
@@ -637,19 +637,19 @@ class TestRelateBothStates(TestCase):
         ]
         expect = [
             {
-                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
+                'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
                 'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}, {'source': 'dst_src_1', 'id': 'dst_2', 'volgnummer': '1'}]
             },
             {
-                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
+                'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2011, 1, 1),
                 'eind_geldigheid': datetime.date(2012, 1, 1),
                 'dst': []
             },
             {
-                'src_id': {'source': 'src_src_1', 'id': 'src_2', 'volgnummer': '1'},
+                'src': {'source': 'src_src_1', 'id': 'src_2', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2012, 1, 1),
                 'dst': [{'source': 'dst_src_1', 'id': 'dst_2', 'volgnummer': '1'}]
@@ -687,13 +687,13 @@ class TestRelateBothStates(TestCase):
         ]
         expect = [
             {
-                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
+                'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2008, 1, 1),
                 'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}, {'source': 'dst_src_1', 'id': 'dst_2', 'volgnummer': '1'}]
             },
             {
-                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
+                'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2008, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
                 'dst': [{'source': 'dst_src_1', 'id': 'dst_2', 'volgnummer': '1'}]
@@ -724,19 +724,19 @@ class TestRelateNoStatesWithStates(TestCase):
         ]
         expect = [
             {
-                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
+                'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
                 'begin_geldigheid': None,
                 'eind_geldigheid': datetime.date(2006, 1, 1),
                 'dst': []
             },
             {
-                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
+                'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
                 'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
             },
             {
-                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
+                'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
                 'begin_geldigheid': datetime.date(2011, 1, 1),
                 'eind_geldigheid': None,
                 'dst': []
@@ -767,7 +767,7 @@ class TestRelateWithStatesNoStates(TestCase):
         ]
         expect = [
             {
-                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
+                'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2005, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
                 'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': None}]
@@ -799,7 +799,7 @@ class TestRelateWithStatesNoStates(TestCase):
         ]
         expect = [
             {
-                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
+                'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2005, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
                 'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': None},
@@ -832,13 +832,13 @@ class TestRelateWithStatesNoStates(TestCase):
         ]
         expect = [
             {
-                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
+                'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2005, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
                 'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': None}]
             },
             {
-                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '2'},
+                'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '2'},
                 'begin_geldigheid': datetime.date(2007, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
                 'dst': [{'source': 'dst_src_1', 'id': 'dst_2', 'volgnummer': None}]
@@ -869,19 +869,19 @@ class TestRelateDateTime(TestCase):
         ]
         expect = [
             {
-                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
+                'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
                 'begin_geldigheid': None,
                 'eind_geldigheid': datetime.datetime(2006, 1, 1, 12, 0, 0),
                 'dst': []
             },
             {
-                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
+                'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
                 'begin_geldigheid': datetime.datetime(2006, 1, 1, 12, 0, 0),
                 'eind_geldigheid': datetime.datetime(2011, 1, 1, 12, 0, 0),
                 'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
             },
             {
-                'src_id': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
+                'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
                 'begin_geldigheid': datetime.datetime(2011, 1, 1, 12, 0, 0),
                 'eind_geldigheid': None,
                 'dst': []
