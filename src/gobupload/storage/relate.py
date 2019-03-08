@@ -10,9 +10,27 @@ from gobcore.model import GOBModel
 from gobcore.model.metadata import FIELD
 from gobcore.sources import GOBSources
 
+from gobupload.relate.exceptions import RelateException
+
 
 # Dates compare at start of day
 _START_OF_DAY = datetime.time(0, 0, 0)
+
+
+def _get_bronwaarde(field_name, field_type):
+    """
+    Get the bronwaarde for the relation
+
+    :param field_name:
+    :param field_type:
+    :return:
+    """
+    if field_type == "GOB.ManyReference":
+        # bronwaarde is an array
+        return f"ARRAY(SELECT x->>'bronwaarde' FROM jsonb_array_elements(src.{field_name}) as x)"
+    elif field_type == "GOB.Reference":
+        # bronwaarde is a value
+        return f"src.{field_name}->>'bronwaarde'"
 
 
 def _get_match(field, spec):
@@ -24,13 +42,13 @@ def _get_match(field, spec):
     :param spec:
     :return: the match expression
     """
-    field_name = spec['field_name']
+    bronwaarde = _get_bronwaarde(spec['field_name'], field['type'])
     if field['type'] == "GOB.ManyReference":
         # destination field value in source bronwaarden
-        return f"ANY(ARRAY(SELECT x->>'bronwaarde' FROM jsonb_array_elements(src.{field_name}) as x))"
-    else:
+        return f"ANY({bronwaarde})"
+    elif field['type'] == "GOB.Reference":
         # destination field value = source bronwaarde
-        return f"src.{field_name}->>'bronwaarde'"
+        return bronwaarde
 
 
 def date_to_datetime(value):
@@ -130,6 +148,10 @@ def get_relations(src_catalog_name, src_collection_name, src_field_name):
     # Get the relations for the given catalog, collection and field names
     sources = GOBSources()
     relation_specs = sources.get_field_relations(src_catalog_name, src_collection_name, src_field_name)
+    if not relation_specs:
+        raise RelateException("Missing relation specification for " +
+                              f"{src_catalog_name} {src_collection_name} {src_field_name} " +
+                              "(sources.get_field_relations)")
 
     # Get the destination catalog and collection names
     dst_catalog_name, dst_collection_name = src_field['ref'].split(':')
@@ -150,6 +172,11 @@ def get_relations(src_catalog_name, src_collection_name, src_field_name):
     join_on = ([f"(src.{FIELD.APPLICATION} = '{spec['source']}' AND " +
                 f"dst.{spec['destination_attribute']} = {_get_match(src_field, spec)})" for spec in relation_specs])
 
+    # Only get relations when bronwaarde is filled
+    has_bronwaarde = ([f"(src.{FIELD.APPLICATION} = '{spec['source']}' AND " +
+                       f"{_get_bronwaarde(spec['field_name'], src_field['type'])} IS NOT NULL)"
+                       for spec in relation_specs])
+
     # Build a properly formatted select statement
     comma_join = ',\n    '
     and_join = ' AND\n    '
@@ -162,8 +189,8 @@ def get_relations(src_catalog_name, src_collection_name, src_field_name):
     # If both collections have states then join with corresponding geldigheid intervals
     if src_has_states and dst_has_states:
         join_on.extend([
-            f"(dst.{FIELD.START_VALIDITY} < src.{FIELD.END_VALIDITY} OR src.{FIELD.END_VALIDITY} is NULL)",
-            f"(dst.{FIELD.END_VALIDITY} > src.{FIELD.START_VALIDITY} OR dst.{FIELD.END_VALIDITY} is NULL)"
+            f"(dst.{FIELD.START_VALIDITY} < src.{FIELD.END_VALIDITY} OR src.{FIELD.END_VALIDITY} IS NULL)",
+            f"(dst.{FIELD.END_VALIDITY} > src.{FIELD.START_VALIDITY} OR dst.{FIELD.END_VALIDITY} IS NULL)"
         ])
 
     # Main order is on src id
@@ -187,20 +214,20 @@ SELECT
 FROM {dst_table_name}) AS dst
 ON
     {and_join.join(join_on)}
+WHERE
+    {or_join.join(has_bronwaarde)}
 ORDER BY
     {', '.join(order_by)}
 """
-
     # Example result
-    # 1
-    # A06.1 : 2006-06-12 - 2007-06-12 : ['B1']
-    # A06.1 : 2007-06-12 - 2011-12-28 : ['B1', 'A1']
-    # 2
-    # A06.2 : 2011-12-28 - 2012-01-01 : ['B1', 'A2']
-    # A06.2 : 2012-01-01 - 2014-01-01 : ['A2']
-    # A06.2 : 2014-01-01 - 2015-01-01 : []
-    # 3
-    # A06.3 : 2015-01-01 - 2017-01-01 : ['A3', 'B2']
-    # A06.3 : 2017-01-01 - None : ['B2']
+    # {
+    #     'src__id': '10181000',
+    #     'src__source': 'AMSBI',
+    #     'dst__id': '03630012097126',
+    #     'dst_volgnummer': '1',
+    #     'dst__source': 'AMSBI',
+    #     'dst_begin_geldigheid': datetime.date(2006, 6, 12),
+    #     'dst_eind_geldigheid': None
+    # }
 
-    return _get_data(query)
+    return _get_data(query), src_has_states, dst_has_states
