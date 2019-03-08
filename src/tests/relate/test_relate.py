@@ -6,9 +6,7 @@ from unittest.mock import MagicMock, patch
 from gobcore.model import GOBModel
 from gobcore.sources import GOBSources
 
-from gobupload.storage.handler import GOBStorageHandler
-
-from gobupload.relate.relate import relate, _handle_relations
+from gobupload.relate.relate import relate, _handle_relations, _remove_gaps
 from gobupload.storage.relate import get_relations, _get_data, _convert_row
 
 class TestRelations(TestCase):
@@ -52,6 +50,8 @@ SELECT
 FROM dst_catalogue_dst_collection) AS dst
 ON
     (src._application = 'src_application' AND dst.dst_attr = src.src_attr->>'bronwaarde')
+WHERE
+    (src._application = 'src_application' AND src.src_attr->>'bronwaarde' IS NOT NULL)
 ORDER BY
     src._id
 """
@@ -102,8 +102,10 @@ SELECT
 FROM dst_catalogue_dst_collection) AS dst
 ON
     (src._application = 'src_application' AND dst.dst_attr = src.src_attr->>'bronwaarde') AND
-    (dst.begin_geldigheid < src.eind_geldigheid OR src.eind_geldigheid is NULL) AND
-    (dst.eind_geldigheid > src.begin_geldigheid OR dst.eind_geldigheid is NULL)
+    (dst.begin_geldigheid < src.eind_geldigheid OR src.eind_geldigheid IS NULL) AND
+    (dst.eind_geldigheid > src.begin_geldigheid OR dst.eind_geldigheid IS NULL)
+WHERE
+    (src._application = 'src_application' AND src.src_attr->>'bronwaarde' IS NOT NULL)
 ORDER BY
     src._id, src.volgnummer, src.begin_geldigheid, dst.begin_geldigheid, dst.eind_geldigheid
 """
@@ -155,8 +157,10 @@ SELECT
 FROM dst_catalogue_dst_collection) AS dst
 ON
     (src._application = 'src_application' AND dst.dst_attr = ANY(ARRAY(SELECT x->>'bronwaarde' FROM jsonb_array_elements(src.src_attr) as x))) AND
-    (dst.begin_geldigheid < src.eind_geldigheid OR src.eind_geldigheid is NULL) AND
-    (dst.eind_geldigheid > src.begin_geldigheid OR dst.eind_geldigheid is NULL)
+    (dst.begin_geldigheid < src.eind_geldigheid OR src.eind_geldigheid IS NULL) AND
+    (dst.eind_geldigheid > src.begin_geldigheid OR dst.eind_geldigheid IS NULL)
+WHERE
+    (src._application = 'src_application' AND ARRAY(SELECT x->>'bronwaarde' FROM jsonb_array_elements(src.src_attr) as x) IS NOT NULL)
 ORDER BY
     src._id, src.volgnummer, src.begin_geldigheid, dst.begin_geldigheid, dst.eind_geldigheid
 """
@@ -215,8 +219,11 @@ FROM dst_catalogue_dst_collection) AS dst
 ON
     ((src._application = 'src_application1' AND dst.dst_attr1 = src.src_attr1->>'bronwaarde') OR
     (src._application = 'src_application2' AND dst.dst_attr2 = src.src_attr2->>'bronwaarde')) AND
-    (dst.begin_geldigheid < src.eind_geldigheid OR src.eind_geldigheid is NULL) AND
-    (dst.eind_geldigheid > src.begin_geldigheid OR dst.eind_geldigheid is NULL)
+    (dst.begin_geldigheid < src.eind_geldigheid OR src.eind_geldigheid IS NULL) AND
+    (dst.eind_geldigheid > src.begin_geldigheid OR dst.eind_geldigheid IS NULL)
+WHERE
+    (src._application = 'src_application1' AND src.src_attr1->>'bronwaarde' IS NOT NULL) OR
+    (src._application = 'src_application2' AND src.src_attr2->>'bronwaarde' IS NOT NULL)
 ORDER BY
     src._id, src.volgnummer, src.begin_geldigheid, dst.begin_geldigheid, dst.eind_geldigheid
 """
@@ -232,7 +239,6 @@ ORDER BY
         result = _get_data('')
         self.assertEqual(result, [])
 
-
 class TestRelate(TestCase):
 
     def setUp(self):
@@ -241,17 +247,25 @@ class TestRelate(TestCase):
     def tearDown(self):
         pass
 
-    # def test_empty(self):
-    #     result = _handle_relations([])
-    #     self.assertEqual(result, [])
-
-    @patch('gobupload.relate.relate.get_relations')
-    def test_relate(self, mock_get_relations):
-        mock_get_relations.return_value = []
-        result = relate("catalog", "collection", "field")
+    def test_empty(self):
+        result = _handle_relations([])
         self.assertEqual(result, [])
-        mock_get_relations.assert_called_with("catalog", "collection", "field")
 
+    @patch('gobupload.relate.relate._handle_relations')
+    @patch('gobupload.relate.relate.get_relations')
+    def test_relate(self, mock_get_relations, mock_handle_relations):
+        mock_get_relations.return_value = [], True, True
+        result = relate("catalog", "collection", "field")
+        self.assertEqual(result, ([], True, True))
+        mock_handle_relations.assert_not_called()
+
+    @patch('gobupload.relate.relate._handle_relations')
+    @patch('gobupload.relate.relate.get_relations')
+    def test_relate(self, mock_get_relations, mock_handle_relations):
+        mock_get_relations.return_value = [1], True, True
+        mock_handle_relations.return_value = []
+        relate("catalog", "collection", "field")
+        mock_handle_relations.assert_called_with([1])
 
 class TestRelateNoStates(TestCase):
 
@@ -392,7 +406,7 @@ class TestRelateBothStates(TestCase):
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2007, 1, 1),
-                'dst': []
+                'dst': [{'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
             },
             {
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
@@ -430,7 +444,7 @@ class TestRelateBothStates(TestCase):
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2010, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
-                'dst': []
+                'dst': [{'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
             }
         ]
         result = _handle_relations(relations)
@@ -456,7 +470,7 @@ class TestRelateBothStates(TestCase):
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2007, 1, 1),
-                'dst': []
+                'dst': [{'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
             },
             {
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
@@ -468,7 +482,7 @@ class TestRelateBothStates(TestCase):
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2010, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
-                'dst': []
+                'dst': [{'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
             }
         ]
         result = _handle_relations(relations)
@@ -494,7 +508,7 @@ class TestRelateBothStates(TestCase):
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
-                'dst': []
+                'dst': [{'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
             }
         ]
         result = _handle_relations(relations)
@@ -520,7 +534,7 @@ class TestRelateBothStates(TestCase):
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
-                'dst': []
+                'dst': [{'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
             }
         ]
         result = _handle_relations(relations)
@@ -640,13 +654,14 @@ class TestRelateBothStates(TestCase):
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
-                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}, {'source': 'dst_src_1', 'id': 'dst_2', 'volgnummer': '1'}]
+                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'},
+                        {'source': 'dst_src_1', 'id': 'dst_2', 'volgnummer': '1'}]
             },
             {
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2011, 1, 1),
                 'eind_geldigheid': datetime.date(2012, 1, 1),
-                'dst': []
+                'dst': [{'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
             },
             {
                 'src': {'source': 'src_src_1', 'id': 'src_2', 'volgnummer': '1'},
@@ -655,6 +670,7 @@ class TestRelateBothStates(TestCase):
                 'dst': [{'source': 'dst_src_1', 'id': 'dst_2', 'volgnummer': '1'}]
             }
         ]
+
         result = _handle_relations(relations)
         self.assertEqual(result, expect)
 
@@ -727,7 +743,7 @@ class TestRelateNoStatesWithStates(TestCase):
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
                 'begin_geldigheid': None,
                 'eind_geldigheid': datetime.date(2006, 1, 1),
-                'dst': []
+                'dst': [{'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
             },
             {
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
@@ -739,7 +755,7 @@ class TestRelateNoStatesWithStates(TestCase):
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
                 'begin_geldigheid': datetime.date(2011, 1, 1),
                 'eind_geldigheid': None,
-                'dst': []
+                'dst': [{'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
             }
         ]
         result = _handle_relations(relations)
@@ -872,7 +888,7 @@ class TestRelateDateTime(TestCase):
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
                 'begin_geldigheid': None,
                 'eind_geldigheid': datetime.datetime(2006, 1, 1, 12, 0, 0),
-                'dst': []
+                'dst': [{'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
             },
             {
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
@@ -884,7 +900,7 @@ class TestRelateDateTime(TestCase):
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
                 'begin_geldigheid': datetime.datetime(2011, 1, 1, 12, 0, 0),
                 'eind_geldigheid': None,
-                'dst': []
+                'dst': [{'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
             }
         ]
         result = _handle_relations(relations)
@@ -1028,4 +1044,51 @@ class TestRelateDateTime(TestCase):
             'dst_eind_geldigheid': datetime.date(2011, 1, 1)
         }
         result = _convert_row(row)
+        self.assertEqual(result, expect)
+
+class TestGaps(TestCase):
+
+    def setUp(self):
+        pass
+
+    def tearDown(self):
+        pass
+
+    def test_remove_gaps(self):
+        results = []
+        expect = []
+
+        result = _remove_gaps(results)
+        self.assertEqual(result, expect)
+
+    def test_no_gaps(self):
+        results = [{
+            "src": {"id": 1, "volgnummer": None},
+            "begin_geldigheid": datetime.date(2000, 1, 1),
+            "eind_geldigheid": datetime.date(2001, 1, 1)
+        }, {
+            "src": {"id": 1, "volgnummer": None},
+            "begin_geldigheid": datetime.date(2001, 1, 1),
+            "eind_geldigheid": datetime.date(2002, 1, 1)
+        }
+        ]
+        expect = results.copy()
+
+        result = _remove_gaps(results)
+        self.assertEqual(result, expect)
+
+    def test_gaps(self):
+        results = [{
+            "src": {"id": 1, "volgnummer": None},
+            "begin_geldigheid": datetime.date(2000, 1, 1),
+            "eind_geldigheid": datetime.date(2001, 1, 1)
+        }, {
+            "src": {"id": 1, "volgnummer": None},
+            "begin_geldigheid": datetime.date(2002, 1, 1),
+            "eind_geldigheid": datetime.date(2003, 1, 1)
+        }
+        ]
+        expect = [results[0]]
+
+        result = _remove_gaps(results)
         self.assertEqual(result, expect)

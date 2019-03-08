@@ -34,6 +34,7 @@ The result is organized as list of:
 import datetime
 
 from gobcore.model.metadata import FIELD
+from gobcore.logging.logger import logger
 
 from gobupload.storage.relate import get_relations, date_to_datetime
 
@@ -148,21 +149,12 @@ def _get_relation(begin_geldigheid, eind_geldigheid, dst):
     }
 
 
-def _close_state(state, relations, previous_end, results):
-    """
-    If the source has a longer lifetime than the destination add an empty relation at the end
-
-    :param state:
-    :param relations:
-    :param previous_end:
-    :param results:
-    :return:
-    """
-    if relations:
-        if previous_end != state["end"]:
-            # Add an empty last relation
-            relations.append(_get_relation(previous_end, state["end"], {}))
-        results.extend(_handle_state(state, relations))
+def _no_dst(source):
+    return {
+        "source": source,
+        "id": None,
+        "volgnummer": None
+    }
 
 
 def _get_id(row, source, id, volgnummer):
@@ -181,7 +173,26 @@ def _get_id(row, source, id, volgnummer):
     }
 
 
-def _add_relations_before_dst_begin(src_begin, dst_begin, relations):
+def _close_state(state, relations, previous, results):
+    """
+    If the source has a longer lifetime than the destination add an empty relation at the end
+
+    :param state:
+    :param relations:
+    :param previous_end:
+    :param results:
+    :return:
+    """
+    if relations:
+        dst_end = previous["dst_end"]
+        no_dst = _no_dst(previous["dst_source"])
+        if dst_end != state["end"]:
+            # Add an empty last relation
+            relations.append(_get_relation(dst_end, state["end"], no_dst))
+        results.extend(_handle_state(state, relations))
+
+
+def _add_relations_before_dst_begin(src_begin, dst_begin, dst_id, relations):
     """
     If the destination begins later than the source begins, add an empty relation
 
@@ -190,14 +201,15 @@ def _add_relations_before_dst_begin(src_begin, dst_begin, relations):
     :param relations:
     :return: The new destination begin
     """
+    no_dst = _no_dst(dst_id["source"])
     if src_begin is None and dst_begin:
-        relations.append(_get_relation(_BEGIN_OF_TIME, dst_begin, {}))
+        relations.append(_get_relation(_BEGIN_OF_TIME, dst_begin, no_dst))
 
     if src_begin and dst_begin:
         # Compare begin of source and destination
         if src_begin < dst_begin:
             # Insert empty relation until begin of destination
-            relations.append(_get_relation(src_begin, dst_begin, {}))
+            relations.append(_get_relation(src_begin, dst_begin, no_dst))
         # Adjust destination begin to be equal or after source begin
         dst_begin = max(src_begin, dst_begin)
 
@@ -212,16 +224,11 @@ def _handle_relations(rows):
     :param rows: database query results
     :return: array with relations ordered by timeslot
     """
-    if not rows:
-        print("Warning: No relations found")
-        return []
-
     state = {}
     previous = {}
     relations = []
     results = []
     for row in rows:
-
         # Get the source specs
         src = _get_src_id(row)
         src_id = _get_id(row, f"src_{FIELD.SOURCE}", f"src_{FIELD.ID}", f"src_{FIELD.SEQNR}")
@@ -235,7 +242,7 @@ def _handle_relations(rows):
 
         if src != previous.get("src"):
             # end any current state on change of source (id + volgnummer)
-            _close_state(state, relations, previous.get("dst_end"), results)
+            _close_state(state, relations, previous, results)
             # start new state
             state = {
                 "src": src,
@@ -244,8 +251,8 @@ def _handle_relations(rows):
                 "end": src_end,
             }
             relations = []
-
-        dst_begin = _add_relations_before_dst_begin(src_begin, dst_begin, relations)
+            # Initialize start date
+            dst_begin = _add_relations_before_dst_begin(src_begin, dst_begin, dst_id, relations)
 
         # Take the minimum eind_geldigheid of src_id and dst
         if dst_end is None:
@@ -257,15 +264,66 @@ def _handle_relations(rows):
 
         previous = {
             "src": src,
+            "src_id": src_id["id"],
+            "src_begin": src_begin,
+            "src_end": src_end,
+            "dst_source": dst_id["source"],
+            "dst_begin": dst_begin,
             "dst_end": dst_end
         }
 
-    _close_state(state, relations, previous["dst_end"], results)
+    _close_state(state, relations, previous, results)
+
+    # Example result
+    # {
+    #     'src': {'id': '26281033', 'source': 'AMSBI', 'volgnummer': None},
+    #     'dst': [{'id': None, 'source': 'AMSBI', 'volgnummer': None}],
+    #     'begin_geldigheid': None,
+    #     'eind_geldigheid': datetime.date(2006, 6, 12)
+    # }
 
     return results
 
 
-def relate(catalog_name, collection_name, field_name):
+def _remove_gaps(results):
+    """
+    Remove any erroneous results from the output
+
+    Errors occur when start- and end dates are not consecutive.
+
+    :param results:
+    :return: results without gaps
+    """
+    previous = {}
+    gaps = {}
+    no_gaps = []
+    while results:
+        result = results.pop(0)
+
+        src_id = result["src"]["id"]
+        src_volgnummer = result["src"]["volgnummer"]
+        begin = result["begin_geldigheid"]
+        end = result["eind_geldigheid"]
+
+        if src_id == previous.get("src_id") and src_volgnummer == previous.get("src_volgnummer"):
+            if begin != previous["src_end"] and src_id not in gaps:
+                logger.warning(f"Inconsistency found for {src_id} relations")
+                gaps[src_id] = result
+                continue
+
+        no_gaps.append(result)
+
+        previous = {
+            "src_id": src_id,
+            "src_volgnummer": src_volgnummer,
+            "src_begin": begin,
+            "src_end": end,
+        }
+
+    return no_gaps
+
+
+def relate(catalog_name, collection_name, field_name):  # noqa: C901
     """
     Get all relations for the given catalog, collection and field
 
@@ -274,5 +332,14 @@ def relate(catalog_name, collection_name, field_name):
     :param field_name:
     :return: the relations for the given catalog, collection and field
     """
-    relations = get_relations(catalog_name, collection_name, field_name)
-    return _handle_relations(relations)
+    relations, src_has_states, dst_has_states = get_relations(catalog_name, collection_name, field_name)
+
+    if not relations:
+        logger.warning("Warning: No relations found")
+        results = []
+    else:
+        results = _handle_relations(relations)
+
+    results = _remove_gaps(results)
+
+    return results, src_has_states, dst_has_states
