@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 
 from gobupload.relate import build_relations, publish_relations
 
+@patch('gobupload.relate.logger', MagicMock())
 class TestInit(TestCase):
 
     def setUp(self):

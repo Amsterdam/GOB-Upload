@@ -9,6 +9,7 @@ from gobcore.sources import GOBSources
 from gobupload.relate.relate import relate, _handle_relations, _remove_gaps
 from gobupload.storage.relate import get_relations, _get_data, _convert_row
 
+@patch('gobupload.relate.relate.logger', MagicMock())
 class TestRelations(TestCase):
 
     def setUp(self):
@@ -239,6 +240,7 @@ ORDER BY
         result = _get_data('')
         self.assertEqual(result, [])
 
+@patch('gobupload.relate.relate.logger', MagicMock())
 class TestRelate(TestCase):
 
     def setUp(self):
@@ -267,6 +269,7 @@ class TestRelate(TestCase):
         relate("catalog", "collection", "field")
         mock_handle_relations.assert_called_with([1])
 
+@patch('gobupload.relate.relate.logger', MagicMock())
 class TestRelateNoStates(TestCase):
 
     def setUp(self):
@@ -352,6 +355,7 @@ class TestRelateNoStates(TestCase):
         result = _handle_relations(relations)
         self.assertEqual(result, expect)
 
+@patch('gobupload.relate.relate.logger', MagicMock())
 class TestRelateBothStates(TestCase):
 
     def setUp(self):
@@ -718,6 +722,7 @@ class TestRelateBothStates(TestCase):
         result = _handle_relations(relations)
         self.assertEqual(result, expect)
 
+@patch('gobupload.relate.relate.logger', MagicMock())
 class TestRelateNoStatesWithStates(TestCase):
 
     def setUp(self):
@@ -761,6 +766,7 @@ class TestRelateNoStatesWithStates(TestCase):
         result = _handle_relations(relations)
         self.assertEqual(result, expect)
 
+@patch('gobupload.relate.relate.logger', MagicMock())
 class TestRelateWithStatesNoStates(TestCase):
 
     def setUp(self):
@@ -863,6 +869,7 @@ class TestRelateWithStatesNoStates(TestCase):
         result = _handle_relations(relations)
         self.assertEqual(result, expect)
 
+@patch('gobupload.relate.relate.logger', MagicMock())
 class TestRelateDateTime(TestCase):
 
     def setUp(self):
@@ -1046,6 +1053,7 @@ class TestRelateDateTime(TestCase):
         result = _convert_row(row)
         self.assertEqual(result, expect)
 
+@patch('gobupload.relate.relate.logger', MagicMock())
 class TestGaps(TestCase):
 
     def setUp(self):
