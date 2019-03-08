@@ -227,7 +227,7 @@ def _validate_event(entities, event, stats):
             last_event = confirm['_last_event']
             # If the last_event doesn't match, remove from confirms in BULKCONFIRM
             if last_event != entities.get(source_id, None):
-                event['data'].remove(confirm)
+                event['data']['confirms'].remove(confirm)
                 logger.warning(f"Skip outdated record in BULKCONFIRM event, source id: {source_id}",
                                {
                                     "id": "Skip outdated record in BULKCONFIRM event",
