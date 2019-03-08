@@ -69,6 +69,9 @@ class TestInit(TestCase):
         publish_relations(msg, relations.copy(), False, True)
         mocked_publish.assert_called_with('gob.workflow.proposal', 'fullimport.proposal', expect)
 
+    @patch('gobupload.relate.GOBModel', MagicMock())
     def test_build_relations(self):
         with self.assertRaises(AssertionError):
             build_relations({})
+
+        build_relations({"catalog": "catalog"})
