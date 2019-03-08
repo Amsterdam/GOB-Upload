@@ -296,7 +296,7 @@ def _remove_gaps(results):
     """
     previous = {}
     gaps = {}
-    no_gaps = []
+    no_inconsistencies = []
     while results:
         result = results.pop(0)
 
@@ -306,21 +306,26 @@ def _remove_gaps(results):
         end = result["eind_geldigheid"]
 
         if src_id == previous.get("src_id") and src_volgnummer == previous.get("src_volgnummer"):
-            if begin != previous["src_end"] and src_id not in gaps:
+            # begin should be equal to previous end, and nothing can follow a None end
+            is_valid = (begin == previous["end"] and previous["end"] is not None)
+            if begin is not None and end is not None:
+                # If dates are filled then these date should be consecutive
+                is_valid = is_valid and end > begin
+            if not is_valid and src_id not in gaps:
                 logger.warning(f"Inconsistency found for {src_id} relations")
                 gaps[src_id] = result
                 continue
 
-        no_gaps.append(result)
+        no_inconsistencies.append(result)
 
         previous = {
             "src_id": src_id,
             "src_volgnummer": src_volgnummer,
-            "src_begin": begin,
-            "src_end": end,
+            "begin": begin,
+            "end": end,
         }
 
-    return no_gaps
+    return no_inconsistencies
 
 
 def relate(catalog_name, collection_name, field_name):  # noqa: C901
