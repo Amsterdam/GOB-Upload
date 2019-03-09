@@ -74,4 +74,4 @@ class TestInit(TestCase):
         with self.assertRaises(AssertionError):
             build_relations({})
 
-        build_relations({"catalog": "catalog"})
+        build_relations({"catalogue": "catalog"})

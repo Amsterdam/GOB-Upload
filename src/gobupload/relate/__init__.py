@@ -18,14 +18,17 @@ def build_relations(msg):
     :param msg: a message from the broker containing the catalog and collections (optional)
     :return: None
     """
-    logger.configure(msg, "RELATE")
 
-    catalog_name = msg.get('catalog')
+    catalog_name = msg.get('catalogue')
     collection_names = msg.get('collections')
 
     assert catalog_name is not None, "A catalog name is required"
 
     model = GOBModel()
+    catalog = model.get_catalog(catalog_name)
+
+    assert catalog is not None, f"Invalid catalog name '{catalog_name}'"
+
     if collection_names is None:
         collection_names = model.get_collection_names(catalog_name)
     else:
@@ -40,37 +43,38 @@ def build_relations(msg):
         "catalogue": "rel"
     }
 
-    logger.info(f"Relate {catalog_name} - {', '.join(collection_names)} started")
-
     for collection_name in collection_names:
         collection = model.get_collection(catalog_name, collection_name)
+        assert collection is not None, f"Invalid collection name '{collection_name}'"
         references = model._extract_references(collection['attributes'])
         for reference_name, reference in references.items():
-            try:
-                relation_name = get_relation_name(model, catalog_name, collection_name, reference_name)
-                logger.info(f"Relate {catalog_name} - {collection_name}:{reference_name} ({relation_name})")
-                timestamp = datetime.datetime.utcnow().isoformat()
-                process_id = f"{timestamp}.{application}.{catalog_name}.{collection_name}.{reference_name}"
-                msg["header"].update({
-                    "entity": relation_name,
-                    "timestamp": timestamp,
-                    "process_id": process_id
-                })
+            relation_name = get_relation_name(model, catalog_name, collection_name, reference_name)
+            timestamp = datetime.datetime.utcnow().isoformat()
+            process_id = f"{timestamp}.{application}.{catalog_name}.{collection_name}.{reference_name}"
+            display_name = f"{catalog_name}:{collection_name} {reference_name}"
 
+            msg["header"].update({
+                "entity": relation_name if relation_name else display_name,
+                "timestamp": timestamp,
+                "process_id": process_id
+            })
+            logger.configure(msg, "RELATE")
+            logger.info(f"Relate {display_name}")
+
+            try:
                 relations, src_has_states, dst_has_states = get_relations(
                     catalog_name,
                     collection_name,
                     reference_name
                 )
-
-                publish_relations(msg, relations, src_has_states, dst_has_states)
-
-                logger.info(f"Relate {catalog_name} - {collection_name}:{reference_name} OK")
             except RelateException as e:
                 logger.error(f"Relate {catalog_name} - {collection_name}:{reference_name} FAILED")
                 print(f"Relate Error: {str(e)}")
+                continue
 
-    logger.info(f"Relate {catalog_name} - {', '.join(collection_names)} completed")
+            publish_relations(msg, relations, src_has_states, dst_has_states)
+
+            logger.info(f"Relate {catalog_name} - {collection_name}:{reference_name} OK")
 
 
 def publish_relations(msg, relations, src_has_states, dst_has_states):
