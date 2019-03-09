@@ -45,7 +45,7 @@ _BEGIN_OF_TIME = datetime.datetime.min
 _END_OF_TIME = datetime.datetime.max
 
 
-def _handle_state_relation(state, relation):
+def _handle_state_relation(state, relation, next_begin):
     """
     Process a state (src) with its relations
 
@@ -54,16 +54,27 @@ def _handle_state_relation(state, relation):
     :return:
     """
     if relation.get('begin_geldigheid', 'begin') == relation.get('eind_geldigheid', 'eind'):
-        return []
+        results = []
     else:
         if relation.get('begin_geldigheid') == _BEGIN_OF_TIME:
             relation['begin_geldigheid'] = None
-        return [{
+        results = [{
             "src": state["src_id"],
             "begin_geldigheid": relation.get('begin_geldigheid'),
             "eind_geldigheid": relation.get('eind_geldigheid'),
             "dst": relation['dst']
         }]
+
+    if relation.get('eind_geldigheid') != next_begin:
+        # Fill any gap
+        results.append({
+            "src": state["src_id"],
+            "begin_geldigheid": relation.get('eind_geldigheid'),
+            "eind_geldigheid": next_begin,
+            "dst": [_no_dst(relation['dst'][0]['source'])]
+        })
+
+    return results
 
 
 def _dates_sort(row):
@@ -106,17 +117,18 @@ def _handle_state(state, relations):
                 continue
             else:
                 # End state
-                results.extend(_handle_state_relation(state, relation))
+                results.extend(_handle_state_relation(state, relation, relation.get('eind_geldigheid')))
                 relation['dst'] = []
                 # Adjust row
                 row['begin_geldigheid'] = relation.get('eind_geldigheid')
         elif relation:
             # End state
-            results.extend(_handle_state_relation(state, relation))
+            results.extend(_handle_state_relation(state, relation, row['begin_geldigheid']))
         relation = row
 
     if relation:
-        results.extend(_handle_state_relation(state, relation))
+        results.extend(_handle_state_relation(state, relation, relation.get('eind_geldigheid')))
+
     return results
 
 
@@ -312,7 +324,13 @@ def _remove_gaps(results):
                 # If dates are filled then these date should be consecutive
                 is_valid = is_valid and end > begin
             if not is_valid and src_id not in gaps:
-                logger.warning(f"Inconsistency found for {src_id} relations")
+                extra_data = {
+                    'id': "inconsistency found",
+                    'data': {
+                        'identificatie': src_id
+                    }
+                }
+                logger.warning(f"Inconsistency found", extra_data)
                 gaps[src_id] = result
                 continue
 

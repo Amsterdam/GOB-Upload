@@ -454,6 +454,56 @@ class TestRelateBothStates(TestCase):
         result = _handle_relations(relations)
         self.assertEqual(result, expect)
 
+    def test_empty_between(self):
+        relations = [
+            {
+                'src__source': 'src_src_1',
+                'src__id': 'src_1',
+                'src_volgnummer': '1',
+                'src_begin_geldigheid': datetime.date(2006, 1, 1),
+                'src_eind_geldigheid': datetime.date(2011, 1, 1),
+                'dst__source': 'dst_src_1',
+                'dst__id': 'dst_1',
+                'dst_volgnummer': '1',
+                'dst_begin_geldigheid': datetime.date(2006, 1, 1),
+                'dst_eind_geldigheid': datetime.date(2008, 1, 1)
+            },
+            {
+                'src__source': 'src_src_1',
+                'src__id': 'src_1',
+                'src_volgnummer': '1',
+                'src_begin_geldigheid': datetime.date(2006, 1, 1),
+                'src_eind_geldigheid': datetime.date(2011, 1, 1),
+                'dst__source': 'dst_src_1',
+                'dst__id': 'dst_1',
+                'dst_volgnummer': '2',
+                'dst_begin_geldigheid': datetime.date(2009, 1, 1),
+                'dst_eind_geldigheid': datetime.date(2011, 1, 1)
+            }
+        ]
+        expect = [
+            {
+                'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
+                'begin_geldigheid': datetime.date(2006, 1, 1),
+                'eind_geldigheid': datetime.date(2008, 1, 1),
+                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
+            },
+            {
+                'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
+                'begin_geldigheid': datetime.date(2008, 1, 1),
+                'eind_geldigheid': datetime.date(2009, 1, 1),
+                'dst': [{'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
+            },
+            {
+                'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
+                'begin_geldigheid': datetime.date(2009, 1, 1),
+                'eind_geldigheid': datetime.date(2011, 1, 1),
+                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '2'}]
+            }
+        ]
+        result = _handle_relations(relations)
+        self.assertEqual(result, expect)
+
     def test_empty_begin_end(self):
         relations = [
             {
