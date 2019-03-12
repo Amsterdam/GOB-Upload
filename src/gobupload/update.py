@@ -96,7 +96,7 @@ def _get_gob_event(event, data):
     return gob_event
 
 
-def _apply_events(storage, start_after, stats):
+def _apply_events(storage, start_after, stats):  # noqa C901
     """Apply any unhandled events to the database
 
     :param storage: GOB (events + entities)
@@ -121,7 +121,15 @@ def _apply_events(storage, start_after, stats):
 
         new_add_events = []
 
-        for event in unhandled_events:
+        n = 0
+        while unhandled_events:
+            n += 1
+            if n % 10000 == 0:
+                print(n)
+
+            # Delete original data
+            event = unhandled_events.pop(0)
+
             # Parse the json data of the event
             data = json.loads(event.contents)
             # Reconstruct the gob event out of the database event
@@ -186,7 +194,14 @@ def _store_events(storage, events, stats):
             return
 
         valid_events = []
-        for event in events:
+
+        n = 0
+        while events:
+            n += 1
+            if n % 10000 == 0:
+                print(n)
+
+            event = events.pop(0)
             event_type = event['event']
             source_id = event['data']['_entity_source_id']
 
