@@ -346,7 +346,7 @@ def _remove_gaps(results):
     return no_inconsistencies
 
 
-def relate(catalog_name, collection_name, field_name):  # noqa: C901
+def relate(catalog_name, collection_name, field_name):
     """
     Get all relations for the given catalog, collection and field
 
