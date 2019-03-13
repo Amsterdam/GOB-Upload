@@ -25,6 +25,7 @@ from gobcore.model.sa.gob import get_column
 from gobcore.typesystem import get_gob_type
 from gobcore.typesystem.json import GobTypeJSONEncoder
 from gobcore.views import GOBViews
+from gobcore.utils import ProgressTicker
 
 from gobupload.config import GOB_DB
 from gobupload.storage import queries
@@ -418,11 +419,9 @@ class GOBStorageHandler():
         :param events: list of gob events
         """
         insert_data = []
-        n = 0
+        progress = ProgressTicker("Bulk add entities", 10000)
         while events:
-            n += 1
-            if n % 10000 == 0:
-                print(n)
+            progress.tick()
 
             event = events.pop(0)
             entity = event.get_attribute_dict()
@@ -439,11 +438,9 @@ class GOBStorageHandler():
         """
         # Create the ADD event insert list
         insert_data = []
-        n = 0
+        progress = ProgressTicker("Bulk add events", 10000)
         while events:
-            n += 1
-            if n % 10000 == 0:
-                print(n)
+            progress.tick()
 
             event = events.pop(0)
             row = {
