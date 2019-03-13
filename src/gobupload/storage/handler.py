@@ -418,7 +418,13 @@ class GOBStorageHandler():
         :param events: list of gob events
         """
         insert_data = []
-        for event in events:
+        n = 0
+        while events:
+            n += 1
+            if n % 10000 == 0:
+                print(n)
+
+            event = events.pop(0)
             entity = event.get_attribute_dict()
             # Set the the _last_event
             entity['_last_event'] = event.id
@@ -433,7 +439,13 @@ class GOBStorageHandler():
         """
         # Create the ADD event insert list
         insert_data = []
-        for event in events:
+        n = 0
+        while events:
+            n += 1
+            if n % 10000 == 0:
+                print(n)
+
+            event = events.pop(0)
             row = {
                 'timestamp': self.metadata.timestamp,
                 'catalogue': self.metadata.catalogue,
