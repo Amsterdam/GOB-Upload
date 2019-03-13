@@ -273,6 +273,9 @@ def _process_events(storage, events, stats):
 
     if entity_max_eventid == last_eventid:
         logger.info(f"Model is up to date")
+    elif entity_max_eventid and not last_eventid or entity_max_eventid > last_eventid:
+        logger.error(f"Model is inconsistent! data is more recent than events")
+        return
     else:
         logger.warning(f"Model is out of date! Start application of unhandled events")
         _apply_events(storage, entity_max_eventid, stats)
