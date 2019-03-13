@@ -7,6 +7,7 @@ import json
 from gobcore.events.import_message import ImportMessage, MessageMetaData
 from gobcore.events import GobEvent, GOB
 from gobcore.logging.logger import logger
+from gobcore.utils import ProgressTicker
 
 from gobupload.storage.handler import GOBStorageHandler
 
@@ -96,7 +97,7 @@ def _get_gob_event(event, data):
     return gob_event
 
 
-def _apply_events(storage, start_after, stats):  # noqa C901
+def _apply_events(storage, start_after, stats):
     """Apply any unhandled events to the database
 
     :param storage: GOB (events + entities)
@@ -121,11 +122,9 @@ def _apply_events(storage, start_after, stats):  # noqa C901
 
         new_add_events = []
 
-        n = 0
+        progress = ProgressTicker("Apply events", 10000)
         while unhandled_events:
-            n += 1
-            if n % 10000 == 0:
-                print(n)
+            progress.tick()
 
             # Delete original data
             event = unhandled_events.pop(0)
@@ -195,11 +194,9 @@ def _store_events(storage, events, stats):
 
         valid_events = []
 
-        n = 0
+        progress = ProgressTicker("Store events", 10000)
         while events:
-            n += 1
-            if n % 10000 == 0:
-                print(n)
+            progress.tick()
 
             event = events.pop(0)
             event_type = event['event']
