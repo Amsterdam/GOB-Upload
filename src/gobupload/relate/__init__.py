@@ -6,6 +6,7 @@ from gobcore.model import GOBModel
 from gobcore.model.relations import create_relation, DERIVATION, get_relation_name
 
 from gobupload.relate.relate import relate as get_relations
+from gobupload.storage.relate import apply_relations
 from gobupload.relate.exceptions import RelateException
 
 
@@ -71,6 +72,8 @@ def build_relations(msg):
                 logger.error(f"Relate {catalog_name} - {collection_name}:{reference_name} FAILED")
                 print(f"Relate Error: {str(e)}")
                 continue
+
+            apply_relations(catalog_name, collection_name, reference_name, relations)
 
             publish_relations(msg, relations, src_has_states, dst_has_states)
 

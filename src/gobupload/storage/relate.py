@@ -3,12 +3,15 @@ Module contains the storage related logic for GOB Relations
 
 """
 import datetime
+import json
 
 from gobupload.storage.handler import GOBStorageHandler
 
 from gobcore.model import GOBModel
 from gobcore.model.metadata import FIELD
 from gobcore.sources import GOBSources
+from gobcore.logging.logger import logger
+from gobcore.utils import ProgressTicker
 
 from gobupload.relate.exceptions import RelateException
 
@@ -231,3 +234,68 @@ ORDER BY
     # }
 
     return _get_data(query), src_has_states, dst_has_states
+
+
+def apply_relations(catalog_name, collection_name, field_name, relations):
+    """
+    Register the current relation (eind geldigheid = None) to current entity
+
+    :param catalog_name:
+    :param collection_name:
+    :param field_name:
+    :param relations:
+    :return:
+    """
+
+    # Example data
+    # [{
+    #     'src': {
+    #         'source': 'AMSBI',
+    #         'id': '03630012094860',
+    #         'volgnummer': '1'
+    #     },
+    #     'begin_geldigheid': None,
+    #     'eind_geldigheid': None,
+    #     'dst': [{
+    #                 'source': None,
+    #                 'id': None,
+    #                 'volgnummer': None
+    #             }]
+    # }]
+
+    model = GOBModel()
+    table_name = model.get_table_name(catalog_name, collection_name)
+
+    collection = model.get_collection(catalog_name, collection_name)
+    field = collection['all_fields'].get(field_name)
+    field_type = field['type']
+
+    if field_type == "GOB.ManyReference":
+        logger.info(f"Application to current state skipped for {field_name}")
+        return
+
+    storage = GOBStorageHandler()
+    engine = storage.engine
+
+    progress = ProgressTicker("Update relations", 10000)
+    for relation in [relation for relation in relations if relation["eind_geldigheid"] is None]:
+        progress.tick()
+
+        src = relation["src"]
+        where = f"_source = '{src['source']}' AND _id = '{src['id']}'"
+        if src["volgnummer"] is not None:
+            where += f" AND volgnummer = '{src['volgnummer']}'"
+
+        dst_ids = [{"_id": dst['id']} for dst in relation['dst']]
+        if not dst_ids:
+            dst_id = {"_id": None}
+        else:
+            assert len(dst_ids) == 1, "Error, Single reference with multiple values"
+            dst_id = dst_ids[0]
+
+        query = f"""
+UPDATE {table_name}
+SET    {field_name} = {field_name} || '{json.dumps(dst_id)}'
+WHERE  {where}
+"""
+        engine.execute(query)
