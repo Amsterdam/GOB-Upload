@@ -236,6 +236,26 @@ ORDER BY
     return _get_data(query), src_has_states, dst_has_states
 
 
+def _get_where(relation):
+    """
+    Get where clause for a relation update
+
+    :param src:
+    :param relation:
+    :return:
+    """
+    src = relation["src"]
+    where = f"_source = '{src['source']}' AND _id = '{src['id']}'"
+    if src["volgnummer"] is not None:
+        if relation['eind_geldigheid'] is None:
+            is_end = "IS NULL"
+        else:
+            is_end = f"= '{relation['eind_geldigheid']}'"
+        where += f" AND volgnummer = '{src['volgnummer']}'" + \
+                 f" AND eind_geldigheid {is_end}"
+    return where
+
+
 def apply_relations(catalog_name, collection_name, field_name, relations):
     """
     Register the current relation (eind geldigheid = None) to current entity
@@ -278,17 +298,18 @@ def apply_relations(catalog_name, collection_name, field_name, relations):
     engine = storage.engine
 
     progress = ProgressTicker("Update relations", 10000)
-    for relation in [relation for relation in relations if relation["eind_geldigheid"] is None]:
+    for relation in relations:
         progress.tick()
 
         src = relation["src"]
-        where = f"_source = '{src['source']}' AND _id = '{src['id']}'"
-        if src["volgnummer"] is not None:
-            where += f" AND volgnummer = '{src['volgnummer']}'"
+        if src["volgnummer"] is None and relation["eind_geldigheid"] is not None:
+                continue
 
-        dst_ids = [{"_id": dst['id']} for dst in relation['dst']]
+        where = _get_where(relation)
+
+        dst_ids = [{FIELD.ID: dst['id']} for dst in relation['dst']]
         if not dst_ids:
-            dst_id = {"_id": None}
+            dst_id = {FIELD.ID: None}
         else:
             assert len(dst_ids) == 1, "Error, Single reference with multiple values"
             dst_id = dst_ids[0]
