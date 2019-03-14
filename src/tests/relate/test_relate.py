@@ -7,7 +7,7 @@ from gobcore.model import GOBModel
 from gobcore.sources import GOBSources
 
 from gobupload.relate.relate import relate, _handle_relations, _remove_gaps
-from gobupload.storage.relate import get_relations, _get_data, _convert_row
+from gobupload.storage.relate import get_relations, _get_data, _convert_row, _get_where
 
 @patch('gobupload.relate.relate.logger', MagicMock())
 class TestRelations(TestCase):
@@ -268,6 +268,27 @@ class TestRelate(TestCase):
         mock_handle_relations.return_value = []
         relate("catalog", "collection", "field")
         mock_handle_relations.assert_called_with([1])
+
+    def test_where(self):
+        relation = {
+            'src': {
+                'source': 'src',
+                'id': 'id',
+                'volgnummer': 'volgnr'
+            },
+            'eind_geldigheid': 'eind'
+        }
+        where = _get_where(relation)
+        self.assertEqual(where, "_source = 'src' AND _id = 'id' AND volgnummer = 'volgnr' AND eind_geldigheid = 'eind'")
+
+        relation['eind_geldigheid'] = None
+        where = _get_where(relation)
+        self.assertEqual(where, "_source = 'src' AND _id = 'id' AND volgnummer = 'volgnr' AND eind_geldigheid IS NULL")
+
+        relation['src']['volgnummer'] = None
+        where = _get_where(relation)
+        self.assertEqual(where, "_source = 'src' AND _id = 'id'")
+
 
 @patch('gobupload.relate.relate.logger', MagicMock())
 class TestRelateNoStates(TestCase):
