@@ -64,7 +64,7 @@ class TestUpdate(TestCase):
     @patch('gobupload.update._get_event_ids')
     def test_fullupdate_not_creates_event_and_pops_ids(self, mock_ids, mock_event, mock):
         mock.return_value = self.mock_storage
-        mock_ids.return_value = 1, 0
+        mock_ids.return_value = 0, 1
 
         gob_event = MagicMock(wrap=ADD)
         gob_event.pop_ids.return_value = '1', '2'

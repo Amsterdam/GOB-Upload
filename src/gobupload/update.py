@@ -7,6 +7,7 @@ import json
 from gobcore.events.import_message import ImportMessage, MessageMetaData
 from gobcore.events import GobEvent, GOB
 from gobcore.logging.logger import logger
+from gobcore.utils import ProgressTicker
 
 from gobupload.storage.handler import GOBStorageHandler
 
@@ -121,7 +122,13 @@ def _apply_events(storage, start_after, stats):
 
         new_add_events = []
 
-        for event in unhandled_events:
+        progress = ProgressTicker("Apply events", 10000)
+        while unhandled_events:
+            progress.tick()
+
+            # Delete original data
+            event = unhandled_events.pop(0)
+
             # Parse the json data of the event
             data = json.loads(event.contents)
             # Reconstruct the gob event out of the database event
@@ -186,7 +193,12 @@ def _store_events(storage, events, stats):
             return
 
         valid_events = []
-        for event in events:
+
+        progress = ProgressTicker("Store events", 10000)
+        while events:
+            progress.tick()
+
+            event = events.pop(0)
             event_type = event['event']
             source_id = event['data']['_entity_source_id']
 
@@ -227,7 +239,7 @@ def _validate_event(entities, event, stats):
             last_event = confirm['_last_event']
             # If the last_event doesn't match, remove from confirms in BULKCONFIRM
             if last_event != entities.get(source_id, None):
-                event['data'].remove(confirm)
+                event['data']['confirms'].remove(confirm)
                 logger.warning(f"Skip outdated record in BULKCONFIRM event, source id: {source_id}",
                                {
                                     "id": "Skip outdated record in BULKCONFIRM event",
@@ -261,6 +273,9 @@ def _process_events(storage, events, stats):
 
     if entity_max_eventid == last_eventid:
         logger.info(f"Model is up to date")
+    elif entity_max_eventid and not last_eventid or entity_max_eventid > last_eventid:
+        logger.error(f"Model is inconsistent! data is more recent than events")
+        return
     else:
         logger.warning(f"Model is out of date! Start application of unhandled events")
         _apply_events(storage, entity_max_eventid, stats)
