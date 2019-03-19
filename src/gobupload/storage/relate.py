@@ -165,7 +165,8 @@ WHERE  catalogue = '{catalog_name}' AND
        entity = '{collection_name}' AND
        action != 'CONFIRM'
 """
-    return _execute(query).scalar()
+    last_change = _execute(query).scalar()
+    return 0 if last_change is None else last_change
 
 
 def get_current_relations(catalog_name, collection_name, field_name):

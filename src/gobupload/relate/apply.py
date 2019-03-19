@@ -88,6 +88,22 @@ def clear_row_relation(row, field_name, field_type):
     return is_changed
 
 
+def prepare_row(row, field_name, field_type):
+    """
+    If the reference field is None then set it to an empty object or list
+
+    :param row:
+    :param field_name:
+    :param field_type:
+    :return:
+    """
+    if row[field_name] is None:
+        if field_type == 'GOB.Reference':
+            row[field_name] = {}
+        else:
+            row[field_name] = []
+
+
 def get_next_item(items):
     """
     Get next item from any iterable, return None if no next item exists
@@ -118,8 +134,8 @@ def get_match(current_relation, relation):
         match_srcid = src['source'] == current_relation[FIELD.SOURCE] and src['id'] == current_relation[FIELD.ID]
         # Match on sequence. Take last relation for every sequence
         match_seqnr = (src["volgnummer"] is None and relation["eind_geldigheid"] is None) or \
-                      (src['volgnummer'] == current_relation[FIELD.SEQNR] and
-                       relation["eind_geldigheid"] == current_relation[FIELD.END_VALIDITY])
+                      (src['volgnummer'] == current_relation.get(FIELD.SEQNR) and
+                       relation["eind_geldigheid"] == current_relation.get(FIELD.END_VALIDITY))
 
     return match_srcid, match_seqnr
 
@@ -151,25 +167,28 @@ def match_relation(current_relation, relation, field_name, field_type):
     :param field_type:
     :return:
     """
-    match_srcid, match_seqnr = get_match(current_relation=current_relation, relation=relation)
-
-    full_match = match_srcid and match_seqnr
-    partly_match = match_srcid and not match_seqnr
-
-    next_current_relation = not partly_match  # Always true, except wait for next relation on partly match
-    next_relation = True  # Always get next (new) relation
-
-    if full_match:
-        is_changed = update_row_relation(current_relation, relation, field_name, field_type)
-    elif partly_match:
+    if current_relation is None:
+        assert relation is None
         is_changed = False
-    elif current_relation is not None:  # No match at all for this row
-        is_changed = clear_row_relation(current_relation, field_name, field_type)
-    else:
-        assert(current_relation is None and relation is None)
-        is_changed = False
-        next_relation = False
         next_current_relation = False
+        next_relation = False
+    else:
+        match_srcid, match_seqnr = get_match(current_relation=current_relation, relation=relation)
+
+        full_match = match_srcid and match_seqnr
+        partly_match = match_srcid and not match_seqnr
+
+        next_current_relation = not partly_match  # Wait for next relation on partly match
+        next_relation = True  # Always get next (new) relation
+
+        prepare_row(current_relation, field_name, field_type)
+
+        if full_match:
+            is_changed = update_row_relation(current_relation, relation, field_name, field_type)
+        elif partly_match:
+            is_changed = False
+        else:
+            is_changed = clear_row_relation(current_relation, field_name, field_type)
 
     return is_changed, next_current_relation, next_relation
 
