@@ -2,13 +2,9 @@ from unittest import TestCase, mock
 from unittest.mock import MagicMock, patch
 
 from gobcore.model import GOBModel
-# from gobcore.model.metadata import FIELD
-# from gobcore.utils import ProgressTicker
-#
-# from gobupload.storage.relate import get_current_relations, update_current_relation
 
 from gobupload.relate.apply import update_row_relation, clear_row_relation, get_next_item, get_match, _get_field_type, match_relation, apply_relations
-
+from gobupload.storage.relate import RelationUpdater
 
 class TestApply(TestCase):
 
@@ -192,14 +188,16 @@ class TestApply(TestCase):
         result = match_relation(current_relation, relation, field_name, field_type)
         self.assertEqual(result, (False, False, True))
 
-    @patch('gobupload.relate.apply.update_current_relation')
+        mock_get_match.return_value = (False, False)
+        result = match_relation(None, None, field_name, field_type)
+        self.assertEqual(result, (False, False, False))
+
     @patch('gobupload.relate.apply.match_relation')
     @patch('gobupload.relate.apply._get_field_type')
     @patch('gobupload.relate.apply.get_current_relations')
-    def test_apply_relations(self, mock_current_relations, mock_field_type, mock_match_relation, mock_update):
+    def test_apply_relations(self, mock_current_relations, mock_field_type, mock_match_relation):
         mock_current_relations.return_value = iter([])
         mock_field_type.return_value = ''
         mock_match_relation.return_value = (True, False, False)
-        mock_update.return_value = None
-        apply_relations("catalog", "collection", "field", [])
-        mock_update.assert_called_with("catalog", "collection", "field", None)
+        with patch.object(RelationUpdater, 'update'):
+            apply_relations("catalog", "collection", "field", [])

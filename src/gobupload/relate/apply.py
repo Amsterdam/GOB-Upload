@@ -6,7 +6,7 @@ from gobcore.model import GOBModel
 from gobcore.model.metadata import FIELD
 from gobcore.utils import ProgressTicker
 
-from gobupload.storage.relate import get_current_relations, update_current_relation
+from gobupload.storage.relate import get_current_relations, RelationUpdater
 
 
 def update_row_relation(row, relation, field_name, field_type):
@@ -165,6 +165,11 @@ def match_relation(current_relation, relation, field_name, field_type):
         is_changed = False
     elif current_relation is not None:  # No match at all for this row
         is_changed = clear_row_relation(current_relation, field_name, field_type)
+    else:
+        assert(current_relation is None and relation is None)
+        is_changed = False
+        next_relation = False
+        next_current_relation = False
 
     return is_changed, next_current_relation, next_relation
 
@@ -184,9 +189,11 @@ def apply_relations(catalog_name, collection_name, field_name, relations):
     current_relations = get_current_relations(catalog_name, collection_name, field_name)
     relations_iter = iter(relations)
 
+    updater = RelationUpdater(catalog_name, collection_name)
+
     next_current_relation = True
     next_relation = True
-    progress = ProgressTicker("Update relations", 100)
+    progress = ProgressTicker("Update relations", 10000)
     while next_current_relation or next_relation:
         progress.tick()
 
@@ -200,4 +207,6 @@ def apply_relations(catalog_name, collection_name, field_name, relations):
             current_relation, relation, field_name, field_type)
 
         if is_changed:
-            update_current_relation(catalog_name, collection_name, field_name, current_relation)
+            updater.update(field_name, current_relation)
+
+    updater.completed()
