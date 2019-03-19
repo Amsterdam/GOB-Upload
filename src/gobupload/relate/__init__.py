@@ -54,7 +54,7 @@ def _relation_needs_update(catalog_name, collection_name, reference_name, refere
     last_rel_change = get_last_change("rel", relation_name)
 
     if last_rel_change > max(last_src_change, last_dst_change):
-        print(f"{display_name} skipped, relations up-to-date")
+        print(f"{display_name} skipped, relations already up-to-date")
         return False
 
     return True
@@ -86,7 +86,6 @@ def _process_references(msg, catalog_name, collection_name, references):
         display_name = f"{catalog_name}:{collection_name} {reference_name}"
 
         if not _relation_needs_update(catalog_name, collection_name, reference_name, reference):
-            print(f"Relation '{display_name}' skipped")
             continue
 
         relation_name = get_relation_name(model, catalog_name, collection_name, reference_name)
@@ -112,11 +111,11 @@ def _process_references(msg, catalog_name, collection_name, references):
             print(f"Relate Error: {str(e)}")
             continue
 
-        # Publish results as import message
-        publish_relations(msg, relations, src_has_states, dst_has_states)
-
         # Apply result on current entities
         apply_relations(catalog_name, collection_name, reference_name, relations)
+
+        # Publish results as import message
+        publish_relations(msg, relations, src_has_states, dst_has_states)
 
         logger.info(f"Relate {display_name} OK")
 

@@ -21,10 +21,20 @@ _START_OF_DAY = datetime.time(0, 0, 0)
 DST_MATCH_PREFIX = "dst_match_"
 
 
-def _execute(query):
+def _execute_multiple(queries):
     storage = GOBStorageHandler()
     engine = storage.engine
-    return engine.execute(query)
+
+    result = None
+    with engine.connect() as connection:
+        for query in queries:
+            result = connection.execute(query)
+
+    return result   # Return result of last execution
+
+
+def _execute(query):
+    return _execute_multiple([query])
 
 
 def _get_bronwaarde(field_name, field_type):
@@ -192,26 +202,50 @@ ORDER BY {', '.join(order_by)}
         yield row
 
 
-def update_current_relation(catalog_name, collection_name, field_name, row):
-    """
-    Update the current relation with a new value (row[field_name]
+class RelationUpdater:
 
-    :param catalog_name:
-    :param collection_name:
-    :param field_name:
-    :param row: the new relation data
-    :return:
-    """
-    model = GOBModel()
-    table_name = model.get_table_name(catalog_name, collection_name)
+    # Execute updates every update interval queries
+    UPDATE_INTERVAL = 1000
 
-    query = f"""
-UPDATE {table_name}
+    def __init__(self, catalog_name, collection_name):
+        """
+        Initialize an updater for the given catalog and collection
+
+        :param catalog_name:
+        :param collection_name:
+        """
+        model = GOBModel()
+        self.table_name = model.get_table_name(catalog_name, collection_name)
+        self.queries = []
+
+    def update(self, field_name, row):
+        """
+        Create an update query for the given arguments.
+        Add the query to the list of queries
+        If the number of queries in the list of queries exceeds the update interval execute the queries
+
+        :param field_name:
+        :param row:
+        :return:
+        """
+        query = f"""
+UPDATE {self.table_name}
 SET    {field_name} = '{json.dumps(row[field_name])}'
 WHERE  {FIELD.GOBID} = {row[FIELD.GOBID]}
 """
-    print("Update QUERY", query)
-    return _execute(query)
+        self.queries.append(query)
+        if len(self.queries) >= RelationUpdater.UPDATE_INTERVAL:
+            self.completed()
+
+    def completed(self):
+        """
+        Execute a list of queries and reinitialize the list of queries
+
+        :return:
+        """
+        if self.queries:
+            _execute_multiple(self.queries)
+        self.queries = []
 
 
 def get_relations(src_catalog_name, src_collection_name, src_field_name):
@@ -304,7 +338,6 @@ WHERE
 ORDER BY
     {', '.join(order_by)}
 """
-    print("Q", query)
     # Example result
     # {
     #     'src__id': '10181000',

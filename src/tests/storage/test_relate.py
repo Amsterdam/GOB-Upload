@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 from gobcore.model import GOBModel
 from gobcore.sources import GOBSources
 
-from gobupload.storage.relate import get_relations, _get_data, get_last_change, get_current_relations, update_current_relation
+from gobupload.storage.relate import get_relations, _get_data, get_last_change, get_current_relations, RelationUpdater
 
 @patch('gobupload.relate.relate.logger', MagicMock())
 class TestRelations(TestCase):
@@ -27,14 +27,20 @@ WHERE  catalogue = 'catalog' AND
        action != 'CONFIRM'
 """)
 
-    @patch('gobupload.storage.relate._execute')
-    def test_update_current(self, mock_execute):
-        update_current_relation("catalog", "collection", "field", {"field": "field", "_gobid": "_gobid"})
-        mock_execute.assert_called_with("""
+    @patch('gobupload.storage.relate._execute_multiple')
+    def test_relation_updater(self, _execute_multiple):
+        updater = RelationUpdater("catalog", "collection")
+        updater.update("field", {"field": "field", "_gobid": "_gobid"})
+        self.assertEqual(updater.queries, ["""
 UPDATE catalog_collection
 SET    field = '"field"'
 WHERE  _gobid = _gobid
-""")
+"""
+        ])
+        RelationUpdater.UPDATE_INTERVAL = 1
+        updater.update("field", {"field": "field", "_gobid": "_gobid"})
+        _execute_multiple.assert_called()
+
 
     @patch('gobupload.storage.relate._execute')
     def test_current_relations(self, mock_execute):
