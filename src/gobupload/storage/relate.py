@@ -10,14 +10,21 @@ from gobupload.storage.handler import GOBStorageHandler
 from gobcore.model import GOBModel
 from gobcore.model.metadata import FIELD
 from gobcore.sources import GOBSources
-from gobcore.logging.logger import logger
-from gobcore.utils import ProgressTicker
 
 from gobupload.relate.exceptions import RelateException
 
 
 # Dates compare at start of day
 _START_OF_DAY = datetime.time(0, 0, 0)
+
+# Match for destination match fields
+DST_MATCH_PREFIX = "dst_match_"
+
+
+def _execute(query):
+    storage = GOBStorageHandler()
+    engine = storage.engine
+    return engine.execute(query)
 
 
 def _get_bronwaarde(field_name, field_type):
@@ -133,6 +140,80 @@ def _get_fields(has_states):
     return fields
 
 
+def get_last_change(catalog_name, collection_name):
+    """
+    Gets the eventid of the most recent change for the given catalog and collection
+
+    :param catalog_name:
+    :param collection_name:
+    :return:
+    """
+    query = f"""
+SELECT MAX(eventid)
+FROM   events
+WHERE  catalogue = '{catalog_name}' AND
+       entity = '{collection_name}' AND
+       action != 'CONFIRM'
+"""
+    return _execute(query).scalar()
+
+
+def get_current_relations(catalog_name, collection_name, field_name):
+    """
+    Get the current relations as an iterable of dictionaries
+    Each relation is transformed into a dictionary
+
+    :param catalog_name:
+    :param collection_name:
+    :param field_name:
+    :return: An iterable of dicts
+    """
+    model = GOBModel()
+    table_name = model.get_table_name(catalog_name, collection_name)
+
+    collection = model.get_collection(catalog_name, collection_name)
+    field = collection['all_fields'][field_name]
+    field_type = field['type']
+    assert field_type in ["GOB.Reference", "GOB.ManyReference"], f"Error: unexpected field type '{field_type}'"
+
+    select = [FIELD.GOBID, field_name, FIELD.SOURCE, FIELD.ID]
+    order_by = [FIELD.SOURCE, FIELD.ID]
+    if model.has_states(catalog_name, collection_name):
+        select += [FIELD.SEQNR, FIELD.END_VALIDITY]
+        order_by += [FIELD.SEQNR, FIELD.START_VALIDITY]
+    query = f"""
+SELECT   {', '.join(select)}
+FROM     {table_name}
+ORDER BY {', '.join(order_by)}
+"""
+    rows = _execute(query)
+    for row in rows:
+        row = dict(row)
+        yield row
+
+
+def update_current_relation(catalog_name, collection_name, field_name, row):
+    """
+    Update the current relation with a new value (row[field_name]
+
+    :param catalog_name:
+    :param collection_name:
+    :param field_name:
+    :param row: the new relation data
+    :return:
+    """
+    model = GOBModel()
+    table_name = model.get_table_name(catalog_name, collection_name)
+
+    query = f"""
+UPDATE {table_name}
+SET    {field_name} = '{json.dumps(row[field_name])}'
+WHERE  {FIELD.GOBID} = {row[FIELD.GOBID]}
+"""
+    print("Update QUERY", query)
+    return _execute(query)
+
+
 def get_relations(src_catalog_name, src_collection_name, src_field_name):
     """
     Compose a database query to get all relation data for the given catalog, collection and field
@@ -197,7 +278,7 @@ def get_relations(src_catalog_name, src_collection_name, src_field_name):
         ])
 
     # Main order is on src id
-    order_by = ["src._id"]
+    order_by = [f"src.{FIELD.SOURCE}", f"src.{FIELD.ID}"]
     if src_has_states:
         # then on source volgnummer and begin geldigheid
         order_by.extend([f"src.{FIELD.SEQNR}", f"src.{FIELD.START_VALIDITY}"])
@@ -208,7 +289,8 @@ def get_relations(src_catalog_name, src_collection_name, src_field_name):
     query = f"""
 SELECT
     {comma_join.join([f'src.{field} AS src_{field}' for field in src_fields])},
-    {comma_join.join([f'dst.{field} AS dst_{field}' for field in dst_fields])}
+    {comma_join.join([f'dst.{field} AS dst_{field}' for field in dst_fields])},
+    {comma_join.join([f'dst.{field} AS {DST_MATCH_PREFIX}{field}' for field in dst_match_fields])}
 FROM {src_table_name} AS src
 LEFT OUTER JOIN (
 SELECT
@@ -222,6 +304,7 @@ WHERE
 ORDER BY
     {', '.join(order_by)}
 """
+    print("Q", query)
     # Example result
     # {
     #     'src__id': '10181000',
@@ -234,89 +317,3 @@ ORDER BY
     # }
 
     return _get_data(query), src_has_states, dst_has_states
-
-
-def _get_where(relation):
-    """
-    Get where clause for a relation update
-
-    :param src:
-    :param relation:
-    :return:
-    """
-    src = relation["src"]
-    where = f"_source = '{src['source']}' AND _id = '{src['id']}'"
-    if src["volgnummer"] is not None:
-        if relation['eind_geldigheid'] is None:
-            is_end = "IS NULL"
-        else:
-            is_end = f"= '{relation['eind_geldigheid']}'"
-        where += f" AND volgnummer = '{src['volgnummer']}'" + \
-                 f" AND eind_geldigheid {is_end}"
-    return where
-
-
-def apply_relations(catalog_name, collection_name, field_name, relations):
-    """
-    Register the current relation (eind geldigheid = None) to current entity
-
-    :param catalog_name:
-    :param collection_name:
-    :param field_name:
-    :param relations:
-    :return:
-    """
-
-    # Example data
-    # [{
-    #     'src': {
-    #         'source': 'AMSBI',
-    #         'id': '03630012094860',
-    #         'volgnummer': '1'
-    #     },
-    #     'begin_geldigheid': None,
-    #     'eind_geldigheid': None,
-    #     'dst': [{
-    #                 'source': None,
-    #                 'id': None,
-    #                 'volgnummer': None
-    #             }]
-    # }]
-
-    model = GOBModel()
-    table_name = model.get_table_name(catalog_name, collection_name)
-
-    collection = model.get_collection(catalog_name, collection_name)
-    field = collection['all_fields'].get(field_name)
-    field_type = field['type']
-
-    if field_type == "GOB.ManyReference":
-        logger.info(f"Application to current state skipped for {field_name}")
-        return
-
-    storage = GOBStorageHandler()
-    engine = storage.engine
-
-    progress = ProgressTicker("Update relations", 10000)
-    for relation in relations:
-        progress.tick()
-
-        src = relation["src"]
-        if src["volgnummer"] is None and relation["eind_geldigheid"] is not None:
-                continue
-
-        where = _get_where(relation)
-
-        dst_ids = [{FIELD.ID: dst['id']} for dst in relation['dst']]
-        if not dst_ids:
-            dst_id = {FIELD.ID: None}
-        else:
-            assert len(dst_ids) == 1, "Error, Single reference with multiple values"
-            dst_id = dst_ids[0]
-
-        query = f"""
-UPDATE {table_name}
-SET    {field_name} = {field_name} || '{json.dumps(dst_id)}'
-WHERE  {where}
-"""
-        engine.execute(query)
