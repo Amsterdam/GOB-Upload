@@ -37,7 +37,7 @@ def _relation_needs_update(catalog_name, collection_name, reference_name, refere
 
     dst_catalog_name, dst_collection_name = reference['ref'].split(':')
 
-    dst_catalog = model.get_catalog(catalog_name)
+    dst_catalog = model.get_catalog(dst_catalog_name)
     if not dst_catalog:
         print(f"{display_name} skipped, destination catalog missing")
         return False

@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 from gobcore.model import GOBModel
 
-from gobupload.relate.apply import update_row_relation, clear_row_relation, get_next_item, get_match, _get_field_type, match_relation, apply_relations
+from gobupload.relate.apply import update_row_relation, clear_row_relation, get_next_item, get_match, _get_field_type, match_relation, apply_relations, prepare_row
 from gobupload.storage.relate import RelationUpdater
 
 class TestApply(TestCase):
@@ -169,7 +169,7 @@ class TestApply(TestCase):
         mock_clear_row.return_value = "clear row"
         mock_update_row.return_value = "update row"
         mock_get_match.return_value = (True, True)
-        current_relation = "current"
+        current_relation = {"field": None}
         relation = "relation"
         field_name = "field"
         field_type = "type"
@@ -201,3 +201,16 @@ class TestApply(TestCase):
         mock_match_relation.return_value = (True, False, False)
         with patch.object(RelationUpdater, 'update'):
             apply_relations("catalog", "collection", "field", [])
+
+    def test_prepare_row(self):
+        row = {"field": "value"}
+        prepare_row(row, "field", "any type")
+        self.assertEqual(row, {"field": "value"})
+
+        row["field"] = None
+        prepare_row(row, "field", "GOB.Reference")
+        self.assertEqual(row, {"field": {}})
+
+        row["field"] = None
+        prepare_row(row, "field", "GOB.ManyReference")
+        self.assertEqual(row, {"field": []})
