@@ -20,6 +20,14 @@ _START_OF_DAY = datetime.time(0, 0, 0)
 # Match for destination match fields
 DST_MATCH_PREFIX = "dst_match_"
 
+# SQL Query parts
+JOIN = "join"
+WHERE = "where"
+
+# comparison types
+EQUALS = "equals"     # equality comparison, eg src.bronwaarde == dst.code
+LIES_IN = "lies_in"   # geometric comparison, eg src.geometrie lies_in dst_geometrie
+
 
 def _execute_multiple(queries):
     storage = GOBStorageHandler()
@@ -249,6 +257,90 @@ WHERE  {FIELD.GOBID} = {row[FIELD.GOBID]}
         self.queries = []
 
 
+def _geo_resolve(spec, query_type):
+    """
+    Resolve the join or where part of a geometric query
+
+    :param spec: {'source_attribute', 'destination_attribute'}
+    :param query_type: 'join' or 'where' to specify the part of the query to be resolved
+    :return: the where or join query string part
+    """
+    src_geo = f"src.{spec['source_attribute']}"
+    dst_geo = f"dst.{spec['destination_attribute']}"
+    if query_type == JOIN:
+        # In the future this part might depend on the geometric types of the geometries
+        # Currently only surface lies in surface is resolved (eg ligt_in_buurt)
+        resolvers = {
+            LIES_IN: f"ST_Contains({dst_geo}::geometry, ST_PointOnSurface({src_geo}::geometry))"
+            # for points: f"ST_Contains({dst_geo}::geometry, {src_geo}::geometry)"
+        }
+        return resolvers.get(spec["method"])
+    elif query_type == WHERE:
+        # Only take valid geometries into account
+        return f"ST_IsValid({src_geo}) AND ST_IsValid({dst_geo})"
+
+
+def _equals_resolve(spec, src_field, query_type):
+    """
+    Resolve the join or where part of a 'equals' query (eg bronwaarde == code)
+
+    :param spec: {'destination_attribute'}
+    :param src_field:
+    :param query_type: 'join' or 'where' to specify the part of the query to be resolved
+    :return: the where or join query string part
+    """
+    if query_type == JOIN:
+        return f"dst.{spec['destination_attribute']} = {_get_match(src_field, spec)}"
+    elif query_type == WHERE:
+        return f"{_get_bronwaarde(spec['field_name'], src_field['type'])} IS NOT NULL"
+
+
+def _resolve_match(spec, src_field, query_type):
+    """
+    Resolve the join or where part of a relation query
+
+    :param spec: {'destination_attribute'}
+    :param src_field:
+    :param query_type: 'join' or 'where' to specify the part of the query to be resolved
+    :return: the where or join query string part
+    """
+    assert query_type in [JOIN, WHERE], f"Error: unknown query part type {query_type}"
+    assert spec["method"] in [EQUALS, LIES_IN], f"Error: unknown match type {spec['method']}"
+
+    if spec["method"] == EQUALS:
+        return _equals_resolve(spec, src_field, query_type)
+    elif spec["method"] == LIES_IN:  # geometric
+        return _geo_resolve(spec, query_type)
+
+
+def _get_select_from_join(dst_fields, dst_match_fields):
+    """
+    Get the fiels to retrieve from the main part of the relation query
+
+    :param dst_fields:
+    :param dst_match_fields:
+    :return:
+    """
+    select_from_join = [f'{field}' for field in dst_fields + dst_match_fields]
+    return select_from_join
+
+
+def _get_select_from(dst_fields, dst_match_fields, src_fields, src_match_fields):
+    """
+    Get the fields to retrieve from the destination part of the relation query
+
+    :param dst_fields:
+    :param dst_match_fields:
+    :param src_fields:
+    :param src_match_fields:
+    :return:
+    """
+    select_from = [f'src.{field} AS src_{field}' for field in src_fields + src_match_fields] + \
+                  [f'dst.{field} AS dst_{field}' for field in dst_fields] + \
+                  [f'dst.{field} AS {DST_MATCH_PREFIX}{field}' for field in dst_match_fields]
+    return select_from
+
+
 def get_relations(src_catalog_name, src_collection_name, src_field_name):
     """
     Compose a database query to get all relation data for the given catalog, collection and field
@@ -285,16 +377,17 @@ def get_relations(src_catalog_name, src_collection_name, src_field_name):
     dst_fields = _get_fields(dst_has_states)
 
     # Get the fields that are required to match upon (multiple may exist, one per application)
+    src_match_fields = [spec['source_attribute'] for spec in relation_specs
+                        if spec.get('source_attribute') is not None]
     dst_match_fields = [spec['destination_attribute'] for spec in relation_specs]
 
     # Define the join of source and destination, src:bronwaarde = dst:field:value
     join_on = ([f"(src.{FIELD.APPLICATION} = '{spec['source']}' AND " +
-                f"dst.{spec['destination_attribute']} = {_get_match(src_field, spec)})" for spec in relation_specs])
+                f"{_resolve_match(spec, src_field, JOIN)})" for spec in relation_specs])
 
     # Only get relations when bronwaarde is filled
     has_bronwaarde = ([f"(src.{FIELD.APPLICATION} = '{spec['source']}' AND " +
-                       f"{_get_bronwaarde(spec['field_name'], src_field['type'])} IS NOT NULL)"
-                       for spec in relation_specs])
+                       f"{_resolve_match(spec, src_field, WHERE)})" for spec in relation_specs])
 
     # Build a properly formatted select statement
     comma_join = ',\n    '
@@ -321,16 +414,16 @@ def get_relations(src_catalog_name, src_collection_name, src_field_name):
         # then on destination begin and eind geldigheid
         order_by.extend([f"dst.{FIELD.START_VALIDITY}", f"dst.{FIELD.END_VALIDITY}"])
 
+    select_from = _get_select_from(dst_fields, dst_match_fields, src_fields, src_match_fields)
+    select_from_join = _get_select_from_join(dst_fields, dst_match_fields)
+
     query = f"""
 SELECT
-    {comma_join.join([f'src.{field} AS src_{field}' for field in src_fields])},
-    {comma_join.join([f'dst.{field} AS dst_{field}' for field in dst_fields])},
-    {comma_join.join([f'dst.{field} AS {DST_MATCH_PREFIX}{field}' for field in dst_match_fields])}
+    {comma_join.join(select_from)}
 FROM {src_table_name} AS src
 LEFT OUTER JOIN (
 SELECT
-    {comma_join.join([f'{field}' for field in dst_fields])},
-    {comma_join.join([f'{field}' for field in dst_match_fields])}
+    {comma_join.join(select_from_join)}
 FROM {dst_table_name}) AS dst
 ON
     {and_join.join(join_on)}

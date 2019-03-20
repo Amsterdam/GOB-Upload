@@ -99,7 +99,8 @@ ORDER BY _source, _id, volgnummer, begin_geldigheid
             {
                 'source': 'src_application',
                 'field_name': 'src_attr',
-                'destination_attribute': 'dst_attr'
+                'destination_attribute': 'dst_attr',
+                'method': 'equals'
             }
         ]
         expect = """
@@ -143,7 +144,8 @@ ORDER BY
             {
                 'source': 'src_application',
                 'field_name': 'src_attr',
-                'destination_attribute': 'dst_attr'
+                'destination_attribute': 'dst_attr',
+                'method': 'equals'
             }
         ]
         expect = """
@@ -199,7 +201,8 @@ ORDER BY
             {
                 'source': 'src_application',
                 'field_name': 'src_attr',
-                'destination_attribute': 'dst_attr'
+                'destination_attribute': 'dst_attr',
+                'method': 'equals'
             }
         ]
         expect = """
@@ -255,12 +258,14 @@ ORDER BY
             {
                 'source': 'src_application1',
                 'field_name': 'src_attr1',
-                'destination_attribute': 'dst_attr1'
+                'destination_attribute': 'dst_attr1',
+                'method': 'equals'
             },
             {
                 'source': 'src_application2',
                 'field_name': 'src_attr2',
-                'destination_attribute': 'dst_attr2'
+                'destination_attribute': 'dst_attr2',
+                'method': 'equals'
             }
         ]
         expect = """
