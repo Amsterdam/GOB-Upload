@@ -36,7 +36,7 @@ import datetime
 from gobcore.model.metadata import FIELD
 from gobcore.logging.logger import logger
 
-from gobupload.storage.relate import get_relations, date_to_datetime
+from gobupload.storage.relate import DST_MATCH_PREFIX, get_relations, date_to_datetime
 
 
 # Relations can have missing begin and end dates.
@@ -178,11 +178,15 @@ def _get_id(row, source, id, volgnummer):
     :param volgnummer:
     :return:
     """
-    return {
+    result = {
         "source": row[source],
         "id": row[id],
         "volgnummer": row.get(volgnummer)
     }
+    source_values = [value for key, value in row.items() if DST_MATCH_PREFIX in key]
+    if source_values:
+        result["bronwaardes"] = source_values
+    return result
 
 
 def _close_state(state, relations, previous, results):

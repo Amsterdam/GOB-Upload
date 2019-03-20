@@ -3,6 +3,7 @@ Module contains the storage related logic for GOB Relations
 
 """
 import datetime
+import json
 
 from gobupload.storage.handler import GOBStorageHandler
 
@@ -15,6 +16,33 @@ from gobupload.relate.exceptions import RelateException
 
 # Dates compare at start of day
 _START_OF_DAY = datetime.time(0, 0, 0)
+
+# Match for destination match fields
+DST_MATCH_PREFIX = "dst_match_"
+
+# SQL Query parts
+JOIN = "join"
+WHERE = "where"
+
+# comparison types
+EQUALS = "equals"     # equality comparison, eg src.bronwaarde == dst.code
+LIES_IN = "lies_in"   # geometric comparison, eg src.geometrie lies_in dst_geometrie
+
+
+def _execute_multiple(queries):
+    storage = GOBStorageHandler()
+    engine = storage.engine
+
+    result = None
+    with engine.connect() as connection:
+        for query in queries:
+            result = connection.execute(query)
+
+    return result   # Return result of last execution
+
+
+def _execute(query):
+    return _execute_multiple([query])
 
 
 def _get_bronwaarde(field_name, field_type):
@@ -130,6 +158,189 @@ def _get_fields(has_states):
     return fields
 
 
+def get_last_change(catalog_name, collection_name):
+    """
+    Gets the eventid of the most recent change for the given catalog and collection
+
+    :param catalog_name:
+    :param collection_name:
+    :return:
+    """
+    query = f"""
+SELECT MAX(eventid)
+FROM   events
+WHERE  catalogue = '{catalog_name}' AND
+       entity = '{collection_name}' AND
+       action != 'CONFIRM'
+"""
+    last_change = _execute(query).scalar()
+    return 0 if last_change is None else last_change
+
+
+def get_current_relations(catalog_name, collection_name, field_name):
+    """
+    Get the current relations as an iterable of dictionaries
+    Each relation is transformed into a dictionary
+
+    :param catalog_name:
+    :param collection_name:
+    :param field_name:
+    :return: An iterable of dicts
+    """
+    model = GOBModel()
+    table_name = model.get_table_name(catalog_name, collection_name)
+
+    collection = model.get_collection(catalog_name, collection_name)
+    field = collection['all_fields'][field_name]
+    field_type = field['type']
+    assert field_type in ["GOB.Reference", "GOB.ManyReference"], f"Error: unexpected field type '{field_type}'"
+
+    select = [FIELD.GOBID, field_name, FIELD.SOURCE, FIELD.ID]
+    order_by = [FIELD.SOURCE, FIELD.ID]
+    if model.has_states(catalog_name, collection_name):
+        select += [FIELD.SEQNR, FIELD.END_VALIDITY]
+        order_by += [FIELD.SEQNR, FIELD.START_VALIDITY]
+    query = f"""
+SELECT   {', '.join(select)}
+FROM     {table_name}
+ORDER BY {', '.join(order_by)}
+"""
+    rows = _execute(query)
+    for row in rows:
+        row = dict(row)
+        yield row
+
+
+class RelationUpdater:
+
+    # Execute updates every update interval queries
+    UPDATE_INTERVAL = 1000
+
+    def __init__(self, catalog_name, collection_name):
+        """
+        Initialize an updater for the given catalog and collection
+
+        :param catalog_name:
+        :param collection_name:
+        """
+        model = GOBModel()
+        self.table_name = model.get_table_name(catalog_name, collection_name)
+        self.queries = []
+
+    def update(self, field_name, row):
+        """
+        Create an update query for the given arguments.
+        Add the query to the list of queries
+        If the number of queries in the list of queries exceeds the update interval execute the queries
+
+        :param field_name:
+        :param row:
+        :return:
+        """
+        query = f"""
+UPDATE {self.table_name}
+SET    {field_name} = '{json.dumps(row[field_name])}'
+WHERE  {FIELD.GOBID} = {row[FIELD.GOBID]}
+"""
+        self.queries.append(query)
+        if len(self.queries) >= RelationUpdater.UPDATE_INTERVAL:
+            self.completed()
+
+    def completed(self):
+        """
+        Execute a list of queries and reinitialize the list of queries
+
+        :return:
+        """
+        if self.queries:
+            _execute_multiple(self.queries)
+        self.queries = []
+
+
+def _geo_resolve(spec, query_type):
+    """
+    Resolve the join or where part of a geometric query
+
+    :param spec: {'source_attribute', 'destination_attribute'}
+    :param query_type: 'join' or 'where' to specify the part of the query to be resolved
+    :return: the where or join query string part
+    """
+    src_geo = f"src.{spec['source_attribute']}"
+    dst_geo = f"dst.{spec['destination_attribute']}"
+    if query_type == JOIN:
+        # In the future this part might depend on the geometric types of the geometries
+        # Currently only surface lies in surface is resolved (eg ligt_in_buurt)
+        resolvers = {
+            LIES_IN: f"ST_Contains({dst_geo}::geometry, ST_PointOnSurface({src_geo}::geometry))"
+            # for points: f"ST_Contains({dst_geo}::geometry, {src_geo}::geometry)"
+        }
+        return resolvers.get(spec["method"])
+    elif query_type == WHERE:
+        # Only take valid geometries into account
+        return f"ST_IsValid({src_geo}) AND ST_IsValid({dst_geo})"
+
+
+def _equals_resolve(spec, src_field, query_type):
+    """
+    Resolve the join or where part of a 'equals' query (eg bronwaarde == code)
+
+    :param spec: {'destination_attribute'}
+    :param src_field:
+    :param query_type: 'join' or 'where' to specify the part of the query to be resolved
+    :return: the where or join query string part
+    """
+    if query_type == JOIN:
+        return f"dst.{spec['destination_attribute']} = {_get_match(src_field, spec)}"
+    elif query_type == WHERE:
+        return f"{_get_bronwaarde(spec['field_name'], src_field['type'])} IS NOT NULL"
+
+
+def _resolve_match(spec, src_field, query_type):
+    """
+    Resolve the join or where part of a relation query
+
+    :param spec: {'destination_attribute'}
+    :param src_field:
+    :param query_type: 'join' or 'where' to specify the part of the query to be resolved
+    :return: the where or join query string part
+    """
+    assert query_type in [JOIN, WHERE], f"Error: unknown query part type {query_type}"
+    assert spec["method"] in [EQUALS, LIES_IN], f"Error: unknown match type {spec['method']}"
+
+    if spec["method"] == EQUALS:
+        return _equals_resolve(spec, src_field, query_type)
+    elif spec["method"] == LIES_IN:  # geometric
+        return _geo_resolve(spec, query_type)
+
+
+def _get_select_from_join(dst_fields, dst_match_fields):
+    """
+    Get the fiels to retrieve from the main part of the relation query
+
+    :param dst_fields:
+    :param dst_match_fields:
+    :return:
+    """
+    select_from_join = [f'{field}' for field in dst_fields + dst_match_fields]
+    return select_from_join
+
+
+def _get_select_from(dst_fields, dst_match_fields, src_fields, src_match_fields):
+    """
+    Get the fields to retrieve from the destination part of the relation query
+
+    :param dst_fields:
+    :param dst_match_fields:
+    :param src_fields:
+    :param src_match_fields:
+    :return:
+    """
+    select_from = [f'src.{field} AS src_{field}' for field in src_fields + src_match_fields] + \
+                  [f'dst.{field} AS dst_{field}' for field in dst_fields] + \
+                  [f'dst.{field} AS {DST_MATCH_PREFIX}{field}' for field in dst_match_fields]
+    return select_from
+
+
 def get_relations(src_catalog_name, src_collection_name, src_field_name):
     """
     Compose a database query to get all relation data for the given catalog, collection and field
@@ -166,16 +377,17 @@ def get_relations(src_catalog_name, src_collection_name, src_field_name):
     dst_fields = _get_fields(dst_has_states)
 
     # Get the fields that are required to match upon (multiple may exist, one per application)
+    src_match_fields = [spec['source_attribute'] for spec in relation_specs
+                        if spec.get('source_attribute') is not None]
     dst_match_fields = [spec['destination_attribute'] for spec in relation_specs]
 
     # Define the join of source and destination, src:bronwaarde = dst:field:value
     join_on = ([f"(src.{FIELD.APPLICATION} = '{spec['source']}' AND " +
-                f"dst.{spec['destination_attribute']} = {_get_match(src_field, spec)})" for spec in relation_specs])
+                f"{_resolve_match(spec, src_field, JOIN)})" for spec in relation_specs])
 
     # Only get relations when bronwaarde is filled
     has_bronwaarde = ([f"(src.{FIELD.APPLICATION} = '{spec['source']}' AND " +
-                       f"{_get_bronwaarde(spec['field_name'], src_field['type'])} IS NOT NULL)"
-                       for spec in relation_specs])
+                       f"{_resolve_match(spec, src_field, WHERE)})" for spec in relation_specs])
 
     # Build a properly formatted select statement
     comma_join = ',\n    '
@@ -194,7 +406,7 @@ def get_relations(src_catalog_name, src_collection_name, src_field_name):
         ])
 
     # Main order is on src id
-    order_by = ["src._id"]
+    order_by = [f"src.{FIELD.SOURCE}", f"src.{FIELD.ID}"]
     if src_has_states:
         # then on source volgnummer and begin geldigheid
         order_by.extend([f"src.{FIELD.SEQNR}", f"src.{FIELD.START_VALIDITY}"])
@@ -202,15 +414,16 @@ def get_relations(src_catalog_name, src_collection_name, src_field_name):
         # then on destination begin and eind geldigheid
         order_by.extend([f"dst.{FIELD.START_VALIDITY}", f"dst.{FIELD.END_VALIDITY}"])
 
+    select_from = _get_select_from(dst_fields, dst_match_fields, src_fields, src_match_fields)
+    select_from_join = _get_select_from_join(dst_fields, dst_match_fields)
+
     query = f"""
 SELECT
-    {comma_join.join([f'src.{field} AS src_{field}' for field in src_fields])},
-    {comma_join.join([f'dst.{field} AS dst_{field}' for field in dst_fields])}
+    {comma_join.join(select_from)}
 FROM {src_table_name} AS src
 LEFT OUTER JOIN (
 SELECT
-    {comma_join.join([f'{field}' for field in dst_fields])},
-    {comma_join.join([f'{field}' for field in dst_match_fields])}
+    {comma_join.join(select_from_join)}
 FROM {dst_table_name}) AS dst
 ON
     {and_join.join(join_on)}
