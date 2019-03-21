@@ -45,9 +45,13 @@ class TestEnrichGeounion(TestCase):
         enrich(self.mock_storage, msg)
 
         self.mock_storage.get_query_value.assert_called_with("""
-SELECT ST_AsText(ST_Union(geometrie))
-    FROM cat_col
+SELECT
+      ST_AsText(
+          ST_Union(geometrie)
+      )
+FROM  cat_col
 WHERE fld in ('1', '2')
+AND   eind_geldigheid IS NULL
 """)
         self.assertEqual(msg["contents"][0]["geo"], "POINT (1.000 2.000)")
 
@@ -61,9 +65,13 @@ WHERE fld in ('1', '2')
         enrich(self.mock_storage, msg)
 
         self.mock_storage.get_query_value.assert_called_with("""
-SELECT ST_AsText(ST_Union(geometrie))
-    FROM cat_col
+SELECT
+      ST_AsText(
+          ST_Union(geometrie)
+      )
+FROM  cat_col
 WHERE fld in ('1', '2')
+AND   eind_geldigheid IS NULL
 """)
         self.assertEqual(msg["contents"][0]["geo"], "POINT (1.000 2.000)")
 
@@ -77,9 +85,13 @@ WHERE fld in ('1', '2')
         enrich(self.mock_storage, msg)
 
         self.mock_storage.get_query_value.assert_called_with("""
-SELECT ST_AsText(ST_Union(geometrie))
-    FROM cat_col
+SELECT
+      ST_AsText(
+          ST_Union(geometrie)
+      )
+FROM  cat_col
 WHERE fld in ('1', '2')
+AND   eind_geldigheid IS NULL
 """)
         self.assertEqual(msg["contents"][0]["geo"], "POINT (1.000 2.000)")
 
