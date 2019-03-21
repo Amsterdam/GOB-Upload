@@ -8,7 +8,7 @@ During enrichment the missing data is added
 """
 import re
 
-from gobcore.model import GOBModel
+from gobcore.model import GOBModel, FIELD
 from gobcore.typesystem.gob_geotypes import Geometry
 
 from gobcore.logging.logger import logger
@@ -114,9 +114,13 @@ def _geounion(storage, data, specs, column, assigned):
     geometrie = specs["geometrie"]
 
     query = f"""
-SELECT ST_AsText(ST_Union({geometrie}))
+SELECT
+    ST_AsText(
+		ST_Union({geometrie})
+	)
     FROM {table_name}
 WHERE {field} in ({', '.join(values)})
+AND FIELD.END_VALIDITY IS NULL
 """
 
     result = storage.get_query_value(query)
