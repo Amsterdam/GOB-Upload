@@ -115,12 +115,12 @@ def _geounion(storage, data, specs, column, assigned):
 
     query = f"""
 SELECT
-    ST_AsText(
-		ST_Union({geometrie})
-	)
-    FROM {table_name}
+      ST_AsText(
+          ST_Union({geometrie})
+      )
+FROM  {table_name}
 WHERE {field} in ({', '.join(values)})
-AND FIELD.END_VALIDITY IS NULL
+AND   {FIELD.END_VALIDITY} IS NULL
 """
 
     result = storage.get_query_value(query)
