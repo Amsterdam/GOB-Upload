@@ -148,7 +148,7 @@ def _get_fields(has_states):
     :return:
     """
     # Functional identification
-    BASE_FIELDS = [FIELD.SOURCE, FIELD.ID]
+    BASE_FIELDS = [FIELD.DATE_DELETED, FIELD.SOURCE, FIELD.ID]
     # State fields for collections with states
     STATE_FIELDS = [FIELD.SEQNR, FIELD.START_VALIDITY, FIELD.END_VALIDITY]
 
@@ -203,6 +203,7 @@ def get_current_relations(catalog_name, collection_name, field_name):
     query = f"""
 SELECT   {', '.join(select)}
 FROM     {table_name}
+WHERE    {FIELD.DATE_DELETED} IS NULL
 ORDER BY {', '.join(order_by)}
 """
     rows = _execute(query)
@@ -417,6 +418,8 @@ def get_relations(src_catalog_name, src_collection_name, src_field_name):
     select_from = _get_select_from(dst_fields, dst_match_fields, src_fields, src_match_fields)
     select_from_join = _get_select_from_join(dst_fields, dst_match_fields)
 
+    not_deleted = f"(src.{FIELD.DATE_DELETED} IS NULL AND dst.{FIELD.DATE_DELETED} IS NULL)"
+
     query = f"""
 SELECT
     {comma_join.join(select_from)}
@@ -428,7 +431,8 @@ FROM {dst_table_name}) AS dst
 ON
     {and_join.join(join_on)}
 WHERE
-    {or_join.join(has_bronwaarde)}
+    {or_join.join(has_bronwaarde)} AND
+    {not_deleted}
 ORDER BY
     {', '.join(order_by)}
 """
