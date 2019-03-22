@@ -107,7 +107,7 @@ def _process_references(msg, catalog_name, collection_name, references):
                 reference_name
             )
         except RelateException as e:
-            logger.error(f"Relate {catalog_name} - {collection_name}:{reference_name} FAILED")
+            logger.error(f"Relate {catalog_name} - {collection_name}:{reference_name} FAILED: {str(e)}")
             print(f"Relate Error: {str(e)}")
             continue
 
