@@ -59,6 +59,7 @@ WHERE  _gobid = _gobid
         mock_execute.assert_called_with("""
 SELECT   _gobid, field, _source, _id
 FROM     catalog_collection
+WHERE    _date_deleted IS NULL
 ORDER BY _source, _id
 """)
 
@@ -81,6 +82,7 @@ ORDER BY _source, _id
         mock_execute.assert_called_with("""
 SELECT   _gobid, field, _source, _id, volgnummer, eind_geldigheid
 FROM     catalog_collection
+WHERE    _date_deleted IS NULL
 ORDER BY _source, _id, volgnummer, begin_geldigheid
 """)
 
@@ -105,14 +107,17 @@ ORDER BY _source, _id, volgnummer, begin_geldigheid
         ]
         expect = """
 SELECT
+    src._date_deleted AS src__date_deleted,
     src._source AS src__source,
     src._id AS src__id,
+    dst._date_deleted AS dst__date_deleted,
     dst._source AS dst__source,
     dst._id AS dst__id,
     dst.dst_attr AS dst_match_dst_attr
 FROM catalog_collection AS src
 LEFT OUTER JOIN (
 SELECT
+    _date_deleted,
     _source,
     _id,
     dst_attr
@@ -120,7 +125,8 @@ FROM dst_catalogue_dst_collection) AS dst
 ON
     (src._application = 'src_application' AND dst.dst_attr = src.src_attr->>'bronwaarde')
 WHERE
-    (src._application = 'src_application' AND src.src_attr->>'bronwaarde' IS NOT NULL)
+    (src._application = 'src_application' AND src.src_attr->>'bronwaarde' IS NOT NULL) AND
+    (src._date_deleted IS NULL AND dst._date_deleted IS NULL)
 ORDER BY
     src._source, src._id
 """
@@ -150,11 +156,13 @@ ORDER BY
         ]
         expect = """
 SELECT
+    src._date_deleted AS src__date_deleted,
     src._source AS src__source,
     src._id AS src__id,
     src.volgnummer AS src_volgnummer,
     src.begin_geldigheid AS src_begin_geldigheid,
     src.eind_geldigheid AS src_eind_geldigheid,
+    dst._date_deleted AS dst__date_deleted,
     dst._source AS dst__source,
     dst._id AS dst__id,
     dst.volgnummer AS dst_volgnummer,
@@ -164,6 +172,7 @@ SELECT
 FROM catalog_collection AS src
 LEFT OUTER JOIN (
 SELECT
+    _date_deleted,
     _source,
     _id,
     volgnummer,
@@ -176,7 +185,8 @@ ON
     (dst.begin_geldigheid < src.eind_geldigheid OR src.eind_geldigheid IS NULL) AND
     (dst.eind_geldigheid > src.begin_geldigheid OR dst.eind_geldigheid IS NULL)
 WHERE
-    (src._application = 'src_application' AND src.src_attr->>'bronwaarde' IS NOT NULL)
+    (src._application = 'src_application' AND src.src_attr->>'bronwaarde' IS NOT NULL) AND
+    (src._date_deleted IS NULL AND dst._date_deleted IS NULL)
 ORDER BY
     src._source, src._id, src.volgnummer, src.begin_geldigheid, dst.begin_geldigheid, dst.eind_geldigheid
 """
@@ -207,11 +217,13 @@ ORDER BY
         ]
         expect = """
 SELECT
+    src._date_deleted AS src__date_deleted,
     src._source AS src__source,
     src._id AS src__id,
     src.volgnummer AS src_volgnummer,
     src.begin_geldigheid AS src_begin_geldigheid,
     src.eind_geldigheid AS src_eind_geldigheid,
+    dst._date_deleted AS dst__date_deleted,
     dst._source AS dst__source,
     dst._id AS dst__id,
     dst.volgnummer AS dst_volgnummer,
@@ -221,6 +233,7 @@ SELECT
 FROM catalog_collection AS src
 LEFT OUTER JOIN (
 SELECT
+    _date_deleted,
     _source,
     _id,
     volgnummer,
@@ -233,7 +246,8 @@ ON
     (dst.begin_geldigheid < src.eind_geldigheid OR src.eind_geldigheid IS NULL) AND
     (dst.eind_geldigheid > src.begin_geldigheid OR dst.eind_geldigheid IS NULL)
 WHERE
-    (src._application = 'src_application' AND ARRAY(SELECT x->>'bronwaarde' FROM jsonb_array_elements(src.src_attr) as x) IS NOT NULL)
+    (src._application = 'src_application' AND ARRAY(SELECT x->>'bronwaarde' FROM jsonb_array_elements(src.src_attr) as x) IS NOT NULL) AND
+    (src._date_deleted IS NULL AND dst._date_deleted IS NULL)
 ORDER BY
     src._source, src._id, src.volgnummer, src.begin_geldigheid, dst.begin_geldigheid, dst.eind_geldigheid
 """
@@ -270,11 +284,13 @@ ORDER BY
         ]
         expect = """
 SELECT
+    src._date_deleted AS src__date_deleted,
     src._source AS src__source,
     src._id AS src__id,
     src.volgnummer AS src_volgnummer,
     src.begin_geldigheid AS src_begin_geldigheid,
     src.eind_geldigheid AS src_eind_geldigheid,
+    dst._date_deleted AS dst__date_deleted,
     dst._source AS dst__source,
     dst._id AS dst__id,
     dst.volgnummer AS dst_volgnummer,
@@ -285,6 +301,7 @@ SELECT
 FROM catalog_collection AS src
 LEFT OUTER JOIN (
 SELECT
+    _date_deleted,
     _source,
     _id,
     volgnummer,
@@ -300,7 +317,8 @@ ON
     (dst.eind_geldigheid > src.begin_geldigheid OR dst.eind_geldigheid IS NULL)
 WHERE
     (src._application = 'src_application1' AND src.src_attr1->>'bronwaarde' IS NOT NULL) OR
-    (src._application = 'src_application2' AND src.src_attr2->>'bronwaarde' IS NOT NULL)
+    (src._application = 'src_application2' AND src.src_attr2->>'bronwaarde' IS NOT NULL) AND
+    (src._date_deleted IS NULL AND dst._date_deleted IS NULL)
 ORDER BY
     src._source, src._id, src.volgnummer, src.begin_geldigheid, dst.begin_geldigheid, dst.eind_geldigheid
 """

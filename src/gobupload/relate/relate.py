@@ -74,6 +74,13 @@ def _handle_state_relation(state, relation, next_begin):
             "dst": [_no_dst(relation['dst'][0]['source'])]
         })
 
+    for result in results:
+        dst = result['dst']
+        not_none_items = [d for d in dst if d['id'] is not None]
+        if len(not_none_items) >= 1:
+            # Do not allow empty results when the list of dst's has valid dst items
+            result['dst'] = not_none_items
+
     return results
 
 
@@ -201,9 +208,9 @@ def _close_state(state, relations, previous, results):
     """
     if relations:
         dst_end = previous["dst_end"]
-        no_dst = _no_dst(previous["dst_source"])
         if dst_end != state["end"]:
             # Add an empty last relation
+            no_dst = _no_dst(previous["dst_source"])
             relations.append(_get_relation(dst_end, state["end"], no_dst))
         results.extend(_handle_state(state, relations))
 
@@ -267,8 +274,9 @@ def _handle_relations(rows):
                 "end": src_end,
             }
             relations = []
-            # Initialize start date
-            dst_begin = _add_relations_before_dst_begin(src_begin, dst_begin, dst_id, relations)
+
+        # Initialize start date
+        dst_begin = _add_relations_before_dst_begin(src_begin, dst_begin, dst_id, relations)
 
         # Take the minimum eind_geldigheid of src_id and dst
         if dst_end is None:
@@ -331,7 +339,8 @@ def _remove_gaps(results):
                 extra_data = {
                     'id': "inconsistency found",
                     'data': {
-                        'identificatie': src_id
+                        'identificatie': src_id,
+                        'volgnummer': src_volgnummer
                     }
                 }
                 logger.warning(f"Inconsistency found", extra_data)
