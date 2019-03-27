@@ -33,6 +33,7 @@ The result is organized as list of:
 """
 import datetime
 
+from gobcore.model import GOBModel
 from gobcore.model.metadata import FIELD
 from gobcore.logging.logger import logger
 
@@ -239,7 +240,7 @@ def _add_relations_before_dst_begin(src_begin, dst_begin, dst_id, relations):
     return dst_begin
 
 
-def _handle_relations(rows):
+def _handle_relations(rows, multi=False):
     """
     The relation data that is retrieved from the database is transformed into relation data
     with timeslots that cover the complete lifetime of the source field.
@@ -275,8 +276,12 @@ def _handle_relations(rows):
             }
             relations = []
 
-        # Initialize start date
-        dst_begin = _add_relations_before_dst_begin(src_begin, dst_begin, dst_id, relations)
+            # Initialize start date
+            dst_begin = _add_relations_before_dst_begin(src_begin, dst_begin, dst_id, relations)
+
+        if multi:
+            # Initialize start date
+            dst_begin = _add_relations_before_dst_begin(src_begin, dst_begin, dst_id, relations)
 
         # Take the minimum eind_geldigheid of src_id and dst
         if dst_end is None:
@@ -362,6 +367,12 @@ def _remove_gaps(results):
     return no_inconsistencies
 
 
+def _get_field_type(catalog_name, collection_name, field_name):
+    model = GOBModel()
+    collection = model.get_collection(catalog_name, collection_name)
+    return collection['all_fields'][field_name]['type']
+
+
 def relate(catalog_name, collection_name, field_name):
     """
     Get all relations for the given catalog, collection and field
@@ -377,7 +388,8 @@ def relate(catalog_name, collection_name, field_name):
         logger.warning("Warning: No relations found")
         results = []
     else:
-        results = _handle_relations(relations)
+        multi = _get_field_type(catalog_name, collection_name, field_name) == "GOB.ManyReference"
+        results = _handle_relations(relations, multi=multi)
 
     results = _remove_gaps(results)
 

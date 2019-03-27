@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 from gobcore.model import GOBModel
 from gobcore.sources import GOBSources
 
-from gobupload.relate.relate import relate, _handle_relations, _remove_gaps
+from gobupload.relate.relate import relate, _handle_relations, _remove_gaps, _get_field_type
 from gobupload.storage.relate import get_relations, _get_data, _convert_row
 
 @patch('gobupload.relate.relate.logger', MagicMock())
@@ -30,13 +30,15 @@ class TestRelate(TestCase):
         self.assertEqual(result, ([], True, True))
         mock_handle_relations.assert_not_called()
 
+    @patch('gobupload.relate.relate._get_field_type')
     @patch('gobupload.relate.relate._handle_relations')
     @patch('gobupload.relate.relate.get_relations')
-    def test_relate(self, mock_get_relations, mock_handle_relations):
+    def test_relate(self, mock_get_relations, mock_handle_relations, mock_get_field_type):
         mock_get_relations.return_value = [1], True, True
         mock_handle_relations.return_value = []
+        mock_get_field_type.return_value = "GOB.ManyReference"
         relate("catalog", "collection", "field")
-        mock_handle_relations.assert_called_with([1])
+        mock_handle_relations.assert_called_with([1], multi=True)
 
 
 @patch('gobupload.relate.relate.logger', MagicMock())
@@ -189,6 +191,179 @@ class TestRelateBothStates(TestCase):
                 'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
             }
         ]
+        result = _handle_relations(relations)
+        self.assertEqual(result, expect)
+
+    def test_multi_multi(self):
+        relations = [
+            {
+                'src__date_deleted': None,
+                'src__source': 'source',
+                'src__id': 'src_1',
+                'src_volgnummer': '1',
+                'src_begin_geldigheid': datetime.date(2018, 1, 1),
+                'src_eind_geldigheid': None,
+                'dst__date_deleted': None,
+                'dst__source': 'source',
+                'dst__id': 'dst_1',
+                'dst_volgnummer': '1',
+                'dst_begin_geldigheid': datetime.date(2001, 1, 1),
+                'dst_eind_geldigheid': None,
+                'dst_match_code': 'match_1'
+            },
+            {
+                'src__date_deleted': None,
+                'src__source': 'source',
+                'src__id': 'src_1',
+                'src_volgnummer': '1',
+                'src_begin_geldigheid': datetime.date(2018, 1, 1),
+                'src_eind_geldigheid': None,
+                'dst__date_deleted': None,
+                'dst__source': 'source',
+                'dst__id': 'dst_2',
+                'dst_volgnummer': '1',
+                'dst_begin_geldigheid': datetime.date(2001, 1, 1),
+                'dst_eind_geldigheid': None,
+                'dst_match_code': 'match_2'
+            },
+            {
+                'src__date_deleted': None,
+                'src__source': 'source',
+                'src__id': 'src_1',
+                'src_volgnummer': '1',
+                'src_begin_geldigheid': datetime.date(2018, 1, 1),
+                'src_eind_geldigheid': None,
+                'dst__date_deleted': None,
+                'dst__source': 'source',
+                'dst__id': 'dst_3',
+                'dst_volgnummer': '1',
+                'dst_begin_geldigheid': datetime.date(2006, 1, 1),
+                'dst_eind_geldigheid': None,
+                'dst_match_code': 'match_3'
+            }
+        ]
+        expect = [{
+                      'src': {
+                          'source': 'source',
+                          'id': 'src_1',
+                          'volgnummer': '1',
+                          'bronwaardes': ['match_1']
+                      },
+                      'begin_geldigheid': datetime.date(2018, 1, 1),
+                      'eind_geldigheid': None,
+                      'dst': [{
+                                  'source': 'source',
+                                  'id': 'dst_1',
+                                  'volgnummer': '1',
+                                  'bronwaardes': ['match_1']
+                              }, {
+                                  'source': 'source',
+                                  'id': 'dst_2',
+                                  'volgnummer': '1',
+                                  'bronwaardes': ['match_2']
+                              }, {
+                                  'source': 'source',
+                                  'id': 'dst_3',
+                                  'volgnummer': '1',
+                                  'bronwaardes': ['match_3']
+                              }]
+                  }]
+
+        result = _handle_relations(relations, multi=True)
+        self.assertEqual(result, expect)
+
+    def test_multi_periods(self):
+        relations = [
+            {
+                'src__source': 'src_src_1',
+                'src__id': 'src_1',
+                'src_volgnummer': '1',
+                'src_begin_geldigheid': datetime.date(2006, 1, 1),
+                'src_eind_geldigheid': datetime.date(2011, 1, 1),
+                'dst__source': 'dst_src_1',
+                'dst__id': 'dst_1',
+                'dst_volgnummer': '1',
+                'dst_begin_geldigheid': datetime.date(2007, 1, 1),
+                'dst_eind_geldigheid': datetime.date(2008, 1, 1)
+            },
+            {
+                'src__source': 'src_src_1',
+                'src__id': 'src_1',
+                'src_volgnummer': '1',
+                'src_begin_geldigheid': datetime.date(2006, 1, 1),
+                'src_eind_geldigheid': datetime.date(2011, 1, 1),
+                'dst__source': 'dst_src_1',
+                'dst__id': 'dst_1',
+                'dst_volgnummer': '1',
+                'dst_begin_geldigheid': datetime.date(2008, 1, 1),
+                'dst_eind_geldigheid': datetime.date(2009, 1, 1)
+            },
+            {
+                'src__source': 'src_src_1',
+                'src__id': 'src_1',
+                'src_volgnummer': '1',
+                'src_begin_geldigheid': datetime.date(2006, 1, 1),
+                'src_eind_geldigheid': datetime.date(2011, 1, 1),
+                'dst__source': 'dst_src_1',
+                'dst__id': 'dst_1',
+                'dst_volgnummer': '1',
+                'dst_begin_geldigheid': datetime.date(2009, 1, 1),
+                'dst_eind_geldigheid': datetime.date(2011, 1, 1)
+            }
+        ]
+        expect = [{
+                      'src': {
+                          'source': 'src_src_1',
+                          'id': 'src_1',
+                          'volgnummer': '1'
+                      },
+                      'begin_geldigheid': datetime.date(2006, 1, 1),
+                      'eind_geldigheid': datetime.date(2007, 1, 1),
+                      'dst': [{
+                                  'source': 'dst_src_1',
+                                  'id': None,
+                                  'volgnummer': None
+                              }]
+                  }, {
+                      'src': {
+                          'source': 'src_src_1',
+                          'id': 'src_1',
+                          'volgnummer': '1'
+                      },
+                      'begin_geldigheid': datetime.date(2007, 1, 1),
+                      'eind_geldigheid': datetime.date(2008, 1, 1),
+                      'dst': [{
+                                  'source': 'dst_src_1',
+                                  'id': 'dst_1',
+                                  'volgnummer': '1'
+                              }]
+                  }, {
+                      'src': {
+                          'source': 'src_src_1',
+                          'id': 'src_1',
+                          'volgnummer': '1'
+                      },
+                      'begin_geldigheid': datetime.date(2008, 1, 1),
+                      'eind_geldigheid': datetime.date(2009, 1, 1),
+                      'dst': [{
+                                  'source': 'dst_src_1',
+                                  'id': 'dst_1',
+                                  'volgnummer': '1'
+                              }]
+                  }, {
+                      'src': {
+                          'source': 'src_src_1',
+                          'id': 'src_1',
+                          'volgnummer': '1'
+                      },
+                      'begin_geldigheid': datetime.date(2009, 1, 1),
+                      'eind_geldigheid': datetime.date(2011, 1, 1),
+                      'dst': [{
+                                  'source': 'dst_src_1',
+                                  'id': 'dst_1',
+                                  'volgnummer': '1'
+                              }]
+                  }]
         result = _handle_relations(relations)
         self.assertEqual(result, expect)
 
