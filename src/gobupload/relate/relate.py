@@ -336,6 +336,9 @@ def _remove_gaps(results):
                 # If dates are filled then these date should be consecutive
                 is_valid = is_valid and end > begin
             if not is_valid and src_id not in gaps:
+                print("_____")
+                print(begin)
+                print(previous["end"])
                 extra_data = {
                     'id': "inconsistency found",
                     'data': {
