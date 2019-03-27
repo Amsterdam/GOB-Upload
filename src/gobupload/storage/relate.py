@@ -379,7 +379,7 @@ def get_relations(src_catalog_name, src_collection_name, src_field_name):
 
     # Get the fields that are required to match upon (multiple may exist, one per application)
     src_match_fields = list({spec['source_attribute'] for spec in relation_specs
-                        if spec.get('source_attribute') is not None})
+                             if spec.get('source_attribute') is not None})
     dst_match_fields = list({spec['destination_attribute'] for spec in relation_specs})
 
     # Define the join of source and destination, src:bronwaarde = dst:field:value
@@ -446,6 +446,4 @@ ORDER BY
     #     'dst_begin_geldigheid': datetime.date(2006, 6, 12),
     #     'dst_eind_geldigheid': None
     # }
-    print("QUERY")
-    print(query)
     return _get_data(query), src_has_states, dst_has_states
