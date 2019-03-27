@@ -294,7 +294,7 @@ class TestRelateBothStates(TestCase):
                 'src_eind_geldigheid': datetime.date(2011, 1, 1),
                 'dst__source': 'dst_src_1',
                 'dst__id': 'dst_1',
-                'dst_volgnummer': '1',
+                'dst_volgnummer': '2',
                 'dst_begin_geldigheid': datetime.date(2008, 1, 1),
                 'dst_eind_geldigheid': datetime.date(2009, 1, 1)
             },
@@ -306,7 +306,7 @@ class TestRelateBothStates(TestCase):
                 'src_eind_geldigheid': datetime.date(2011, 1, 1),
                 'dst__source': 'dst_src_1',
                 'dst__id': 'dst_1',
-                'dst_volgnummer': '1',
+                'dst_volgnummer': '3',
                 'dst_begin_geldigheid': datetime.date(2009, 1, 1),
                 'dst_eind_geldigheid': datetime.date(2011, 1, 1)
             }
@@ -348,7 +348,7 @@ class TestRelateBothStates(TestCase):
                       'dst': [{
                                   'source': 'dst_src_1',
                                   'id': 'dst_1',
-                                  'volgnummer': '1'
+                                  'volgnummer': '2'
                               }]
                   }, {
                       'src': {
@@ -361,7 +361,7 @@ class TestRelateBothStates(TestCase):
                       'dst': [{
                                   'source': 'dst_src_1',
                                   'id': 'dst_1',
-                                  'volgnummer': '1'
+                                  'volgnummer': '3'
                               }]
                   }]
         result = _handle_relations(relations)
