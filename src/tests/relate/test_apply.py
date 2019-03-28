@@ -113,31 +113,31 @@ class TestApply(TestCase):
         current_relation = None
         relation = None
         result = get_match(relation, current_relation)
-        self.assertEqual(result, (False, False))
+        self.assertEqual(result, (False, False, False))
 
         relation = {}
         result = get_match(relation, current_relation)
-        self.assertEqual(result, (False, False))
+        self.assertEqual(result, (False, False, False))
 
         current_relation = {'src': {'source': 'source', 'id': 'id', 'volgnummer': None}, 'eind_geldigheid': None}
         relation = {'_source': 'source', '_id': 'id'}
         result = get_match(relation, current_relation)
-        self.assertEqual(result, (True, True))
+        self.assertEqual(result, (True, True, False))
 
         current_relation = {'src': {'source': 'source', 'id': 'id', 'volgnummer': 1}, 'eind_geldigheid': None}
         relation = {'_source': 'source', '_id': 'id', 'volgnummer': 1, 'eind_geldigheid': None}
         result = get_match(relation, current_relation)
-        self.assertEqual(result, (True, True))
+        self.assertEqual(result, (True, True, False))
 
         current_relation = {'src': {'source': 'source', 'id': 'id', 'volgnummer': 1}, 'eind_geldigheid': None}
         relation = {'_source': 'source', '_id': 'id', 'volgnummer': 2, 'eind_geldigheid': None}
         result = get_match(relation, current_relation)
-        self.assertEqual(result, (True, False))
+        self.assertEqual(result, (True, False, False))
 
         current_relation = {'src': {'source': 'source', 'id': 'id', 'volgnummer': 1}, 'eind_geldigheid': 'eind'}
         relation = {'_source': 'source', '_id': 'id', 'volgnummer': 1, 'eind_geldigheid': None}
         result = get_match(relation, current_relation)
-        self.assertEqual(result, (True, False))
+        self.assertEqual(result, (True, False, False))
 
 
     def test_field_type(self):
@@ -168,7 +168,7 @@ class TestApply(TestCase):
     def test_match_relation(self, mock_clear_row, mock_update_row, mock_get_match):
         mock_clear_row.return_value = "clear row"
         mock_update_row.return_value = "update row"
-        mock_get_match.return_value = (True, True)
+        mock_get_match.return_value = (True, True, False)
         current_relation = {"field": None}
         relation = "relation"
         field_name = "field"
@@ -176,21 +176,26 @@ class TestApply(TestCase):
         result = match_relation(current_relation, relation, field_name, field_type)
         self.assertEqual(result, ("update row", True, True))
 
-        mock_get_match.return_value = (False, False)
+        mock_get_match.return_value = (False, False, False)
         result = match_relation(current_relation, relation, field_name, field_type)
         self.assertEqual(result, ("clear row", True, True))
 
-        mock_get_match.return_value = (False, True)
+        mock_get_match.return_value = (False, True, False)
         result = match_relation(current_relation, relation, field_name, field_type)
         self.assertEqual(result, ("clear row", True, True))
 
-        mock_get_match.return_value = (True, False)
+        mock_get_match.return_value = (True, False, False)
         result = match_relation(current_relation, relation, field_name, field_type)
         self.assertEqual(result, (False, False, True))
 
-        mock_get_match.return_value = (False, False)
+        mock_get_match.return_value = (True, False, True)
+        result = match_relation(current_relation, relation, field_name, field_type)
+        self.assertEqual(result, (False, True, False))
+
+        mock_get_match.return_value = (False, False, False)
         result = match_relation(None, None, field_name, field_type)
         self.assertEqual(result, (False, False, False))
+
 
     @patch('gobupload.relate.apply.match_relation')
     @patch('gobupload.relate.apply._get_field_type')
