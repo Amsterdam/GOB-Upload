@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 from gobcore.model import GOBModel
 from gobcore.sources import GOBSources
 
-from gobupload.relate.relate import relate, _handle_relations, _remove_gaps, _get_field_type
+from gobupload.relate.relate import relate, _handle_relations, _remove_gaps
 from gobupload.storage.relate import get_relations, _get_data, _convert_row
 
 
@@ -31,15 +31,13 @@ class TestRelate(TestCase):
         self.assertEqual(result, ([], True, True))
         mock_handle_relations.assert_not_called()
 
-    @patch('gobupload.relate.relate._get_field_type')
     @patch('gobupload.relate.relate._handle_relations')
     @patch('gobupload.relate.relate.get_relations')
-    def test_relate(self, mock_get_relations, mock_handle_relations, mock_get_field_type):
+    def test_relate(self, mock_get_relations, mock_handle_relations):
         mock_get_relations.return_value = [1], True, True
         mock_handle_relations.return_value = []
-        mock_get_field_type.return_value = "GOB.ManyReference"
         relate("catalog", "collection", "field")
-        mock_handle_relations.assert_called_with([1], multi=True)
+        mock_handle_relations.assert_called_with([1])
 
 
 @patch('gobupload.relate.relate.logger', MagicMock())
@@ -481,7 +479,7 @@ class TestRelateBothStates(TestCase):
                               }]
                   }]
 
-        result = _handle_relations(relations, multi=True)
+        result = _handle_relations(relations)
         print("Result", result)
         self.assertEqual(result, expect)
 
