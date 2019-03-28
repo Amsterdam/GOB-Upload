@@ -28,10 +28,9 @@ The result is organized as list of:
         ...
     ]
 }
-
-
 """
 import datetime
+import operator
 
 from gobcore.model.metadata import FIELD
 from gobcore.logging.logger import logger
@@ -45,7 +44,36 @@ _BEGIN_OF_TIME = datetime.datetime.min
 _END_OF_TIME = datetime.datetime.max
 
 
+def _compare_date(date):
+    """
+    Turn a date or datetime in a comparable format
+
+    :param date:
+    :return:
+    """
+    return date.isoformat()
+
+
+def _compare_dates(date1, compare, date2):
+    """
+    Compare two dates
+    :param date1:
+    :param compare: the compare function, e.g. operator.lt
+    :param date2:
+    :return:
+    """
+    return compare(_compare_date(date1), _compare_date(date2))
+
+
 def _get_slots(src, dsts):
+    """
+    Examine begin and end dates from source and destinations.
+
+    Construct time slots for every timespan found
+    :param src:
+    :param dsts:
+    :return:
+    """
     # Collect all dates
     src_begin = src['begin']
     src_end = src['end']
@@ -53,11 +81,13 @@ def _get_slots(src, dsts):
     dates = [src_begin, src_end]
     for dst in dsts:
         dst_begin = dst['begin']
-        if dst_begin.isoformat() < src_begin.isoformat():
+        if _compare_dates(dst_begin, operator.lt, src_begin):  # dst_begin < src_begin
+            # Adjust the begin of the relation to the begin of the source
             dst_begin = src_begin
 
         dst_end = dst['end']
-        if dst_end.isoformat() > src_end.isoformat():
+        if _compare_dates(dst_end, operator.gt, src_end):  # dst_end > src_end
+            # Adjust the end of the relation to the end of the source
             dst_end = src_end
 
         dates.extend([dst_begin, dst_end])
@@ -66,9 +96,10 @@ def _get_slots(src, dsts):
     dates = list(set(dates))
 
     # Sorted from oldest to newest
-    dates.sort(key=lambda v: v.isoformat())
+    dates.sort(key=lambda v: _compare_date(v))
 
-    slots = [{
+    # Transform into time slots and return the result
+    return [{
         "src": {
             "source": src["source"],
             "id": src["id"],
@@ -79,15 +110,27 @@ def _get_slots(src, dsts):
         "dst": []
     } for i in range(len(dates) - 1)]
 
-    return slots
-
 
 def _post_process_slots(slots, src, dsts):
+    """
+    Post processing of slots
+
+    Restore original None values for BEGIN-END OF TIME
+    Insert null destinations for empty relations
+
+    :param slots:
+    :param src:
+    :param dsts:
+    :return:
+    """
     for slot in slots:
+        # Restore original None values for BEGIN-END OF TIME
         if slot["begin_geldigheid"] == _BEGIN_OF_TIME:
             slot["begin_geldigheid"] = None
         if slot["eind_geldigheid"] == _END_OF_TIME:
             slot["eind_geldigheid"] = None
+
+        # Insert null destinations for empty relations
         if not slot["dst"]:
             slot["dst"] = [{
                 "source": dsts[0]["source"],
@@ -99,10 +142,19 @@ def _post_process_slots(slots, src, dsts):
 
 
 def _end_source(src, dsts):
+    """
+    Finish the relations of a given source
+
+    The related destinations are assigned to timeslots and the result is returned
+
+    :param src:
+    :param dsts:
+    :return:
+    """
     if not dsts:
         return []
 
-    # Collect all dates
+    # Get all time slots (begin-end in ascending order)
     slots = _get_slots(src, dsts)
 
     for dst in dsts:
@@ -110,23 +162,37 @@ def _end_source(src, dsts):
         dst_end = dst['end']
         # Add to relevant slots
         for slot in slots:
-            if dst_begin.isoformat() <= slot["begin_geldigheid"].isoformat() and \
-                    dst_end.isoformat() >= slot["eind_geldigheid"].isoformat():
+            # dst_begin <= slot["begin_geldigheid"] and dst_end >= slot["eind_geldigheid"]
+            if _compare_dates(dst_begin, operator.le, slot["begin_geldigheid"]) and \
+               _compare_dates(dst_end, operator.ge, slot["eind_geldigheid"]):
+                # destination matches time slot
                 item = {
                     "source": dst["source"],
                     "id": dst["id"],
                     "volgnummer": dst["volgnummer"]
                 }
                 if dst.get("bronwaardes"):
+                    # Register the values on which the match was made
+                    # In the matched item
                     item["bronwaardes"] = dst["bronwaardes"]
+                    # And in the source
                     slot["src"]["bronwaardes"] = slot["src"].get("bronwaardes", [])
                     slot["src"]["bronwaardes"].extend(dst["bronwaardes"])
                 slot["dst"].append(item)
 
+    # Clean up time slots and return the result
     return _post_process_slots(slots, src, dsts)
 
 
 def _get_record(row):
+    """
+    Transforms a row into a record.
+
+    Each record has a source and related destination
+
+    :param row:
+    :return:
+    """
     record = {
         "src": {
             "source": row[f"src_{FIELD.SOURCE}"],
@@ -144,7 +210,7 @@ def _get_record(row):
         }
     }
 
-    # Set None dates to begin and end of time to allow comparison
+    # Set None dates to begin and end of time to allow date(time) comparison
     for item in ["src", "dst"]:
         if record[item]["begin"] is None:
             record[item]["begin"] = _BEGIN_OF_TIME
@@ -160,10 +226,19 @@ def _get_record(row):
 
 
 def _handle_relations(rows):
+    """
+    Process each row and return the collection of relations
+
+    :param rows:
+    :return:
+    """
     results = []
 
+    # One source may have multiple relations
     src = None
     dsts = []
+
+    # Detect change of source
     previous_id = None
 
     for row in rows:
@@ -256,6 +331,6 @@ def relate(catalog_name, collection_name, field_name):
     else:
         results = _handle_relations(relations)
 
-    results = _remove_gaps(results)
+    # results = _remove_gaps(results)
 
     return results, src_has_states, dst_has_states
