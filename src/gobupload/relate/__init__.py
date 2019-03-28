@@ -149,6 +149,8 @@ def build_relations(msg):
         collection = model.get_collection(catalog_name, collection_name)
         assert collection is not None, f"Invalid collection name '{collection_name}'"
 
-        references = model._extract_references(
-            {**collection['attributes'], **collection.get('private_attributes', {})})
+        references = model._extract_references({
+            **collection['attributes'],
+            **collection.get('private_attributes', {})
+        })
         _process_references(msg, catalog_name, collection_name, references)

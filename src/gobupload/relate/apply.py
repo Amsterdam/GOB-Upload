@@ -128,6 +128,7 @@ def get_match(current_relation, relation):
     if current_relation is None or relation is None:
         match_srcid = False
         match_seqnr = False
+        higher_seqnr = False
     else:
         src = relation['src']
         # Skip 'intermediate' relations
@@ -137,7 +138,9 @@ def get_match(current_relation, relation):
                       (src['volgnummer'] == current_relation.get(FIELD.SEQNR) and
                        relation["eind_geldigheid"] == current_relation.get(FIELD.END_VALIDITY))
 
-    return match_srcid, match_seqnr
+        higher_seqnr = (src["volgnummer"] is not None and src["volgnummer"] > current_relation.get(FIELD.SEQNR))
+
+    return match_srcid, match_seqnr, higher_seqnr
 
 
 def _get_field_type(catalog_name, collection_name, field_name):
@@ -173,13 +176,17 @@ def match_relation(current_relation, relation, field_name, field_type):
         next_current_relation = False
         next_relation = False
     else:
-        match_srcid, match_seqnr = get_match(current_relation=current_relation, relation=relation)
-
+        match_srcid, match_seqnr, higher_seqnr = get_match(current_relation=current_relation, relation=relation)
         full_match = match_srcid and match_seqnr
         partly_match = match_srcid and not match_seqnr
 
-        next_current_relation = not partly_match  # Wait for next relation on partly match
-        next_relation = True  # Always get next (new) relation
+        if higher_seqnr:
+            # When the relations SEQNR > current_relation SEQNR, get the next current_relation
+            next_current_relation = True
+            next_relation = False  # Wait for the next current relation
+        else:
+            next_current_relation = not partly_match  # Wait for next relation on partly match
+            next_relation = True  # Always get next (new) relation
 
         prepare_row(current_relation, field_name, field_type)
 
