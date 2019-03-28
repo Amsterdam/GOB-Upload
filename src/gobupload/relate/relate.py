@@ -46,7 +46,11 @@ _BEGIN_OF_TIME = datetime.datetime.min
 _END_OF_TIME = datetime.datetime.max
 
 
-def _handle_state_relation(state, relation, next_begin):
+def print_result(result):
+    print(f"{result['begin_geldigheid']} - {result['eind_geldigheid']} {[dst['id'] for dst in result['dst']]}")
+
+
+def _handle_state_relation(state_results, state, relation, next_begin):
     """
     Process a state (src) with its relations
 
@@ -54,6 +58,9 @@ def _handle_state_relation(state, relation, next_begin):
     :param relation:
     :return:
     """
+    # print("State", state)
+    # print("Relation", relation)
+    # print("Next begin", next_begin)
     if relation.get('begin_geldigheid', 'begin') == relation.get('eind_geldigheid', 'eind'):
         results = []
     else:
@@ -67,13 +74,23 @@ def _handle_state_relation(state, relation, next_begin):
         }]
 
     if relation.get('eind_geldigheid') != next_begin:
-        # Fill any gap
-        results.append({
-            "src": state["src_id"],
-            "begin_geldigheid": relation.get('eind_geldigheid'),
-            "eind_geldigheid": next_begin,
-            "dst": [_no_dst(relation['dst'][0]['source'])]
-        })
+        if relation.get('eind_geldigheid') is None:
+            last_result = results.pop()
+            last_result["eind_geldigheid"] = next_begin
+            results.append(last_result)
+            if state_results:
+                last_state_result = state_results.pop()
+                # print("Last result", last_state_result)
+                state_results.append(last_state_result)
+            # print("Last", last_result)
+        else:
+            # Fill any gap
+            results.append({
+                "src": state["src_id"],
+                "begin_geldigheid": relation.get('eind_geldigheid'),
+                "eind_geldigheid": next_begin,
+                "dst": [_no_dst(relation['dst'][0]['source'])]
+            })
 
     for result in results:
         dst = result['dst']
@@ -82,7 +99,7 @@ def _handle_state_relation(state, relation, next_begin):
             # Do not allow empty results when the list of dst's has valid dst items
             result['dst'] = not_none_items
 
-    return results
+    state_results.extend(results)
 
 
 def _dates_sort(row):
@@ -125,17 +142,17 @@ def _handle_state(state, relations):
                 continue
             else:
                 # End state
-                results.extend(_handle_state_relation(state, relation, relation.get('eind_geldigheid')))
+                _handle_state_relation(results, state, relation, relation.get('eind_geldigheid'))
                 relation['dst'] = []
                 # Adjust row
                 row['begin_geldigheid'] = relation.get('eind_geldigheid')
         elif relation:
             # End state
-            results.extend(_handle_state_relation(state, relation, row['begin_geldigheid']))
+            _handle_state_relation(results, state, relation, row['begin_geldigheid'])
         relation = row
 
     if relation:
-        results.extend(_handle_state_relation(state, relation, relation.get('eind_geldigheid')))
+        _handle_state_relation(results, state, relation, relation.get('eind_geldigheid'))
 
     return results
 
@@ -207,6 +224,9 @@ def _close_state(state, relations, previous, results):
     :param results:
     :return:
     """
+    if not relations:
+        return []
+
     if relations:
         dst_end = previous["dst_end"]
         if dst_end != state["end"]:
@@ -240,6 +260,136 @@ def _add_relations_before_dst_begin(src_begin, dst_begin, dst_id, relations):
     return dst_begin
 
 
+def _new_close_state(src, dsts):
+    if not dsts:
+        return []
+
+    src_begin = src['begin']
+    src_end = src['end']
+
+    # Collect all dates
+    dates = [src["begin"], src["end"]]
+    for dst in dsts:
+        dst_begin = dst['begin']
+        if dst_begin.isoformat() < src_begin.isoformat():
+            dst_begin = src_begin
+
+        dst_end = dst['end']
+        if dst_end.isoformat() > src_end.isoformat():
+            dst_end = src_end
+
+        dates.extend([dst_begin, dst_end])
+
+    # Unique dates
+    dates = list(set(dates))
+
+    # Sorted from oldest to newest
+    dates.sort(key=lambda v: v.isoformat())
+
+    slots = [{
+            "src": {
+                "source": src["source"],
+                "id": src["id"],
+                "volgnummer": src["volgnummer"]
+            },
+            "begin_geldigheid": dates[i],
+            "eind_geldigheid": dates[i + 1],
+            "dst": []
+        } for i in range(len(dates) - 1)]
+
+    for dst in dsts:
+        dst_begin = dst['begin']
+        dst_end = dst['end']
+        # Add to relevant slots
+        for slot in slots:
+            if dst_begin.isoformat() <= slot["begin_geldigheid"].isoformat() and \
+                    dst_end.isoformat() >= slot["eind_geldigheid"].isoformat():
+                item = {
+                    "source": dst["source"],
+                    "id": dst["id"],
+                    "volgnummer": dst["volgnummer"]
+                }
+                if dst.get("bronwaardes"):
+                    item["bronwaardes"] = dst["bronwaardes"]
+                    slot["src"]["bronwaardes"] = slot["src"].get("bronwaardes", [])
+                    slot["src"]["bronwaardes"].extend(dst["bronwaardes"])
+                slot["dst"].append(item)
+
+    for slot in slots:
+        if slot["begin_geldigheid"] == _BEGIN_OF_TIME:
+            slot["begin_geldigheid"] = None
+        if slot["eind_geldigheid"] == _END_OF_TIME:
+            slot["eind_geldigheid"] = None
+        if not slot["dst"]:
+            slot["dst"] = [{
+                "source": dsts[0]["source"],
+                "id": None,
+                "volgnummer": None
+            }]
+
+    return slots
+
+
+def _get_record(row):
+    record = {
+        "src": {
+            "source": row[f"src_{FIELD.SOURCE}"],
+            "id": row[f"src_{FIELD.ID}"],
+            "volgnummer": row.get(f"src_{FIELD.SEQNR}"),
+            "begin": row.get(f"src_{FIELD.START_VALIDITY}"),
+            "end": row.get(f"src_{FIELD.END_VALIDITY}")
+        },
+        "dst": {
+            "source": row[f"dst_{FIELD.SOURCE}"],
+            "id": row[f"dst_{FIELD.ID}"],
+            "volgnummer": row.get(f"dst_{FIELD.SEQNR}"),
+            "begin": row.get(f"dst_{FIELD.START_VALIDITY}"),
+            "end": row.get(f"dst_{FIELD.END_VALIDITY}")
+        }
+    }
+
+    # Set None dates to begin and end of time to allow comparison
+    for item in ["src", "dst"]:
+        if record[item]["begin"] is None:
+            record[item]["begin"] = _BEGIN_OF_TIME
+        if record[item]["end"] is None:
+            record[item]["end"] = _END_OF_TIME
+
+    # Include the matches values if available
+    match_values = [value for key, value in row.items() if DST_MATCH_PREFIX in key]
+    if match_values:
+        record["dst"]["bronwaardes"] = match_values
+
+    return record
+
+
+def _new_handle_relations(rows):
+    results = []
+
+    src = None
+    dsts = []
+    previous_id = None
+
+    for row in rows:
+        record = _get_record(row)
+        id = f"{record['src']['source']}.{record['src']['id']}.{record['src']['volgnummer']}"
+
+        if id != previous_id:
+            # Close previous
+            results.extend(_new_close_state(src, dsts))
+            # Start new
+            src = record['src']
+            dsts = []
+
+        dsts.append(record['dst'])
+        previous_id = id
+
+    # Close last
+    results.extend(_new_close_state(src, dsts))
+
+    return results
+
+
 def _handle_relations(rows, multi=False):
     """
     The relation data that is retrieved from the database is transformed into relation data
@@ -248,11 +398,14 @@ def _handle_relations(rows, multi=False):
     :param rows: database query results
     :return: array with relations ordered by timeslot
     """
+    return _new_handle_relations(rows)
+
     state = {}
     previous = {}
     relations = []
     results = []
     for row in rows:
+        # src._source, src._id, src.volgnummer, src.begin_geldigheid, dst.begin_geldigheid, dst.eind_geldigheid
         # Get the source specs
         src = _get_src_id(row)
         src_id = _get_id(row, f"src_{FIELD.SOURCE}", f"src_{FIELD.ID}", f"src_{FIELD.SEQNR}")
@@ -263,6 +416,9 @@ def _handle_relations(rows, multi=False):
         dst_id = _get_id(row, f"dst_{FIELD.SOURCE}", f"dst_{FIELD.ID}", f"dst_{FIELD.SEQNR}")
         dst_begin = row.get(f"dst_{FIELD.START_VALIDITY}", src_begin)
         dst_end = row.get(f"dst_{FIELD.END_VALIDITY}", src_end)
+
+        src_time = f"{src_begin} - {src_end}"
+        dst_time = f"{dst_begin} - {dst_end}"
 
         if src != previous.get("src"):
             # end any current state on change of source (id + volgnummer)
@@ -277,9 +433,9 @@ def _handle_relations(rows, multi=False):
             relations = []
 
             # Initialize start date
-            dst_begin = _add_relations_before_dst_begin(src_begin, dst_begin, dst_id, relations)
+            # dst_begin = _add_relations_before_dst_begin(src_begin, dst_begin, dst_id, relations)
 
-        if multi:
+        if src != previous.get('src') or (dst_time == previous.get('dst_time')):
             # Initialize start date
             dst_begin = _add_relations_before_dst_begin(src_begin, dst_begin, dst_id, relations)
 
@@ -298,7 +454,8 @@ def _handle_relations(rows, multi=False):
             "src_end": src_end,
             "dst_source": dst_id["source"],
             "dst_begin": dst_begin,
-            "dst_end": dst_end
+            "dst_end": dst_end,
+            "dst_time": dst_time
         }
 
     _close_state(state, relations, previous, results)
