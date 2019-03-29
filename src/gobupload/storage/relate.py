@@ -122,7 +122,7 @@ def _convert_row(row):
         for date_origin_field in date_origin_fields:
             value = result.get(date_origin_field)
             if value and not isinstance(value, datetime.datetime):
-                result[date_origin_field] = datetime.datetime.combine(value, _START_OF_DAY)
+                result[date_origin_field] = date_to_datetime(value)
 
     return result
 
