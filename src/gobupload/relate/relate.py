@@ -261,59 +261,6 @@ def _handle_relations(rows):
     return results
 
 
-def _remove_gaps(results):
-    """
-    Remove any erroneous results from the output
-
-    Errors occur when start- and end dates are not consecutive.
-
-    :param results:
-    :return: results without gaps
-    """
-    previous = {}
-    gaps = {}
-    no_inconsistencies = []
-    while results:
-        result = results.pop(0)
-
-        src_id = result["src"]["id"]
-        src_volgnummer = result["src"]["volgnummer"]
-        begin = result["begin_geldigheid"]
-        end = result["eind_geldigheid"]
-
-        if src_id == previous.get("src_id") and src_volgnummer == previous.get("src_volgnummer"):
-            # begin should be equal to previous end, and nothing can follow a None end
-            is_valid = (begin == previous["end"] and previous["end"] is not None)
-            if begin is not None and end is not None:
-                # If dates are filled then these date should be consecutive
-                is_valid = is_valid and end > begin
-            if not is_valid and src_id not in gaps:
-                print("_____")
-                print(begin)
-                print(previous["end"])
-                extra_data = {
-                    'id': "inconsistency found",
-                    'data': {
-                        'identificatie': src_id,
-                        'volgnummer': src_volgnummer
-                    }
-                }
-                logger.warning(f"Inconsistency found", extra_data)
-                gaps[src_id] = result
-                continue
-
-        no_inconsistencies.append(result)
-
-        previous = {
-            "src_id": src_id,
-            "src_volgnummer": src_volgnummer,
-            "begin": begin,
-            "end": end,
-        }
-
-    return no_inconsistencies
-
-
 def relate(catalog_name, collection_name, field_name):
     """
     Get all relations for the given catalog, collection and field
@@ -325,12 +272,8 @@ def relate(catalog_name, collection_name, field_name):
     """
     relations, src_has_states, dst_has_states = get_relations(catalog_name, collection_name, field_name)
 
-    if not relations:
+    results = _handle_relations(relations)
+    if not results:
         logger.warning("Warning: No relations found")
-        results = []
-    else:
-        results = _handle_relations(relations)
-
-    # results = _remove_gaps(results)
 
     return results, src_has_states, dst_has_states
