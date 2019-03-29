@@ -35,7 +35,7 @@ import operator
 from gobcore.model.metadata import FIELD
 from gobcore.logging.logger import logger
 
-from gobupload.storage.relate import DST_MATCH_PREFIX, get_relations
+from gobupload.storage.relate import DST_MATCH_PREFIX, get_relations, date_to_datetime
 
 
 # Relations can have missing begin and end dates.
@@ -44,25 +44,34 @@ _BEGIN_OF_TIME = datetime.datetime.min
 _END_OF_TIME = datetime.datetime.max
 
 
-def _compare_date(date):
+def _compare_date(value):
     """
-    Turn a date or datetime in a comparable format
+    Transform value to datetime to allow date - datetime comparison
 
-    :param date:
-    :return:
+    :param value: datetime.date or datetime.datatime
+    :return: value as datetime.datetime value
     """
-    return date.isoformat()
+    if not isinstance(value, datetime.datetime):
+        return date_to_datetime(value)
+    else:
+        return value
 
 
 def _compare_dates(date1, compare, date2):
     """
-    Compare two dates
+    Compare two dates.
+
+    If the values have equal type, use the plain comparison function
+    Else, transform the value into universally comparable value
     :param date1:
     :param compare: the compare function, e.g. operator.lt
     :param date2:
     :return:
     """
-    return compare(_compare_date(date1), _compare_date(date2))
+    if type(date1) == type(date2):
+        return compare(date1, date2)
+    else:
+        return compare(_compare_date(date1), _compare_date(date2))
 
 
 def _get_slots(src, dsts):
