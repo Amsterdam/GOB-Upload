@@ -28,10 +28,9 @@ The result is organized as list of:
         ...
     ]
 }
-
-
 """
 import datetime
+import operator
 
 from gobcore.model.metadata import FIELD
 from gobcore.logging.logger import logger
@@ -45,318 +44,230 @@ _BEGIN_OF_TIME = datetime.datetime.min
 _END_OF_TIME = datetime.datetime.max
 
 
-def _handle_state_relation(state, relation, next_begin):
+def _compare_date(value):
     """
-    Process a state (src) with its relations
+    Transform value to datetime to allow date - datetime comparison
 
-    :param state:
-    :param relation:
-    :return:
+    :param value: datetime.date or datetime.datatime
+    :return: value as datetime.datetime value
     """
-    if relation.get('begin_geldigheid', 'begin') == relation.get('eind_geldigheid', 'eind'):
-        results = []
+    if not isinstance(value, datetime.datetime):
+        return date_to_datetime(value)
     else:
-        if relation.get('begin_geldigheid') == _BEGIN_OF_TIME:
-            relation['begin_geldigheid'] = None
-        results = [{
-            "src": state["src_id"],
-            "begin_geldigheid": relation.get('begin_geldigheid'),
-            "eind_geldigheid": relation.get('eind_geldigheid'),
-            "dst": relation['dst']
-        }]
-
-    if relation.get('eind_geldigheid') != next_begin:
-        # Fill any gap
-        results.append({
-            "src": state["src_id"],
-            "begin_geldigheid": relation.get('eind_geldigheid'),
-            "eind_geldigheid": next_begin,
-            "dst": [_no_dst(relation['dst'][0]['source'])]
-        })
-
-    for result in results:
-        dst = result['dst']
-        not_none_items = [d for d in dst if d['id'] is not None]
-        if len(not_none_items) >= 1:
-            # Do not allow empty results when the list of dst's has valid dst items
-            result['dst'] = not_none_items
-
-    return results
+        return value
 
 
-def _dates_sort(row):
+def _compare_dates(date1, compare, date2):
     """
-    Sort on start validity and then end validity
+    Compare two dates.
 
-    Always sort on datetime, to allow for datetime - date comparisons
+    If the values have equal type, use the plain comparison function
+    Else, transform the value into universally comparable value
+    :param date1:
+    :param compare: the compare function, e.g. operator.lt
+    :param date2:
+    :return:
+    """
+    if type(date1) == type(date2):
+        return compare(date1, date2)
+    else:
+        return compare(_compare_date(date1), _compare_date(date2))
+
+
+def _get_slots(src, dsts):
+    """
+    Examine begin and end dates from source and destinations.
+
+    Construct time slots for every timespan found
+    :param src:
+    :param dsts:
+    :return:
+    """
+    # Collect all dates
+    src_begin = src['begin']
+    src_end = src['end']
+
+    dates = [src_begin, src_end]
+    for dst in dsts:
+        dst_begin = dst['begin']
+        if _compare_dates(dst_begin, operator.lt, src_begin):  # dst_begin < src_begin
+            # Adjust the begin of the relation to the begin of the source
+            dst_begin = src_begin
+
+        dst_end = dst['end']
+        if _compare_dates(dst_end, operator.gt, src_end):  # dst_end > src_end
+            # Adjust the end of the relation to the end of the source
+            dst_end = src_end
+
+        dates.extend([dst_begin, dst_end])
+
+    # Unique dates
+    dates = list(set(dates))
+
+    # Sorted from oldest to newest
+    dates.sort(key=lambda v: _compare_date(v))
+
+    # Transform into time slots and return the result
+    return [{
+        "src": {
+            "source": src["source"],
+            "id": src["id"],
+            "volgnummer": src["volgnummer"]
+        },
+        "begin_geldigheid": dates[i],
+        "eind_geldigheid": dates[i + 1],
+        "dst": []
+    } for i in range(len(dates) - 1)]
+
+
+def _post_process_slots(slots, src, dsts):
+    """
+    Post processing of slots
+
+    Restore original None values for BEGIN-END OF TIME
+    Insert null destinations for empty relations
+
+    :param slots:
+    :param src:
+    :param dsts:
+    :return:
+    """
+    for slot in slots:
+        # Restore original None values for BEGIN-END OF TIME
+        if slot["begin_geldigheid"] == _BEGIN_OF_TIME:
+            slot["begin_geldigheid"] = None
+        if slot["eind_geldigheid"] == _END_OF_TIME:
+            slot["eind_geldigheid"] = None
+
+        # Insert null destinations for empty relations
+        if not slot["dst"]:
+            slot["dst"] = [{
+                "source": dsts[0]["source"],
+                "id": None,
+                "volgnummer": None
+            }]
+
+    return slots
+
+
+def _end_source(src, dsts):
+    """
+    Finish the relations of a given source
+
+    The related destinations are assigned to timeslots and the result is returned
+
+    :param src:
+    :param dsts:
+    :return:
+    """
+    if not dsts:
+        return []
+
+    # Get all time slots (begin-end in ascending order)
+    slots = _get_slots(src, dsts)
+
+    for dst in dsts:
+        dst_begin = dst['begin']
+        dst_end = dst['end']
+        # Add to relevant slots
+        for slot in slots:
+            # dst_begin <= slot["begin_geldigheid"] and dst_end >= slot["eind_geldigheid"]
+            if _compare_dates(dst_begin, operator.le, slot["begin_geldigheid"]) and \
+               _compare_dates(dst_end, operator.ge, slot["eind_geldigheid"]):
+                # destination matches time slot
+                item = {
+                    "source": dst["source"],
+                    "id": dst["id"],
+                    "volgnummer": dst["volgnummer"]
+                }
+                if dst.get("bronwaardes"):
+                    # Register the values on which the match was made
+                    # In the matched item
+                    item["bronwaardes"] = dst["bronwaardes"]
+                    # And in the source
+                    slot["src"]["bronwaardes"] = slot["src"].get("bronwaardes", [])
+                    slot["src"]["bronwaardes"].extend(dst["bronwaardes"])
+                slot["dst"].append(item)
+
+    # Clean up time slots and return the result
+    return _post_process_slots(slots, src, dsts)
+
+
+def _get_record(row):
+    """
+    Transforms a row into a record.
+
+    Each record has a source and related destination
+
     :param row:
-    :return: tuple(start-validity, end-validity)
-    """
-    start_validity = row["begin_geldigheid"]
-    end_validity = row["eind_geldigheid"]
-    if isinstance(start_validity, datetime.date):
-        start_validity = date_to_datetime(start_validity)
-    if isinstance(end_validity, datetime.date):
-        end_validity = date_to_datetime(end_validity)
-    return (start_validity if start_validity else _BEGIN_OF_TIME,
-            end_validity if end_validity else _END_OF_TIME)
-
-
-def _handle_state(state, relations):
-    """
-    Handle each state (src) and its corresponding relations and transform it in a sorted and closed
-    sequence of timeslots
-
-    :param state:
-    :param relations:
     :return:
     """
-    relations.sort(key=_dates_sort)
-
-    relation = {}
-    results = []
-    for row in relations:
-        if relation.get('begin_geldigheid') == row.get('begin_geldigheid'):
-            relation['dst'] = relation.get('dst', [])
-            relation['dst'].extend(row['dst'])
-            if relation.get('eind_geldigheid') == row.get('eind_geldigheid'):
-                # Same state
-                continue
-            else:
-                # End state
-                results.extend(_handle_state_relation(state, relation, relation.get('eind_geldigheid')))
-                relation['dst'] = []
-                # Adjust row
-                row['begin_geldigheid'] = relation.get('eind_geldigheid')
-        elif relation:
-            # End state
-            results.extend(_handle_state_relation(state, relation, row['begin_geldigheid']))
-        relation = row
-
-    if relation:
-        results.extend(_handle_state_relation(state, relation, relation.get('eind_geldigheid')))
-
-    return results
-
-
-def _get_src_id(row):
-    """
-    Get the unique source id for a given row
-    If the source has states the volgnummer is included
-
-    :param row:
-    :return:
-    """
-    src_id = f"src_{FIELD.ID}"
-    src_volgnummer = f"src_{FIELD.SEQNR}"
-    return f"{row[src_id]}.{row[src_volgnummer]}" if row.get(src_volgnummer) else row[src_id]
-
-
-def _get_relation(begin_geldigheid, eind_geldigheid, dst):
-    """
-    Compose relation data for the given timeslot and destination
-
-    :param begin_geldigheid:
-    :param eind_geldigheid:
-    :param dst:
-    :return:
-    """
-    return {
-        "begin_geldigheid": begin_geldigheid,
-        "eind_geldigheid": eind_geldigheid,
-        "dst": [dst] if dst else []
+    record = {
+        "src": {
+            "source": row[f"src_{FIELD.SOURCE}"],
+            "id": row[f"src_{FIELD.ID}"],
+            "volgnummer": row.get(f"src_{FIELD.SEQNR}"),
+            "begin": row.get(f"src_{FIELD.START_VALIDITY}"),
+            "end": row.get(f"src_{FIELD.END_VALIDITY}")
+        },
+        "dst": {
+            "source": row[f"dst_{FIELD.SOURCE}"],
+            "id": row[f"dst_{FIELD.ID}"],
+            "volgnummer": row.get(f"dst_{FIELD.SEQNR}"),
+            "begin": row.get(f"dst_{FIELD.START_VALIDITY}"),
+            "end": row.get(f"dst_{FIELD.END_VALIDITY}")
+        }
     }
 
+    # Set None dates to begin and end of time to allow date(time) comparison
+    for item in ["src", "dst"]:
+        if record[item]["begin"] is None:
+            record[item]["begin"] = _BEGIN_OF_TIME
+        if record[item]["end"] is None:
+            record[item]["end"] = _END_OF_TIME
 
-def _no_dst(source):
-    return {
-        "source": source,
-        "id": None,
-        "volgnummer": None
-    }
+    # Include the matches values if available
+    match_values = [value for key, value in row.items() if DST_MATCH_PREFIX in key]
+    if match_values:
+        record["dst"]["bronwaardes"] = match_values
 
-
-def _get_id(row, source, id, volgnummer):
-    """
-    The identification of a src or dst is its id and an optional volgnummer
-
-    :param row:
-    :param id:
-    :param volgnummer:
-    :return:
-    """
-    result = {
-        "source": row[source],
-        "id": row[id],
-        "volgnummer": row.get(volgnummer)
-    }
-    source_values = [value for key, value in row.items() if DST_MATCH_PREFIX in key]
-    if source_values:
-        result["bronwaardes"] = source_values
-    return result
-
-
-def _close_state(state, relations, previous, results):
-    """
-    If the source has a longer lifetime than the destination add an empty relation at the end
-
-    :param state:
-    :param relations:
-    :param previous_end:
-    :param results:
-    :return:
-    """
-    if relations:
-        dst_end = previous["dst_end"]
-        if dst_end != state["end"]:
-            # Add an empty last relation
-            no_dst = _no_dst(previous["dst_source"])
-            relations.append(_get_relation(dst_end, state["end"], no_dst))
-        results.extend(_handle_state(state, relations))
-
-
-def _add_relations_before_dst_begin(src_begin, dst_begin, dst_id, relations):
-    """
-    If the destination begins later than the source begins, add an empty relation
-
-    :param src_begin:
-    :param dst_begin:
-    :param relations:
-    :return: The new destination begin
-    """
-    no_dst = _no_dst(dst_id["source"])
-    if src_begin is None and dst_begin:
-        relations.append(_get_relation(_BEGIN_OF_TIME, dst_begin, no_dst))
-
-    if src_begin and dst_begin:
-        # Compare begin of source and destination
-        if src_begin < dst_begin:
-            # Insert empty relation until begin of destination
-            relations.append(_get_relation(src_begin, dst_begin, no_dst))
-        # Adjust destination begin to be equal or after source begin
-        dst_begin = max(src_begin, dst_begin)
-
-    return dst_begin
+    return record
 
 
 def _handle_relations(rows):
     """
-    The relation data that is retrieved from the database is transformed into relation data
-    with timeslots that cover the complete lifetime of the source field.
+    Process each row and return the collection of relations
 
-    :param rows: database query results
-    :return: array with relations ordered by timeslot
+    :param rows:
+    :return:
     """
-    state = {}
-    previous = {}
-    relations = []
     results = []
+
+    # One source may have multiple relations
+    src = None
+    dsts = []
+
+    # Detect change of source
+    previous_id = None
+
     for row in rows:
-        # Get the source specs
-        src = _get_src_id(row)
-        src_id = _get_id(row, f"src_{FIELD.SOURCE}", f"src_{FIELD.ID}", f"src_{FIELD.SEQNR}")
-        src_begin = row.get(f"src_{FIELD.START_VALIDITY}")
-        src_end = row.get(f"src_{FIELD.END_VALIDITY}")
+        record = _get_record(row)
+        id = f"{record['src']['source']}.{record['src']['id']}.{record['src']['volgnummer']}"
 
-        # Get the destination specs
-        dst_id = _get_id(row, f"dst_{FIELD.SOURCE}", f"dst_{FIELD.ID}", f"dst_{FIELD.SEQNR}")
-        dst_begin = row.get(f"dst_{FIELD.START_VALIDITY}", src_begin)
-        dst_end = row.get(f"dst_{FIELD.END_VALIDITY}", src_end)
+        if id != previous_id:
+            # Close previous
+            results.extend(_end_source(src, dsts))
+            # Start new
+            src = record['src']
+            dsts = []
 
-        if src != previous.get("src"):
-            # end any current state on change of source (id + volgnummer)
-            _close_state(state, relations, previous, results)
-            # start new state
-            state = {
-                "src": src,
-                "src_id": src_id,
-                "begin": src_begin,
-                "end": src_end,
-            }
-            relations = []
+        dsts.append(record['dst'])
+        previous_id = id
 
-        # Initialize start date
-        dst_begin = _add_relations_before_dst_begin(src_begin, dst_begin, dst_id, relations)
-
-        # Take the minimum eind_geldigheid of src_id and dst
-        if dst_end is None:
-            dst_end = src_end
-        elif src_end is not None:
-            dst_end = min(src_end, dst_end)
-
-        relations.append(_get_relation(dst_begin, dst_end, dst_id))
-
-        previous = {
-            "src": src,
-            "src_id": src_id["id"],
-            "src_begin": src_begin,
-            "src_end": src_end,
-            "dst_source": dst_id["source"],
-            "dst_begin": dst_begin,
-            "dst_end": dst_end
-        }
-
-    _close_state(state, relations, previous, results)
-
-    # Example result
-    # {
-    #     'src': {'id': '26281033', 'source': 'AMSBI', 'volgnummer': None},
-    #     'dst': [{'id': None, 'source': 'AMSBI', 'volgnummer': None}],
-    #     'begin_geldigheid': None,
-    #     'eind_geldigheid': datetime.date(2006, 6, 12)
-    # }
+    # Close last
+    results.extend(_end_source(src, dsts))
 
     return results
-
-
-def _remove_gaps(results):
-    """
-    Remove any erroneous results from the output
-
-    Errors occur when start- and end dates are not consecutive.
-
-    :param results:
-    :return: results without gaps
-    """
-    previous = {}
-    gaps = {}
-    no_inconsistencies = []
-    while results:
-        result = results.pop(0)
-
-        src_id = result["src"]["id"]
-        src_volgnummer = result["src"]["volgnummer"]
-        begin = result["begin_geldigheid"]
-        end = result["eind_geldigheid"]
-
-        if src_id == previous.get("src_id") and src_volgnummer == previous.get("src_volgnummer"):
-            # begin should be equal to previous end, and nothing can follow a None end
-            is_valid = (begin == previous["end"] and previous["end"] is not None)
-            if begin is not None and end is not None:
-                # If dates are filled then these date should be consecutive
-                is_valid = is_valid and end > begin
-            if not is_valid and src_id not in gaps:
-                extra_data = {
-                    'id': "inconsistency found",
-                    'data': {
-                        'identificatie': src_id,
-                        'volgnummer': src_volgnummer
-                    }
-                }
-                logger.warning(f"Inconsistency found", extra_data)
-                gaps[src_id] = result
-                continue
-
-        no_inconsistencies.append(result)
-
-        previous = {
-            "src_id": src_id,
-            "src_volgnummer": src_volgnummer,
-            "begin": begin,
-            "end": end,
-        }
-
-    return no_inconsistencies
 
 
 def relate(catalog_name, collection_name, field_name):
@@ -370,12 +281,8 @@ def relate(catalog_name, collection_name, field_name):
     """
     relations, src_has_states, dst_has_states = get_relations(catalog_name, collection_name, field_name)
 
-    if not relations:
+    results = _handle_relations(relations)
+    if not results:
         logger.warning("Warning: No relations found")
-        results = []
-    else:
-        results = _handle_relations(relations)
-
-    results = _remove_gaps(results)
 
     return results, src_has_states, dst_has_states
