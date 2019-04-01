@@ -9,6 +9,7 @@ Publishes the relation as import messages
 import datetime
 
 from gobcore.model import GOBModel
+from gobcore.sources import GOBSources
 from gobcore.logging.logger import logger
 from gobcore.model.relations import get_relation_name
 
@@ -86,6 +87,11 @@ def _process_references(msg, catalog_name, collection_name, references):
         display_name = f"{catalog_name}:{collection_name} {reference_name}"
 
         if not _relation_needs_update(catalog_name, collection_name, reference_name, reference):
+            continue
+
+        sources = GOBSources()
+        relation_specs = sources.get_field_relations(catalog_name, collection_name, reference_name)
+        if not relation_specs:
             continue
 
         relation_name = get_relation_name(model, catalog_name, collection_name, reference_name)
