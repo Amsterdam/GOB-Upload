@@ -71,21 +71,30 @@ def compare(msg):
     return ImportMessage.create_import_message(msg["header"], None, msg_contents)
 
 
+class Populator:
+
+    def __init__(self, msg, entity_model):
+        self.id_column = entity_model["entity_id"]
+        self.version = entity_model["version"]
+        self.application = msg['header']['application']
+
+    def populate(self, entity):
+        entity["_id"] = entity[self.id_column]
+        entity["_version"] = self.version
+        entity['_hash'] = hashlib.md5((json.dumps(entity, sort_keys=True, cls=GobTypeJSONEncoder) +
+                                       self.application).encode('utf-8')
+                                      ).hexdigest()
+
+
 def populate(msg, entity_model):
     """Add an md5 hash of the record to the record for comparison
 
     :param msg: Incoming message
     :return:
     """
-    id_column = entity_model["entity_id"]
-    version = entity_model["version"]
-    for record in msg["contents"]:
-        record["_id"] = record[id_column]
-        record["_version"] = version
-        record['_hash'] = hashlib.md5((
-            json.dumps(record, sort_keys=True, cls=GobTypeJSONEncoder) +
-            msg['header']['application']).encode('utf-8')
-        ).hexdigest()
+    populator = Populator(msg, entity_model)
+    for entity in msg["contents"]:
+        populator.populate(entity)
 
 
 def meets_dependencies(storage, msg):

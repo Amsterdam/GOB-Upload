@@ -14,6 +14,36 @@ from gobcore.typesystem.gob_geotypes import Geometry
 from gobcore.logging.logger import logger
 
 
+class Enricher:
+
+    def __init__(self, storage, msg):
+        self.storage = storage
+        self.enrich_spec = msg["header"].get("enrich", {})
+
+        # Save any enriched values.
+        # Within one session enrichment might depend on previously enriched info for the same message
+        # Example: assigning id's should be so that no duplicates are handed out
+        self.assigned = {}
+        for column, specs in self.enrich_spec.items():
+            self.assigned[column] = {
+                "last": None,
+                "issued": {}
+            }
+
+        self.enrichers = {
+            "geounion": {"func": _geounion, "description": "Generate geometry from other geometries"},
+            "autoid": {"func": _autoid, "description": "Generate identifications when missing"}
+        }
+
+    def enrich(self, entity):
+        for column, specs in self.enrich_spec.items():
+            enricher = self.enrichers[specs["type"]]
+            entity[column], logging = enricher["func"](
+                storage=self.storage, data=entity, specs=specs, column=column, assigned=self.assigned)
+            if logging:
+                logger.info(logging)
+
+
 def enrich(storage, msg):
     """
     Enrich message msg
@@ -25,31 +55,10 @@ def enrich(storage, msg):
     :param msg: Incoming message
     :return: None
     """
-    enrich = msg["header"].get("enrich", {})
+    enricher = Enricher(storage, msg)
 
-    # Save any enriched values.
-    # Within one session enrichment might depend on previously enriched info for the same message
-    # Example: assigning id's should be so that no duplicates are handed out
-    assigned = {}
-    for column, specs in enrich.items():
-        assigned[column] = {
-            "last": None,
-            "issued": {}
-        }
-
-    enrichers = {
-        "geounion": {"func": _geounion, "description": "Generate geometry from other geometries"},
-        "autoid": {"func": _autoid, "description": "Generate identifications when missing"}
-    }
-
-    for column, specs in enrich.items():
-        enricher = enrichers[specs["type"]]
-        logger.info(f"Enrich: {enricher['description']}")
-        for data in msg["contents"]:
-            data[column], logging = enricher["func"](
-                storage=storage, data=data, specs=specs, column=column, assigned=assigned)
-            if logging:
-                logger.info(logging)
+    for entity in msg["contents"]:
+        enricher.enrich(entity)
 
 
 def _get_current_value(storage, data, specs, column, assigned):
