@@ -134,7 +134,10 @@ def _shallow_compare(storage, model, msg):
         return events, []
 
     # Create temporary table with new data
-    storage.create_temporary_table(contents)
+    storage.create_temporary_table()
+    for entity in contents:
+        storage.write_temporary_entity(entity)
+    storage.close_temporary_table()
 
     # Perform a shallow in-database comparison on _hash field
     results = storage.compare_temporary_data()
