@@ -132,7 +132,7 @@ class GOBStorageHandler():
         for statement in statements:
             self.engine.execute(statement)
 
-    def create_temporary_table(self, data):
+    def create_temporary_table(self):
         """ Create a new temporary table based on the current table for a collection
 
         Message data is inserted to be compared with the current state
@@ -140,54 +140,64 @@ class GOBStorageHandler():
         :param data: the imported data
         :return:
         """
-        collection = self.gob_model.get_collection(self.metadata.catalogue, self.metadata.entity)
+        self.collection = self.gob_model.get_collection(self.metadata.catalogue, self.metadata.entity)
         table_name = self.gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
-        new_table_name = table_name + TEMPORARY_TABLE_SUFFIX
+        tmp_table_name = table_name + TEMPORARY_TABLE_SUFFIX
 
-        fields = self.gob_model.get_functional_key_fields(self.metadata.catalogue, self.metadata.entity)
-        fields.extend(['_source_id', '_hash'])
+        self.fields = self.gob_model.get_functional_key_fields(self.metadata.catalogue, self.metadata.entity)
+        self.fields.extend(['_source_id', '_hash'])
 
         # Try if the temporary table is already present
         try:
-            new_table = self.base.metadata.tables[new_table_name]
+            self.tmp_table = self.base.metadata.tables[tmp_table_name]
         except KeyError:
-            columns = [get_column(c, collection['all_fields'][c]) for c in fields]
-            new_table = Table(new_table_name, self.base.metadata, *columns, extend_existing=True)
-            new_table.create(self.engine)
+            columns = [get_column(c, self.collection['all_fields'][c]) for c in self.fields]
+            self.tmp_table = Table(tmp_table_name, self.base.metadata, *columns, extend_existing=True)
+            self.tmp_table.create(self.engine)
         else:
             # Truncate the table
-            self.engine.execute(f"TRUNCATE {new_table_name}")
+            self.engine.execute(f"TRUNCATE {tmp_table_name}")
 
-        # Fill the temporary table
-        insert_data = self._fill_temporary_table(data, fields)
-        if(len(insert_data) > 0):
-            self.engine.execute(
-                new_table.insert(),
-                insert_data
-            )
+        self.temporary_rows = []
 
-    def _fill_temporary_table(self, data, fields):
-        """ Fill the temporary table with the data
-
-        :param data: the imported data
-        :param fields: fields
-        :return: insert_data, a list of dicts
+    def write_temporary_entity(self, entity):
         """
-        collection = self.gob_model.get_collection(self.metadata.catalogue, self.metadata.entity)
-        # Start inserting the temporary data
-        insert_data = []
-        for record in data:
-            row = {}
-            for field in fields:
-                gob_type = get_gob_type(collection['all_fields'][field]['type'])
-                if field == '_source':
-                    row[field] = gob_type.from_value(self.metadata.source).to_db
-                else:
-                    row[field] = gob_type.from_value(record[field]).to_db
+        Writes an entity to the temporary table
+        :param entity:
+        :return:
+        """
+        row = {}
+        for field in self.fields:
+            gob_type = get_gob_type(self.collection['all_fields'][field]['type'])
+            if field == '_source':
+                row[field] = gob_type.from_value(self.metadata.source).to_db
+            else:
+                row[field] = gob_type.from_value(entity[field]).to_db
+        self.temporary_rows.append(row)
+        self._write_temporary_entities(write_per=10000)
 
-            insert_data.append(row)
+    def _write_temporary_entities(self, write_per=1):
+        """
+        Writes the temporary entities to the temporary table
 
-        return insert_data
+        If no arguments are given the write will always take place
+        If the write_per argument is specified writes will take place in chunks
+        :param write_per:
+        :return:
+        """
+        if len(self.temporary_rows) >= write_per:
+            self.engine.execute(
+                self.tmp_table.insert(),
+                self.temporary_rows
+            )
+            self.temporary_rows = []
+
+    def close_temporary_table(self):
+        """
+        Writes any left temporary entities to the temporary table
+        :return:
+        """
+        self._write_temporary_entities()
 
     def compare_temporary_data(self):
         """ Compare the data in the temporay table to the current state
