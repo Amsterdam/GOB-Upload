@@ -152,6 +152,7 @@ class GOBStorageHandler():
             self.tmp_table = self.base.metadata.tables[tmp_table_name]
         except KeyError:
             columns = [get_column(c, self.collection['all_fields'][c]) for c in self.fields]
+            columns.append(get_gob_type("GOB.JSON").get_column_definition("_original_value"))
             self.tmp_table = Table(tmp_table_name, self.base.metadata, *columns, extend_existing=True)
             self.tmp_table.create(self.engine)
         else:
@@ -173,6 +174,7 @@ class GOBStorageHandler():
                 row[field] = gob_type.from_value(self.metadata.source).to_db
             else:
                 row[field] = gob_type.from_value(entity[field]).to_db
+        row["_original_value"] = entity
         self.temporary_rows.append(row)
         self._write_temporary_entities(write_per=10000)
 
@@ -214,12 +216,13 @@ class GOBStorageHandler():
         fields = self.gob_model.get_functional_key_fields(self.metadata.catalogue, self.metadata.entity)
 
         # Get the result of comparison where data is equal to the current state
-        result = self.engine.execute(queries.get_comparison_query(current, temporary, fields)).fetchall()
+        result = self.engine.execute(queries.get_comparison_query(current, temporary, fields))
+
+        for row in result:
+            yield dict(row)
 
         # Drop the temporary table
         self.engine.execute(f"DROP TABLE IF EXISTS {temporary}")
-
-        return [dict(row) for row in result]
 
     @property
     def DbEvent(self):
@@ -288,6 +291,25 @@ class GOBStorageHandler():
             .filter_by(source=self.metadata.source, catalogue=self.metadata.catalogue, entity=self.metadata.entity) \
             .filter(self.DbEvent.eventid > eventid if eventid else True) \
             .all()
+
+    @with_session
+    def has_any_event(self, custom_filter):
+        """True if any event matches the filter condition
+
+        The condition is default checked for the current source, catalogue and entity
+
+        :return:
+        """
+        filter = {
+            "source": self.metadata.source,
+            "catalogue": self.metadata.catalogue,
+            "entity": self.metadata.entity,
+            **custom_filter
+        }
+        result = self.session.query(self.DbEvent) \
+            .filter_by(**filter) \
+            .first()
+        return result is not None
 
     @with_session
     def has_any_entity(self, key=None, value=None):
