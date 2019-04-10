@@ -289,8 +289,7 @@ class GOBStorageHandler():
         """
         return self.session.query(self.DbEvent) \
             .filter_by(source=self.metadata.source, catalogue=self.metadata.catalogue, entity=self.metadata.entity) \
-            .filter(self.DbEvent.eventid > eventid if eventid else True) \
-            .all()
+            .filter(self.DbEvent.eventid > eventid if eventid else True)
 
     @with_session
     def has_any_event(self, custom_filter):
@@ -462,6 +461,21 @@ class GOBStorageHandler():
             insert_data.append(entity)
         table = self.DbEntity.__table__
         self.bulk_insert(table, insert_data)
+
+    def add_event(self, event):
+        row = {
+            'timestamp': self.metadata.timestamp,
+            'catalogue': self.metadata.catalogue,
+            'entity': self.metadata.entity,
+            'version': self.metadata.version,
+            'action': event['event'],
+            'source': self.metadata.source,
+            'application': self.metadata.application,
+            'source_id': event['data'].get('_source_id'),
+            'contents': json.dumps(copy.deepcopy(event['data']), cls=GobTypeJSONEncoder),
+        }
+        table = self.base.metadata.tables[self.EVENTS_TABLE]
+        self.session.execute(table.insert(), [row])
 
     def bulk_add_events(self, events):
         """Adds all ADD events to the session, for storage
