@@ -1,1 +1,1 @@
-from gobupload.compare.compare import compare  # noqa: F401
+from gobupload.compare.main import compare  # noqa: F401

@@ -2,17 +2,16 @@ import logging
 
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
+from tests import fixtures
 
 from gobcore.events import GOB
-from gobcore.model import GOBModel
-from gobupload.compare import compare, _shallow_compare
-from gobupload.storage.handler import GOBStorageHandler
-from tests import fixtures
+
+from gobupload.compare.main import compare, GOBStorageHandler, GOBModel
 
 mock_model = MagicMock(spec=GOBModel)
 
-@patch('gobupload.compare.GOBModel')
-@patch('gobupload.compare.GOBStorageHandler')
+@patch('gobupload.compare.main.GOBModel')
+@patch('gobupload.compare.main.GOBStorageHandler')
 class TestCompare(TestCase):
     def setUp(self):
         # Disable logging to prevent test from connecting to RabbitMQ
@@ -29,7 +28,7 @@ class TestCompare(TestCase):
     def test_compare_fails_on_missing_dependencies(self, storage_mock, model_mock):
         storage_mock.return_value = self.mock_storage
 
-        self.mock_storage.has_any_entity.return_value = False
+        self.mock_storage.has_any_event.return_value = False
         message = fixtures.get_message_fixture(contents=[])
         message["header"]["depends_on"] = {
             "xyz": "abc"
@@ -42,7 +41,7 @@ class TestCompare(TestCase):
         storage_mock.return_value = self.mock_storage
 
         # setup: one entity in db, none in message
-        self.mock_storage.has_any_entity.return_value = True
+        self.mock_storage.has_any_event.return_value = True
         message = fixtures.get_message_fixture(contents=[])
         message["header"]["depends_on"] = {
             "xyz": "abc"
@@ -51,17 +50,20 @@ class TestCompare(TestCase):
         result = compare(message)
         self.assertNotEqual(result, None)
 
-    def test_compare_creates_delete(self, storage_mock, model_mock,):
+    def test_compare_creates_delete(self, storage_mock, model_mock):
         storage_mock.return_value = self.mock_storage
+        model_mock.return_value = mock_model
 
-        # setup: one entity in db, none in message
-        message = fixtures.get_message_fixture(contents=[])
-        entity = fixtures.get_entity_fixture(**{'_source_id': 2})
-        self.mock_storage.get_current_ids.return_value = [entity]
+        # setup: message and database have the same entity
+        original_value = {
+            "_last_event": 123
+        }
+        self.mock_storage.compare_temporary_data.return_value = [{'_original_value': original_value, '_source_id': 1, '_entity_source_id': 1, 'type': 'DELETE', '_last_event': 1, '_hash': '1234567890'}]
+        message = fixtures.get_message_fixture()
 
         result = compare(message)
 
-        # expectations: delete event is generated
+        # expectations: confirm event is generated
         self.assertEqual(len(result['contents']['events']), 1)
         self.assertEqual(result['contents']['events'][0]['event'], 'DELETE')
 
@@ -72,22 +74,11 @@ class TestCompare(TestCase):
         # setup: no entity in db, one in message
         message = fixtures.get_message_fixture()
         data = message["contents"][0]
-        self.mock_storage.has_any_entity.return_value = True
-        self.mock_storage.compare_temporary_data.return_value = [{'_source_id': data['_source_id'], '_entity_source_id': data['_source_id'], 'type': 'ADD', '_last_event': 1, '_hash': '1234567890'}]
-
-        result = compare(message)
-
-        # expectations: add event is generated
-        self.assertEqual(len(result['contents']['events']), 1)
-        self.assertEqual(result['contents']['events'][0]['event'], 'ADD')
-
-    def test_compare_creates_add_if_database_empty(self, storage_mock, model_mock):
-        storage_mock.return_value = self.mock_storage
-        model_mock.return_value = mock_model
-
-        # setup: no entity in db, one in message
-        message = fixtures.get_message_fixture()
-        self.mock_storage.has_any_entity.return_value = False
+        self.mock_storage.has_any_event.return_value = True
+        original_value = {
+            "_last_event": 123
+        }
+        self.mock_storage.compare_temporary_data.return_value = [{'_original_value': original_value, '_source_id': data['_source_id'], '_entity_source_id': data['_source_id'], 'type': 'ADD', '_last_event': 1, '_hash': '1234567890'}]
 
         result = compare(message)
 
@@ -100,7 +91,10 @@ class TestCompare(TestCase):
         model_mock.return_value = mock_model
 
         # setup: message and database have the same entity
-        self.mock_storage.compare_temporary_data.return_value = [{'_source_id': 1, '_entity_source_id': 1, 'type': 'CONFIRM', '_last_event': 1, '_hash': '1234567890'}]
+        original_value = {
+            "_last_event": 123
+        }
+        self.mock_storage.compare_temporary_data.return_value = [{'_original_value': original_value, '_source_id': 1, '_entity_source_id': 1, 'type': 'CONFIRM', '_last_event': 1, '_hash': '1234567890'}]
         message = fixtures.get_message_fixture()
 
         result = compare(message)
@@ -114,9 +108,12 @@ class TestCompare(TestCase):
         model_mock.return_value = mock_model
 
         # setup: message and database have the same entities
+        original_value = {
+            "_last_event": 123
+        }
         self.mock_storage.compare_temporary_data.return_value = [
-            {'_source_id': 1, '_entity_source_id': 1, 'type': 'CONFIRM', '_last_event': 1, '_hash': '1234567890'},
-            {'_source_id': 1, '_entity_source_id': 1, 'type': 'CONFIRM', '_last_event': 1, '_hash': '1234567890'}
+            {'_original_value': original_value, '_source_id': 1, '_entity_source_id': 1, 'type': 'CONFIRM', '_last_event': 1, '_hash': '1234567890'},
+            {'_original_value': original_value, '_source_id': 1, '_entity_source_id': 1, 'type': 'CONFIRM', '_last_event': 1, '_hash': '1234567890'}
         ]
         message = fixtures.get_message_fixture()
 
@@ -156,7 +153,13 @@ class TestCompare(TestCase):
             }
         }
 
-        self.mock_storage.compare_temporary_data.return_value = [{'_source_id': data_object['_source_id'], '_entity_source_id': data_object['_source_id'], 'type': 'MODIFY', '_last_event': 1, '_hash': '1234567890'}]
+        original_value = {
+            "_last_event": 123,
+            "_source_id": data_object['_source_id'],
+            "_hash": "1234",
+            field_name: new_value
+        }
+        self.mock_storage.compare_temporary_data.return_value = [{'_original_value': original_value, '_source_id': data_object['_source_id'], '_entity_source_id': data_object['_source_id'], 'type': 'MODIFY', '_last_event': 1, '_hash': '1234567890'}]
 
         result = compare(message)
 
