@@ -158,6 +158,7 @@ class TestUpdate(TestCase):
 
         _store_events(self.mock_storage, [event], stats)
 
+    @patch('gobupload.update.logger', MagicMock())
     def test_apply_events(self, mock):
         event = fixtures.get_event_fixure()
         event.contents = '{"_entity_source_id": "{fixtures.random_string()}"}'
