@@ -45,13 +45,6 @@ def compare(msg):
         if not meets_dependencies(storage, msg):
             return None
 
-        # for entity in msg["contents"]:
-        #     if entity['identificatie'] == "03630000000018":
-        #         print("CHANGED")
-        #         entity['naam'] = "CHANGED"
-        #
-        # msg["contents"].pop(2)
-
         enricher = Enricher(storage, msg)
         populator = Populator(entity_model, msg)
 
@@ -86,7 +79,7 @@ def meets_dependencies(storage, msg):
     for key, value in depends_on.items():
         if key[0] == '_':
             # Temporary fix for compatibility with current import definitions
-            # Todo: make issue to solve this
+            # https://github.com/Amsterdam/GOB-Upload/issues/181
             key = key[1:]
         # Check every dependency
         if not storage.has_any_event({key: value}):
