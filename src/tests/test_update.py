@@ -111,10 +111,9 @@ class TestUpdate(TestCase):
         for t in ['ADD', 'MODIFY', 'DELETE', 'CONFIRM']:
             stats.store_event({'event': t})
             stats.skip_event({'event': t})
-            stats.apply_event({'event': t})
+            stats.add_applied(t, 1)
         stats.store_event({'event': 'BULKCONFIRM', 'data': {'confirms': [1, 2, 3]}})
         stats.skip_event({'event': 'BULKCONFIRM', 'data': {'confirms': [1, 2, 3]}})
-        stats.apply_event({'event': 'BULKCONFIRM', 'data': {'confirms': [1, 2, 3]}})
 
         results = stats.results()
 
@@ -127,7 +126,7 @@ class TestUpdate(TestCase):
             self.assertEqual(results[f'{t} events applied'], 1)
         self.assertEqual(results[f'CONFIRM events stored'], 4)
         self.assertEqual(results[f'CONFIRM events skipped'], 4)
-        self.assertEqual(results[f'CONFIRM events applied'], 4)
+        self.assertEqual(results[f'CONFIRM events applied'], 1)
 
     def test_gob_event_action(self, mock_event):
         # setup initial event and data

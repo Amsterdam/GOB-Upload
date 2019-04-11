@@ -1,3 +1,8 @@
+"""
+Update statistics
+
+Gathers statistices about the update process
+"""
 from gobcore.logging.logger import logger
 
 
@@ -42,9 +47,8 @@ class UpdateStatistics():
         self.skipped[action] = self.skipped.get(action, 0) + self._count(event)
         self._update_counts(event)
 
-    def apply_event(self, event):
-        action = self._action(event)
-        self.applied[action] = self.applied.get(action, 0) + self._count(event)
+    def add_applied(self, action, count):
+        self.applied[action] = self.applied.get(action, 0) + count
 
     def results(self):
         """Get statistics in a dictionary

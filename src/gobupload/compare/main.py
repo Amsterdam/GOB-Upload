@@ -12,12 +12,12 @@ from gobcore.model import GOBModel
 from gobcore.typesystem import get_modifications
 from gobcore.logging.logger import logger
 
-from gobupload import get_report
 from gobupload.storage.handler import GOBStorageHandler
 from gobupload.compare.enrich import Enricher
 from gobupload.compare.populate import Populator
 from gobupload.compare.entity_collector import EntityCollector
 from gobupload.compare.event_collector import EventCollector
+from gobupload.compare.compare_statistics import CompareStatistics
 
 
 def compare(msg):
@@ -40,6 +40,8 @@ def compare(msg):
     # Initialize a storage handler for the collection
     storage = GOBStorageHandler(metadata)
 
+    stats = CompareStatistics()
+
     with storage.get_session():
         # Check any dependencies
         if not meets_dependencies(storage, msg):
@@ -50,21 +52,23 @@ def compare(msg):
 
         with EntityCollector(storage) as entity_collector:
             for entity in msg["contents"]:
+                stats.collect(entity)
                 enricher.enrich(entity)
                 populator.populate(entity)
                 entity_collector.collect(entity)
 
         diff = storage.compare_temporary_data()
-        events = _process_compare_results(storage, entity_model, diff)
+        events = _process_compare_results(storage, entity_model, diff, stats)
 
-    results = get_report(msg["contents"], events)
-    logger.info(f"Message processed", kwargs={'data': results})
+    # Build result message
+    results = stats.results()
+
+    logger.info(f"Compare completed", {'data': results})
 
     msg_contents = {
         "events": events
     }
 
-    # Return the result without log.
     return ImportMessage.create_import_message(msg["header"], None, msg_contents)
 
 
@@ -88,7 +92,7 @@ def meets_dependencies(storage, msg):
     return True
 
 
-def _process_compare_results(storage, model, results):
+def _process_compare_results(storage, model, results, stats):
     """Process the results of the in database compare
 
     Creates the ADD, DELETE and CONFIRM records and returns them with the remaining records
@@ -103,6 +107,7 @@ def _process_compare_results(storage, model, results):
         for row in results:
             # Get the data for this record and create the event
             entity = row["_original_value"]
+            stats.compare(row)
 
             if row['type'] == 'ADD':
                 source_id = row['_source_id']
