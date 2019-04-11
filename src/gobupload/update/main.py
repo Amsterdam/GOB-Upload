@@ -65,8 +65,9 @@ def _store_events(storage, events, stats):
         event_collector = EventCollector(storage)
 
         with ProgressTicker("Store events", 10000) as progress, \
-                EventCollector(storage) as event_collector:
-            for event in events:
+                EventCollector(storage) as event_collector, \
+                events as contents:
+            for event in contents.items:
                 progress.tick()
 
                 if event_collector.collect(event):
@@ -124,7 +125,7 @@ def full_update(msg):
     storage = GOBStorageHandler(metadata)
 
     # Get events from message
-    events = message.contents["events"]
+    events = msg["contents"]
 
     # Gather statistics of update process
     stats = UpdateStatistics()
@@ -138,4 +139,9 @@ def full_update(msg):
     logger.info(f"Update completed", {'data': results})
 
     # Return the result message, with no log, no contents
-    return ImportMessage.create_import_message(msg["header"], None, None)
+    message = {
+        "header": msg["header"],
+        "summary": results,
+        "contents": None
+    }
+    return message
