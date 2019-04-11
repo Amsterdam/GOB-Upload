@@ -3,7 +3,7 @@ from gobcore.logging.logger import logger
 
 class UpdateStatistics():
 
-    def __init__(self, events):
+    def __init__(self):
         self.stored = {}
         self.skipped = {}
         self.applied = {}
@@ -11,14 +11,19 @@ class UpdateStatistics():
         self.num_single_events = 0
         self.num_bulk_events = 0
 
-    def _count(self, event):
+    def _update_counts(self, event):
         action = event["event"]
         self.num_events += 1
         if action == "BULKCONFIRM":
             self.num_bulk_events += 1
-            return len(event['data']['confirms'])
         else:
             self.num_single_events += 1
+
+    def _count(self, event):
+        action = event["event"]
+        if action == "BULKCONFIRM":
+            return len(event['data']['confirms'])
+        else:
             return 1
 
     def _action(selfself, event):
@@ -27,20 +32,19 @@ class UpdateStatistics():
             action = "CONFIRM"
         return action
 
-    def count_event(self, event):
-        self._add_stored(self._action(event), self._count(event))
+    def store_event(self, event):
+        action = self._action(event)
+        self.stored[action] = self.stored.get(action, 0) + self._count(event)
+        self._update_counts(event)
 
     def skip_event(self, event):
-        self._add_skipped(self._action(event), self._count(event))
+        action = self._action(event)
+        self.skipped[action] = self.skipped.get(action, 0) + self._count(event)
+        self._update_counts(event)
 
-    def _add_stored(self, action, n=1):
-        self.stored[action] = self.stored.get(action, 0) + n
-
-    def _add_skipped(self, action, n=1):
-        self.skipped[action] = self.skipped.get(action, 0) + n
-
-    def add_applied(self, action, n=1):
-        self.applied[action] = self.applied.get(action, 0) + n
+    def apply_event(self, event):
+        action = self._action(event)
+        self.applied[action] = self.applied.get(action, 0) + self._count(event)
 
     def results(self):
         """Get statistics in a dictionary
@@ -54,7 +58,7 @@ class UpdateStatistics():
         }
         for result, fmt in [(self.stored, "{action} events stored"),
                             (self.skipped, "{action} events skipped"),
-                            (self.applied, "{action} events  applied")]:
+                            (self.applied, "{action} events applied")]:
             for action, n in result.items():
                 results[fmt.format(action=action)] = n
 

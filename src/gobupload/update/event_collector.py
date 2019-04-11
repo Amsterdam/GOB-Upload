@@ -12,6 +12,10 @@ class EventCollector:
             self.storage.add_event(event)
         return is_valid
 
+    def _match_last_event(self, id, event_type):
+        last_event = self.last_events.get(id['source_id'])
+        return id['last_event'] == last_event or (event_type == 'ADD' and last_event is None)
+
     def _validate(self, event):
         event_type = event['event']
         if event_type == 'BULKCONFIRM':
@@ -25,4 +29,4 @@ class EventCollector:
                 'last_event': event['data']['_last_event']
             }]
 
-        return False not in [id['last_event'] == self.last_events.get(id['source_id'], None) for id in ids]
+        return False not in [self._match_last_event(id, event_type) for id in ids]
