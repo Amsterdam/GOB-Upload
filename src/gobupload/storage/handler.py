@@ -462,8 +462,8 @@ class GOBStorageHandler():
         table = self.DbEntity.__table__
         self.bulk_insert(table, insert_data)
 
-    def add_event(self, event):
-        row = {
+    def add_events(self, events):
+        rows = [{
             'timestamp': self.metadata.timestamp,
             'catalogue': self.metadata.catalogue,
             'entity': self.metadata.entity,
@@ -473,9 +473,9 @@ class GOBStorageHandler():
             'application': self.metadata.application,
             'source_id': event['data'].get('_source_id'),
             'contents': json.dumps(copy.deepcopy(event['data']), cls=GobTypeJSONEncoder),
-        }
+        } for event in events]
         table = self.base.metadata.tables[self.EVENTS_TABLE]
-        self.session.execute(table.insert(), [row])
+        self.session.execute(table.insert(), rows)
 
     def bulk_add_events(self, events):
         """Adds all ADD events to the session, for storage
