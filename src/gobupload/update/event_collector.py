@@ -7,10 +7,34 @@ Stores events in the event table
 
 class EventCollector:
 
+    MAX_CHUNK = 10000
+
     def __init__(self, storage):
         self.storage = storage
         # Local dictionary that contains the last event number for every source_id
         self.last_events = self.storage.get_last_events()
+        self.events = []
+
+    def __enter__(self):
+        self.events = []
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.store_events()
+
+    def add_event(self, event):
+        if event['event'] == 'BULKCONFIRM':
+            # Bulk events are stored immediately
+            return self.storage.add_events([event])
+
+        self.events.append(event)
+        if len(self.events) >= self.MAX_CHUNK:
+            # All other events are grouped per 10000
+            return self.store_events()
+
+    def store_events(self):
+        if len(self.events):
+            return self.storage.add_events(self.events)
 
     def collect(self, event):
         """
@@ -21,7 +45,7 @@ class EventCollector:
         """
         is_valid = self._validate(event)
         if is_valid:
-            self.storage.add_event(event)
+            self.add_event(event)
         return is_valid
 
     def _match_last_event(self, id, event_type):

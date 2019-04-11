@@ -43,7 +43,7 @@ class TestUpdate(TestCase):
         message = fixtures.get_event_message_fixture()
         full_update(message)
 
-        self.mock_storage.add_event.assert_called_with(message['contents']['events'][0])
+        self.mock_storage.add_events.assert_called_with(message['contents']['events'])
 
     @patch('gobupload.update.event_applicator.GobEvent')
     @patch('gobupload.update.main._get_event_ids')
@@ -62,7 +62,7 @@ class TestUpdate(TestCase):
 
         full_update(message)
 
-        self.mock_storage.add_event.assert_called()
+        self.mock_storage.add_events.assert_called()
         self.mock_storage.get_events_starting_after.assert_called()
 
     @patch('gobupload.update.event_applicator.GobEvent')
@@ -81,7 +81,7 @@ class TestUpdate(TestCase):
 
         full_update(message)
 
-        self.mock_storage.add_event.assert_not_called()
+        self.mock_storage.add_events.assert_not_called()
         self.mock_storage.get_events_starting_after.assert_called()
 
     @patch('gobupload.update.event_applicator.GobEvent')
@@ -103,7 +103,7 @@ class TestUpdate(TestCase):
 
             full_update(message)
 
-            self.mock_storage.add_event.assert_called()
+            self.mock_storage.add_events.assert_called()
             self.mock_storage.get_events_starting_after.assert_called()
 
     def test_statistics(self, mock):
