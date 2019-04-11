@@ -6,7 +6,7 @@ from gobcore.events.import_message import ImportMessage
 from gobcore.exceptions import GOBException
 from gobcore.model import GOBModel
 
-from gobupload.compare import populate
+from gobupload.compare.populate import Populator
 from gobupload.storage import queries
 from gobupload.storage.handler import GOBStorageHandler
 from tests import fixtures
@@ -23,7 +23,9 @@ class TestStorageHandler(unittest.TestCase):
             "version": "1"
         }
         # Add the hash to the message
-        populate(self.msg, model)
+        populator = Populator(model, self.msg)
+        for content in self.msg['contents']:
+            populator.populate(content)
 
         message = ImportMessage(self.msg)
         metadata = message.metadata
@@ -33,10 +35,13 @@ class TestStorageHandler(unittest.TestCase):
     def test_create_temporary_table(self):
         expected_table = f'{self.msg["header"]["catalogue"]}_{self.msg["header"]["entity"]}_tmp'
 
-        self.storage.create_temporary_table(self.msg["contents"])
+        self.storage.create_temporary_table()
 
         # Assert the test table has been made
         self.assertIn(expected_table, self.storage.base.metadata.tables)
+
+        for entity in self.msg["contents"]:
+            self.storage.write_temporary_entity(entity)
 
         # And the engine has been called to fill the temporary table
         self.storage.engine.execute.assert_called()
@@ -48,10 +53,13 @@ class TestStorageHandler(unittest.TestCase):
 
         # Make sure the test table already exists
         self.storage.base.metadata.tables = {expected_table: mock_table}
-        self.storage.create_temporary_table(self.msg["contents"])
+        self.storage.create_temporary_table()
 
         # Assert the truncate function is called
         self.storage.engine.execute.assert_any_call(f"TRUNCATE {expected_table}")
+
+        for entity in self.msg["contents"]:
+            self.storage.write_temporary_entity(entity)
 
         # And the engine has been called to fill the temporary table
         self.storage.engine.execute.assert_called()
@@ -60,7 +68,8 @@ class TestStorageHandler(unittest.TestCase):
         current_table = f'{self.msg["header"]["catalogue"]}_{self.msg["header"]["entity"]}'
         new_table = f'{self.msg["header"]["catalogue"]}_{self.msg["header"]["entity"]}_tmp'
 
-        self.storage.compare_temporary_data()
+        diff = self.storage.compare_temporary_data()
+        results = [result for result in diff]
 
         # Check if the get comparison function is called for confirms and changes
         mock_get_comparison.assert_any_call(current_table, new_table)
@@ -76,7 +85,8 @@ class TestStorageHandler(unittest.TestCase):
         fields = ['_source', 'identificatie']
         query = queries.get_comparison_query(current, temporary, fields)
 
-        self.storage.compare_temporary_data()
+        diff = self.storage.compare_temporary_data()
+        results = [result for result in diff]
 
         # Assert the query is performed is deleted
         self.storage.engine.execute.assert_any_call(query)

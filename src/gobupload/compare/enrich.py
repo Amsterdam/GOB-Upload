@@ -44,23 +44,6 @@ class Enricher:
                 logger.info(logging)
 
 
-def enrich(storage, msg):
-    """
-    Enrich message msg
-    A storage handler is provided for access to the current storage
-
-    A logger is supplied to log info, warnings and errors
-
-    :param storage: Storage handler
-    :param msg: Incoming message
-    :return: None
-    """
-    enricher = Enricher(storage, msg)
-
-    for entity in msg["contents"]:
-        enricher.enrich(entity)
-
-
 def _get_current_value(storage, data, specs, column, assigned):
     """
     Get any current value (either stored or previously issued

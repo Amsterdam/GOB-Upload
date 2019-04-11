@@ -1,9 +1,11 @@
 def get_comparison_query(current, temporary, fields):
     using = ",".join(fields)
     return f"""
+SELECT * FROM (
 SELECT
     {temporary}._source_id,
     {current}._source_id AS _entity_source_id,
+    {temporary}._original_value,
     {current}._last_event,
     {temporary}._hash,
     CASE
@@ -23,10 +25,12 @@ UNION ALL
 SELECT
     {temporary}._source_id,
     {current}._source_id AS _entity_source_id,
+    {temporary}._original_value,
     {current}._last_event,
     COALESCE({temporary}._hash, {current}._hash),
     CASE
-        WHEN {temporary}._source_id IS NULL THEN 'SKIP'
+        WHEN {temporary}._source_id IS NULL AND {current}._date_deleted IS NULL THEN 'DELETE'
+        WHEN {temporary}._source_id IS NULL AND {current}._date_deleted IS NOT NULL THEN 'SKIP'
         WHEN (
             {current}._source_id IS NULL OR
             {current}._date_deleted IS NOT NULL
@@ -41,4 +45,8 @@ WHERE (
     {temporary}._hash
 ) IS DISTINCT FROM (
     {current}._hash
-)"""
+)
+) AS Q
+WHERE type != 'SKIP'
+ORDER BY type
+"""
