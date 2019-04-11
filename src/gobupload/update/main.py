@@ -24,11 +24,10 @@ def _apply_events(storage, start_after, stats):
     with storage.get_session():
         logger.info(f"Apply events")
 
-        unhandled_events = storage.get_events_starting_after(start_after)
-
         event_applicator = EventApplicator(storage)
 
         with ProgressTicker("Apply events", 10000) as progress:
+            unhandled_events = storage.get_events_starting_after(start_after)
             for event in unhandled_events:
                 progress.tick()
 
@@ -70,7 +69,7 @@ def _store_events(storage, events, stats):
                 progress.tick()
 
                 if event_collector.collect(event):
-                    stats.count_event(event)
+                    stats.store_event(event)
                 else:
                     stats.skip_event(event)
 
@@ -127,7 +126,7 @@ def full_update(msg):
     events = message.contents["events"]
 
     # Gather statistics of update process
-    stats = UpdateStatistics(events)
+    stats = UpdateStatistics()
 
     _process_events(storage, events, stats)
 

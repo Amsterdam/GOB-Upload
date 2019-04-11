@@ -6,12 +6,15 @@ from unittest.mock import MagicMock, patch
 from gobcore.exceptions import GOBException
 from gobcore.events.import_events import ADD, DELETE, CONFIRM, MODIFY
 
-from gobupload.update import full_update, UpdateStatistics, _get_gob_event, _get_event_ids, _store_events, _apply_events
+# from gobupload.update import full_update, UpdateStatistics, _get_gob_event, _get_event_ids, _store_events, _apply_events
+from gobupload.update import full_update
+from gobupload.update.main import full_update, UpdateStatistics, _get_event_ids, _store_events, _apply_events
+from gobupload.update.event_applicator import _get_gob_event
 from gobupload.storage.handler import GOBStorageHandler
 from tests import fixtures
 
 
-@patch('gobupload.update.GOBStorageHandler')
+@patch('gobupload.update.main.GOBStorageHandler')
 class TestUpdate(TestCase):
     def setUp(self):
         # Disable logging to prevent test from connecting to RabbitMQ
@@ -31,19 +34,21 @@ class TestUpdate(TestCase):
         self.assertEqual(max_id, "max")
         self.assertEqual(last_id, "last")
 
-    @patch('gobupload.update._get_event_ids')
+    @patch('gobupload.update.main._get_event_ids')
     def test_fullupdate_saves_event(self, mock_ids, mock):
+        self.mock_storage.get_last_events.return_value = {}
         mock.return_value = self.mock_storage
         mock_ids.return_value = 0, 0
 
         message = fixtures.get_event_message_fixture()
         full_update(message)
 
-        self.mock_storage.bulk_add_events.assert_called_with(message['contents']['events'])
+        self.mock_storage.add_event.assert_called_with(message['contents']['events'][0])
 
-    @patch('gobupload.update.GobEvent')
-    @patch('gobupload.update._get_event_ids')
+    @patch('gobupload.update.event_applicator.GobEvent')
+    @patch('gobupload.update.main._get_event_ids')
     def test_fullupdate_creates_event_and_pops_ids(self, mock_ids, mock_event, mock):
+        self.mock_storage.get_last_events.return_value = {}
         mock.return_value = self.mock_storage
         mock_ids.return_value = 0, 0
 
@@ -57,11 +62,11 @@ class TestUpdate(TestCase):
 
         full_update(message)
 
-        self.mock_storage.bulk_add_events.assert_called()
+        self.mock_storage.add_event.assert_called()
         self.mock_storage.get_events_starting_after.assert_called()
 
-    @patch('gobupload.update.GobEvent')
-    @patch('gobupload.update._get_event_ids')
+    @patch('gobupload.update.event_applicator.GobEvent')
+    @patch('gobupload.update.main._get_event_ids')
     def test_fullupdate_not_creates_event_and_pops_ids(self, mock_ids, mock_event, mock):
         mock.return_value = self.mock_storage
         mock_ids.return_value = 0, 1
@@ -76,12 +81,13 @@ class TestUpdate(TestCase):
 
         full_update(message)
 
-        self.mock_storage.bulk_add_events.assert_not_called()
+        self.mock_storage.add_event.assert_not_called()
         self.mock_storage.get_events_starting_after.assert_called()
 
-    @patch('gobupload.update.GobEvent')
-    @patch('gobupload.update._get_event_ids')
+    @patch('gobupload.update.event_applicator.GobEvent')
+    @patch('gobupload.update.main._get_event_ids')
     def test_fullupdate_applies_events(self, mock_ids, mock_event, mock):
+        self.mock_storage.get_last_events.return_value = {}
         mock.return_value = self.mock_storage
         mock_ids.return_value = 0, 0
 
@@ -97,25 +103,31 @@ class TestUpdate(TestCase):
 
             full_update(message)
 
-            self.mock_storage.bulk_add_events.assert_called()
+            self.mock_storage.add_event.assert_called()
             self.mock_storage.get_events_starting_after.assert_called()
 
     def test_statistics(self, mock):
-        stats = UpdateStatistics([1])
-        stats.add_stored('STORED')
-        stats.add_skipped('SKIPPED')
-        stats.add_applied('APPLIED')
-
-        stats.add_bulkconfirm_applied(10)
-        stats.add_bulkconfirm_stored(10)
+        stats = UpdateStatistics()
+        for t in ['ADD', 'MODIFY', 'DELETE', 'CONFIRM']:
+            stats.store_event({'event': t})
+            stats.skip_event({'event': t})
+            stats.apply_event({'event': t})
+        stats.store_event({'event': 'BULKCONFIRM', 'data': {'confirms': [1, 2, 3]}})
+        stats.skip_event({'event': 'BULKCONFIRM', 'data': {'confirms': [1, 2, 3]}})
+        stats.apply_event({'event': 'BULKCONFIRM', 'data': {'confirms': [1, 2, 3]}})
 
         results = stats.results()
-        self.assertEqual(results['num_events'], 1)
-        self.assertEqual(results['num_stored_events'], 1)
-        self.assertEqual(results['num_skipped_events_skipped'], 1)
-        self.assertEqual(results['num_applied_applied'], 1)
-        self.assertEqual(results['bulkconfirm_records_stored'], 10)
-        self.assertEqual(results['bulkconfirm_records_applied'], 10)
+
+        self.assertEqual(results['Total events'], 10)
+        self.assertEqual(results['Single events'], 8)
+        self.assertEqual(results['Bulk events'], 2)
+        for t in ['ADD', 'MODIFY', 'DELETE']:
+            self.assertEqual(results[f'{t} events stored'], 1)
+            self.assertEqual(results[f'{t} events skipped'], 1)
+            self.assertEqual(results[f'{t} events applied'], 1)
+        self.assertEqual(results[f'CONFIRM events stored'], 4)
+        self.assertEqual(results[f'CONFIRM events skipped'], 4)
+        self.assertEqual(results[f'CONFIRM events applied'], 4)
 
     def test_gob_event_action(self, mock_event):
         # setup initial event and data
@@ -154,14 +166,14 @@ class TestUpdate(TestCase):
 
         self.mock_storage.get_last_events.return_value = {event['data']['_source_id']: event['data']['_last_event']}
         mock.return_value = self.mock_storage
-        stats = UpdateStatistics([1])
+        stats = UpdateStatistics()
 
         _store_events(self.mock_storage, [event], stats)
 
-    @patch('gobupload.update.logger', MagicMock())
+    @patch('gobupload.update.main.logger', MagicMock())
     def test_apply_events(self, mock):
         event = fixtures.get_event_fixure()
-        event.contents = '{"_entity_source_id": "{fixtures.random_string()}"}'
+        event.contents = '{"_entity_source_id": "{fixtures.random_string()}", "entity": {}}'
         mock.return_value = self.mock_storage
         self.mock_storage.get_events_starting_after.return_value = [event]
         stats = MagicMock()
