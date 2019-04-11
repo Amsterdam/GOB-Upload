@@ -1,3 +1,9 @@
+"""
+Event applicator
+
+Applies events to the respective entity in the current model
+
+"""
 import json
 
 from gobcore.events import GOB, GobEvent
@@ -16,6 +22,7 @@ class EventApplicator:
         # Reconstruct the gob event out of the database event
         gob_event = _get_gob_event(event, data)
 
+        # Return the action and number of applied entities
         action = event.action
         count = 1
 
