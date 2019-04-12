@@ -51,9 +51,8 @@ def compare(msg):
         enricher = Enricher(storage, msg)
         populator = Populator(entity_model, msg)
 
-        with EntityCollector(storage) as entity_collector, \
-                msg["contents"] as contents:
-            for entity in contents.items:
+        with EntityCollector(storage) as entity_collector:
+            for entity in msg["contents"]:
                 stats.collect(entity)
                 enricher.enrich(entity)
                 populator.populate(entity)

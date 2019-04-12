@@ -249,9 +249,13 @@ class GOBStorageHandler():
         class session_context:
             def __enter__(ctx):
                 self.session = Session(self.engine)
+                return self.session
 
-            def __exit__(ctx, type, value, traceback):
-                self.session.commit()
+            def __exit__(ctx, exc_type, exc_val, exc_tb):
+                if exc_type is not None:
+                    self.session.rollback()
+                else:
+                    self.session.commit()
                 self.session.close()
                 self.session = None
 

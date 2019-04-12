@@ -16,7 +16,6 @@ class EventCollector:
         Initializes the collector with empty collections
 
         """
-        self.events = []
         self._bulk_events = []
         self._last_type = None
         self.contents_writer = contents_writer

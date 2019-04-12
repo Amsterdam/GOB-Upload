@@ -43,7 +43,7 @@ class TestUpdate(TestCase):
         message = fixtures.get_event_message_fixture()
         full_update(message)
 
-        self.mock_storage.add_events.assert_called_with(message['contents']['events'])
+        self.mock_storage.add_events.assert_called_with(message['contents'])
 
     @patch('gobupload.update.event_applicator.GobEvent')
     @patch('gobupload.update.main._get_event_ids')
@@ -96,7 +96,7 @@ class TestUpdate(TestCase):
             mock_event.return_value = gob_event
 
             message = fixtures.get_event_message_fixture(event_to_test.name)
-            id_to_pop = message['contents']['events'][0]['data']['_source_id']
+            id_to_pop = message['contents'][0]['data']['_source_id']
             gob_event.pop_ids.return_value = id_to_pop, id_to_pop
 
             self.mock_storage.get_events_starting_after.return_value = []
