@@ -65,9 +65,8 @@ def _store_events(storage, events, stats):
         event_collector = EventCollector(storage)
 
         with ProgressTicker("Store events", 10000) as progress, \
-                EventCollector(storage) as event_collector, \
-                events as contents:
-            for event in contents.items:
+                EventCollector(storage) as event_collector:
+            for event in events:
                 progress.tick()
 
                 if event_collector.collect(event):

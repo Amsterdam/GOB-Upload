@@ -1,18 +1,22 @@
 import logging
 
 from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from unittest.mock import Mock, MagicMock, patch, call, ANY
 from tests import fixtures
 
 from gobcore.events import GOB
+from gobcore.message_broker.offline_contents import ContentsWriter
 
 from gobupload.compare.main import compare, GOBStorageHandler, GOBModel
 
 mock_model = MagicMock(spec=GOBModel)
+mock_writer = MagicMock(spec=ContentsWriter)
 
+@patch('gobupload.compare.main.ContentsWriter', mock_writer)
 @patch('gobupload.compare.main.GOBModel')
 @patch('gobupload.compare.main.GOBStorageHandler')
 class TestCompare(TestCase):
+
     def setUp(self):
         # Disable logging to prevent test from connecting to RabbitMQ
         logging.disable(logging.CRITICAL)
@@ -21,6 +25,7 @@ class TestCompare(TestCase):
             "entity_id": "identificatie",
             "version": 1
         }
+        mock_writer.reset_mock()
 
     def tearDown(self):
         logging.disable(logging.NOTSET)
@@ -64,8 +69,9 @@ class TestCompare(TestCase):
         result = compare(message)
 
         # expectations: confirm event is generated
-        self.assertEqual(len(result['contents']['events']), 1)
-        self.assertEqual(result['contents']['events'][0]['event'], 'DELETE')
+        self.assertIsNotNone(result["contents_ref"])
+        mock_writer.return_value.__enter__().write.assert_called_once()
+        mock_writer.return_value.__enter__().write.assert_called_with({'event': 'DELETE', 'data': ANY})
 
     def test_compare_creates_add(self, storage_mock, model_mock):
         storage_mock.return_value = self.mock_storage
@@ -83,8 +89,9 @@ class TestCompare(TestCase):
         result = compare(message)
 
         # expectations: add event is generated
-        self.assertEqual(len(result['contents']['events']), 1)
-        self.assertEqual(result['contents']['events'][0]['event'], 'ADD')
+        self.assertIsNotNone(result["contents_ref"])
+        mock_writer.return_value.__enter__().write.assert_called_once()
+        mock_writer.return_value.__enter__().write.assert_called_with({'event': 'ADD', 'data': ANY})
 
     def test_compare_creates_confirm(self, storage_mock, model_mock):
         storage_mock.return_value = self.mock_storage
@@ -100,8 +107,9 @@ class TestCompare(TestCase):
         result = compare(message)
 
         # expectations: confirm event is generated
-        self.assertEqual(len(result['contents']['events']), 1)
-        self.assertEqual(result['contents']['events'][0]['event'], 'CONFIRM')
+        self.assertIsNotNone(result["contents_ref"])
+        mock_writer.return_value.__enter__().write.assert_called_once()
+        mock_writer.return_value.__enter__().write.assert_called_with({'event': 'CONFIRM', 'data': ANY})
 
     def test_compare_creates_bulkconfirm(self, storage_mock, model_mock):
         storage_mock.return_value = self.mock_storage
@@ -120,8 +128,9 @@ class TestCompare(TestCase):
         result = compare(message)
 
         # expectations: confirm event is generated
-        self.assertEqual(len(result['contents']['events']), 1)
-        self.assertEqual(result['contents']['events'][0]['event'], 'BULKCONFIRM')
+        self.assertIsNotNone(result["contents_ref"])
+        mock_writer.return_value.__enter__().write.assert_called_once()
+        mock_writer.return_value.__enter__().write.assert_called_with({'event': 'BULKCONFIRM', 'data': ANY})
 
     def test_compare_creates_modify(self, storage_mock, model_mock):
         storage_mock.return_value = self.mock_storage
@@ -164,8 +173,9 @@ class TestCompare(TestCase):
         result = compare(message)
 
         # expectations: modify event is generated
-        self.assertEqual(len(result['contents']['events']), 1)
-        self.assertEqual(result['contents']['events'][0]['event'], 'MODIFY')
+        self.assertIsNotNone(result["contents_ref"])
+        mock_writer.return_value.__enter__().write.assert_called_once()
+        mock_writer.return_value.__enter__().write.assert_called_with({'event': 'MODIFY', 'data': ANY})
 
         # modificatinos dict has correct modifications.
         modifications = result['contents']['events'][0]['data']['modifications']
