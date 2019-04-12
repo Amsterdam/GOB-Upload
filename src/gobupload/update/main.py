@@ -24,9 +24,8 @@ def _apply_events(storage, start_after, stats):
     with storage.get_session():
         logger.info(f"Apply events")
 
-        event_applicator = EventApplicator(storage)
-
-        with ProgressTicker("Apply events", 10000) as progress:
+        with ProgressTicker("Apply events", 10000) as progress, \
+                EventApplicator(storage) as event_applicator:
             unhandled_events = storage.get_events_starting_after(start_after)
             for event in unhandled_events:
                 progress.tick()
