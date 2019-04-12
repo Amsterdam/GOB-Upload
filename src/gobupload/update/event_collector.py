@@ -34,7 +34,8 @@ class EventCollector:
 
     def store_events(self):
         if len(self.events):
-            return self.storage.add_events(self.events)
+            self.storage.add_events(self.events)
+            self.events = []
 
     def collect(self, event):
         """
