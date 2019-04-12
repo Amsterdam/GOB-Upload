@@ -331,7 +331,7 @@ class GOBStorageHandler():
         return self.gob_model.get_collection(self.metadata.catalogue, self.metadata.entity)
 
     @with_session
-    def get_current_ids(self):
+    def get_current_ids(self, exclude_deleted=True):
         """Overview of entities that are current
 
         Current id's are evaluated within an application
@@ -340,9 +340,10 @@ class GOBStorageHandler():
         """
         filter = {
             "_source": self.metadata.source,
-            "_application": self.metadata.application,
-            "_date_deleted": None
+            "_application": self.metadata.application
         }
+        if exclude_deleted:
+            filter["_date_deleted"]: None
         return self.session.query(self.DbEntity._source_id).filter_by(**filter).all()
 
     @with_session
@@ -465,6 +466,17 @@ class GOBStorageHandler():
             insert_data.append(entity)
         table = self.DbEntity.__table__
         self.bulk_insert(table, insert_data)
+
+    @with_session
+    def add_add_events(self, events):
+        rows = []
+        for event in events:
+            entity = event.get_attribute_dict()
+            # Set the the _last_event
+            entity['_last_event'] = event.id
+            rows.append(entity)
+        table = self.DbEntity.__table__
+        self.session.execute(table.insert(), rows)
 
     def add_events(self, events):
         rows = [{
