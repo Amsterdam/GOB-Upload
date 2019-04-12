@@ -177,8 +177,10 @@ class TestCompare(TestCase):
         mock_writer.return_value.__enter__().write.assert_called_once()
         mock_writer.return_value.__enter__().write.assert_called_with({'event': 'MODIFY', 'data': ANY})
 
+        result = mock_writer.return_value.__enter__().write.call_args_list[0][0][0]
+
         # modificatinos dict has correct modifications.
-        modifications = result['contents']['events'][0]['data']['modifications']
+        modifications = result['data']['modifications']
         self.assertEqual(len(modifications), 1)
         self.assertEqual(modifications[0]['key'], field_name)
         self.assertEqual(modifications[0]['old_value'], old_value)
