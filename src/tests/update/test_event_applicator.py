@@ -9,7 +9,7 @@ from gobupload.storage.handler import GOBStorageHandler
 from gobupload.update.event_applicator import EventApplicator
 
 
-class TestEventCollector(TestCase):
+class TestEventApplicator(TestCase):
 
     def setUp(self):
         self.storage = MagicMock(spec=GOBStorageHandler)
@@ -45,16 +45,20 @@ class TestEventCollector(TestCase):
         event = dict_to_object(self.mock_event)
         applicator.apply(event)
         self.assertEqual(len(applicator.add_events), 0)
+        self.storage.get_entity_for_update.assert_called()
 
     def test_apply_new_add(self):
-        applicator = EventApplicator(self.storage)
         self.set_contents({
             '_entity_source_id': 'entity_source_id',
             '_hash': '123'
         })
         event = dict_to_object(self.mock_event)
-        applicator.apply(event)
-        self.assertEqual(len(applicator.add_events), 1)
+        with EventApplicator(self.storage) as applicator:
+            applicator.apply(event)
+            self.assertEqual(len(applicator.add_events), 1)
+        self.assertEqual(len(applicator.add_events), 0)
+        self.storage.get_entity_for_update.assert_not_called()
+        self.storage.add_add_events.assert_called()
 
     def test_apply_bulk(self):
         applicator = EventApplicator(self.storage)
@@ -67,3 +71,4 @@ class TestEventCollector(TestCase):
         event = dict_to_object(self.mock_event)
         applicator.apply(event)
         self.assertEqual(len(applicator.add_events), 0)
+        self.storage.bulk_update_confirms.assert_called()
