@@ -13,7 +13,7 @@ from gobupload.update.event_collector import EventCollector
 from gobupload.update.event_applicator import EventApplicator
 
 
-def _apply_events(storage, start_after, stats):
+def _apply_events(storage, last_events, start_after, stats):
     """Apply any unhandled events to the database
 
     :param storage: GOB (events + entities)
@@ -24,9 +24,8 @@ def _apply_events(storage, start_after, stats):
     with storage.get_session():
         logger.info(f"Apply events")
 
-        event_applicator = EventApplicator(storage)
-
-        with ProgressTicker("Apply events", 10000) as progress:
+        with ProgressTicker("Apply events", 10000) as progress, \
+                EventApplicator(storage, last_events) as event_applicator:
             unhandled_events = storage.get_events_starting_after(start_after)
             for event in unhandled_events:
                 progress.tick()
@@ -35,19 +34,7 @@ def _apply_events(storage, start_after, stats):
                 stats.add_applied(action, count)
 
 
-def _get_event_ids(storage):
-    """Get the highest event id from the entities and the eventid of the most recent event
-
-    :param storage: GOB (events + entities)
-    :return:highest entity eventid and last eventid
-    """
-    with storage.get_session():
-        entity_max_eventid = storage.get_entity_max_eventid()
-        last_eventid = storage.get_last_eventid()
-        return entity_max_eventid, last_eventid
-
-
-def _store_events(storage, events, stats):
+def _store_events(storage, last_events, events, stats):
     """Store events in GOB
 
     Only valid events are stored, other events are skipped (with an associated warning)
@@ -62,10 +49,8 @@ def _store_events(storage, events, stats):
         # Use a session to commit all or rollback on any error
         logger.info(f"Store events")
 
-        event_collector = EventCollector(storage)
-
         with ProgressTicker("Store events", 10000) as progress, \
-                EventCollector(storage) as event_collector:
+                EventCollector(storage, last_events) as event_collector:
             for event in events:
                 progress.tick()
 
@@ -73,6 +58,18 @@ def _store_events(storage, events, stats):
                     stats.store_event(event)
                 else:
                     stats.skip_event(event)
+
+
+def _get_event_ids(storage):
+    """Get the highest event id from the entities and the eventid of the most recent event
+
+    :param storage: GOB (events + entities)
+    :return:highest entity eventid and last eventid
+    """
+    with storage.get_session():
+        entity_max_eventid = storage.get_entity_max_eventid()
+        last_eventid = storage.get_last_eventid()
+        return entity_max_eventid, last_eventid
 
 
 def _process_events(storage, events, stats):
@@ -86,26 +83,22 @@ def _process_events(storage, events, stats):
     # Get the max eventid of the entities and the last eventid of the events
     entity_max_eventid, last_eventid = _get_event_ids(storage)
 
+    # Get all source_id - last_event combinations to check for validity and existence
+    with storage.get_session():
+        last_events = storage.get_last_events()  # { source_id: last_event, ... }
+
     if entity_max_eventid == last_eventid:
         logger.info(f"Model is up to date")
+        # Add new events
+        _store_events(storage, last_events, events, stats)
+        # Apply the new events
+        _apply_events(storage, last_events, entity_max_eventid, stats)
     elif entity_max_eventid and not last_eventid or entity_max_eventid > last_eventid:
         logger.error(f"Model is inconsistent! data is more recent than events")
-        return
     else:
         logger.warning(f"Model is out of date! Start application of unhandled events")
-        _apply_events(storage, entity_max_eventid, stats)
+        _apply_events(storage, last_events, entity_max_eventid, stats)
         logger.error(f"Further processing has stopped")
-        # New events will almost certainly be invalid. So stop further processing
-        return
-
-    # Add new events
-    _store_events(storage, events, stats)
-
-    # Get the max eventid of the entities and the last eventid of the events
-    entity_max_eventid, last_eventid = _get_event_ids(storage)
-
-    # Apply the new events
-    _apply_events(storage, entity_max_eventid, stats)
 
 
 def full_update(msg):
@@ -124,7 +117,7 @@ def full_update(msg):
     storage = GOBStorageHandler(metadata)
 
     # Get events from message
-    events = message.contents["events"]
+    events = msg["contents"]
 
     # Gather statistics of update process
     stats = UpdateStatistics()
@@ -138,4 +131,9 @@ def full_update(msg):
     logger.info(f"Update completed", {'data': results})
 
     # Return the result message, with no log, no contents
-    return ImportMessage.create_import_message(msg["header"], None, None)
+    message = {
+        "header": msg["header"],
+        "summary": results,
+        "contents": None
+    }
+    return message

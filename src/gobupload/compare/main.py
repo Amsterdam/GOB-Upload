@@ -11,6 +11,7 @@ from gobcore.events.import_message import ImportMessage
 from gobcore.model import GOBModel
 from gobcore.typesystem import get_modifications
 from gobcore.logging.logger import logger
+from gobcore.message_broker.offline_contents import ContentsWriter
 
 from gobupload.storage.handler import GOBStorageHandler
 from gobupload.compare.enrich import Enricher
@@ -50,26 +51,48 @@ def compare(msg):
         enricher = Enricher(storage, msg)
         populator = Populator(entity_model, msg)
 
-        with EntityCollector(storage) as entity_collector:
-            for entity in msg["contents"]:
-                stats.collect(entity)
-                enricher.enrich(entity)
-                populator.populate(entity)
-                entity_collector.collect(entity)
+        initial_add = not storage.has_any_entity()  # If there are no records in the database all data are ADD events
+        if initial_add:
+            logger.info("Initial load of new collection detected")
+            # Write ADD events directly, without using a temporary table
+            contents_writer = ContentsWriter()
+            contents_writer.open()
+            collector = EventCollector(contents_writer)
+            collect = collector.collect_initial_add
+        else:
+            # Collect entities in a temporary table
+            collector = EntityCollector(storage)
+            collect = collector.collect
 
-        diff = storage.compare_temporary_data()
-        events = _process_compare_results(storage, entity_model, diff, stats)
+        for entity in msg["contents"]:
+            stats.collect(entity)
+            enricher.enrich(entity)
+            populator.populate(entity)
+            collect(entity)
+
+        collector.close()
+
+    if initial_add:
+        filename = contents_writer.filename
+        contents_writer.close()
+    else:
+        # Compare entities from temporary table
+        with storage.get_session():
+            diff = storage.compare_temporary_data()
+            filename = _process_compare_results(storage, entity_model, diff, stats)
 
     # Build result message
     results = stats.results()
 
     logger.info(f"Compare completed", {'data': results})
 
-    msg_contents = {
-        "events": events
+    message = {
+        "header": msg["header"],
+        "summary": results,
+        "contents_ref": filename
     }
 
-    return ImportMessage.create_import_message(msg["header"], None, msg_contents)
+    return message
 
 
 def meets_dependencies(storage, msg):
@@ -101,8 +124,10 @@ def _process_compare_results(storage, model, results, stats):
     :param data_by_source_id: a mapping of import data by source_id
     :return: list of events, list of remaining records
     """
-    result = []
-    with EventCollector() as events:
+    with ContentsWriter() as contents_writer, \
+            EventCollector(contents_writer) as event_collector:
+
+        filename = contents_writer.filename
 
         for row in results:
             # Get the data for this record and create the event
@@ -130,8 +155,6 @@ def _process_compare_results(storage, model, results, stats):
                 }
                 event = GOB.DELETE.create_event(source_id, source_id, data)
 
-            events.add(event)
+            event_collector.collect(event)
 
-        result = events.events
-
-    return result
+    return filename

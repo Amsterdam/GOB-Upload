@@ -49,4 +49,4 @@ SERVICEDEFINITION = {
 storage = GOBStorageHandler()
 storage.init_storage()
 
-messagedriven_service(SERVICEDEFINITION, "Upload")
+messagedriven_service(SERVICEDEFINITION, "Upload", {"stream_contents": True})
