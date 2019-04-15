@@ -163,11 +163,11 @@ class TestUpdate(TestCase):
         event['data']['_last_event'] = fixtures.random_string()
         event['data']['_entity_source_id'] = event['data']['_source_id']
 
-        self.mock_storage.get_last_events.return_value = {event['data']['_source_id']: event['data']['_last_event']}
+        last_events = {event['data']['_source_id']: event['data']['_last_event']}
         mock.return_value = self.mock_storage
         stats = UpdateStatistics()
 
-        _store_events(self.mock_storage, [event], stats)
+        _store_events(self.mock_storage, last_events, [event], stats)
 
     @patch('gobupload.update.main.logger', MagicMock())
     def test_apply_events(self, mock):
@@ -177,6 +177,6 @@ class TestUpdate(TestCase):
         self.mock_storage.get_events_starting_after.return_value = [event]
         stats = MagicMock()
 
-        _apply_events(self.mock_storage, 1, stats)
+        _apply_events(self.mock_storage, {}, 1, stats)
 
         stats.add_applied.assert_called()

@@ -24,6 +24,9 @@ class EventCollector:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    def close(self):
         self._end_of_type()
 
     def _add_event(self, event):
@@ -73,7 +76,12 @@ class EventCollector:
         if len(self._bulk_events):
             self._end_of_bulk()
 
-    def add(self, event):
+    def collect_initial_add(self, entity):
+        source_id = entity['_source_id']
+        event = GOB.ADD.create_event(source_id, source_id, entity)
+        self.collect(event)
+
+    def collect(self, event):
         """
         Add an event. Handle any grouping of events
 

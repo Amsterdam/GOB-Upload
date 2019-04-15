@@ -8,9 +8,11 @@ from gobcore.events import GOB
 from gobcore.message_broker.offline_contents import ContentsWriter
 
 from gobupload.compare.main import compare, GOBStorageHandler, GOBModel
+from gobupload.compare.event_collector import EventCollector
 
 mock_model = MagicMock(spec=GOBModel)
 mock_writer = MagicMock(spec=ContentsWriter)
+mock_event_collector = MagicMock(spec=EventCollector)
 
 @patch('gobupload.compare.main.ContentsWriter', mock_writer)
 @patch('gobupload.compare.main.GOBModel')
@@ -25,6 +27,7 @@ class TestCompare(TestCase):
             "entity_id": "identificatie",
             "version": 1
         }
+        mock_event_collector.reset_mock()
         mock_writer.reset_mock()
 
     def tearDown(self):
@@ -92,6 +95,28 @@ class TestCompare(TestCase):
         self.assertIsNotNone(result["contents_ref"])
         mock_writer.return_value.__enter__().write.assert_called_once()
         mock_writer.return_value.__enter__().write.assert_called_with({'event': 'ADD', 'data': ANY})
+
+    @patch('gobupload.compare.main.EventCollector', mock_event_collector)
+    def test_initial_add(self, storage_mock, model_mock):
+        storage_mock.return_value = self.mock_storage
+        model_mock.return_value = mock_model
+
+        # setup: no entity in db, one in message
+        message = fixtures.get_message_fixture()
+        data = message["contents"][0]
+        self.mock_storage.has_any_event.return_value = True
+        self.mock_storage.has_any_entity.return_value = False
+        original_value = {
+            "_last_event": 123
+        }
+        self.mock_storage.compare_temporary_data.return_value = [{'_original_value': original_value, '_source_id': data['_source_id'], '_entity_source_id': data['_source_id'], 'type': 'ADD', '_last_event': 1, '_hash': '1234567890'}]
+
+        result = compare(message)
+
+        # expectations: add event is generated
+        self.assertIsNotNone(result["contents_ref"])
+        mock_writer.return_value.__enter__().write.assert_not_called()
+        mock_event_collector.return_value.collect_initial_add.assert_called_once()
 
     def test_compare_creates_confirm(self, storage_mock, model_mock):
         storage_mock.return_value = self.mock_storage

@@ -1,5 +1,10 @@
 def get_comparison_query(current, temporary, fields):
+    # The using part of the statements contains the fnctional identification for the entity:
+    # functional source (source), functional id (_id) and a volgnummer if the entity has states
     using = ",".join(fields)
+
+    # The techical source id is returned
+    # _source_id for the new source id, _entity_source_id for the current source_id
     return f"""
 SELECT * FROM (
 SELECT

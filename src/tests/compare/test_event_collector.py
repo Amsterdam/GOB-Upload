@@ -22,17 +22,17 @@ class TestEventCollector(TestCase):
 
     def test_add_one(self):
         with EventCollector(mock_writer) as ec:
-            ec.add({"event": 1})
+            ec.collect({"event": 1})
         mock_writer.write.assert_called_once()
         mock_writer.write.assert_called_with({"event": 1})
 
     def test_add_multiple(self):
         with EventCollector(mock_writer) as ec:
-            ec.add({"event": 1})
+            ec.collect({"event": 1})
             mock_writer.write.assert_called_with({"event": 1})
-            ec.add({"event": 2})
+            ec.collect({"event": 2})
             mock_writer.write.assert_called_with({"event": 2})
-            ec.add({"event": 3})
+            ec.collect({"event": 3})
             mock_writer.write.assert_called_with({"event": 3})
 
     def test_add_bulk_one(self):
@@ -45,7 +45,7 @@ class TestEventCollector(TestCase):
         }
 
         with EventCollector(mock_writer) as ec:
-            ec.add(confirm_event)
+            ec.collect(confirm_event)
         mock_writer.write.assert_called_once()
         mock_writer.write.assert_called_with(confirm_event)
 
@@ -70,8 +70,8 @@ class TestEventCollector(TestCase):
         }
 
         with EventCollector(mock_writer) as ec:
-            ec.add(confirm_event)
-            ec.add(confirm_event)
+            ec.collect(confirm_event)
+            ec.collect(confirm_event)
         mock_writer.write.assert_called_once()
         mock_writer.write.assert_called_with(expectation)
 
@@ -79,8 +79,8 @@ class TestEventCollector(TestCase):
 
         EventCollector.MAX_BULK = 2
         with EventCollector(mock_writer) as ec:
-            ec.add(confirm_event)
-            ec.add(confirm_event)
+            ec.collect(confirm_event)
+            ec.collect(confirm_event)
             mock_writer.write.assert_called_with(expectation)
-            ec.add(confirm_event)
+            ec.collect(confirm_event)
         mock_writer.write.assert_called_with(confirm_event)
