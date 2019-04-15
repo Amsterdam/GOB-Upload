@@ -53,11 +53,12 @@ def compare(msg):
 
         initial_add = not storage.has_any_entity()  # If there are no records in the database all data are ADD events
         if initial_add:
+            logger.info("Initial load of new collection detected")
             # Write ADD events directly, without using a temporary table
             contents_writer = ContentsWriter()
+            contents_writer.open()
             collector = EventCollector(contents_writer)
             collect = collector.collect_initial_add
-            filename = contents_writer.filename
         else:
             # Collect entities in a temporary table
             collector = EntityCollector(storage)
@@ -71,7 +72,10 @@ def compare(msg):
 
         collector.close()
 
-    if not initial_add:
+    if initial_add:
+        filename = contents_writer.filename
+        contents_writer.close()
+    else:
         # Compare entities from temporary table
         with storage.get_session():
             diff = storage.compare_temporary_data()
@@ -134,17 +138,22 @@ def _process_compare_results(storage, model, results, stats):
                 source_id = row['_source_id']
                 entity["_last_event"] = row['_last_event']
                 event = GOB.ADD.create_event(source_id, source_id, entity)
-            elif row['type'] in ['CONFIRM', 'DELETE']:
-                event_cls = getattr(GOB, row['type'])
+            elif row['type'] == 'CONFIRM':
                 source_id = row['_source_id']
                 data = {
                     '_last_event': row['_last_event']
                 }
-                event = event_cls.create_event(source_id, source_id, data)
+                event = GOB.CONFIRM.create_event(source_id, source_id, data)
             elif row['type'] == 'MODIFY':
                 current_entity = storage.get_current_entity(entity)
                 modifications = get_modifications(current_entity, entity, model['fields'])
                 event = get_event_for(current_entity, entity, modifications)
+            elif row['type'] == 'DELETE':
+                source_id = row['_entity_source_id']
+                data = {
+                    '_last_event': row['_last_event']
+                }
+                event = GOB.DELETE.create_event(source_id, source_id, data)
 
             event_collector.collect(event)
 
