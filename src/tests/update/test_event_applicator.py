@@ -32,11 +32,11 @@ class TestEventApplicator(TestCase):
         self.mock_event["contents"] = json.dumps(contents)
 
     def test_constructor(self):
-        applicator = EventApplicator(self.storage)
+        applicator = EventApplicator(self.storage, {})
         self.assertEqual(applicator.add_events, [])
 
     def test_apply(self):
-        applicator = EventApplicator(self.storage)
+        applicator = EventApplicator(self.storage, {})
         self.mock_event["action"] = 'CONFIRM'
         self.set_contents({
             '_entity_source_id': 'entity_source_id',
@@ -53,7 +53,7 @@ class TestEventApplicator(TestCase):
             '_hash': '123'
         })
         event = dict_to_object(self.mock_event)
-        with EventApplicator(self.storage) as applicator:
+        with EventApplicator(self.storage, {}) as applicator:
             applicator.apply(event)
             self.assertEqual(len(applicator.add_events), 1)
         self.assertEqual(len(applicator.add_events), 0)
@@ -61,7 +61,7 @@ class TestEventApplicator(TestCase):
         self.storage.add_add_events.assert_called()
 
     def test_apply_bulk(self):
-        applicator = EventApplicator(self.storage)
+        applicator = EventApplicator(self.storage, {})
         self.mock_event["action"] = 'BULKCONFIRM'
         self.set_contents({
             'confirms': [{

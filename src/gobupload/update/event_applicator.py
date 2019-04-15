@@ -14,11 +14,10 @@ class EventApplicator:
 
     MAX_ADD_CHUNK = 10000
 
-    def __init__(self, storage):
+    def __init__(self, storage, last_events):
         self.storage = storage
         # Use a lookup table to tell if an entity is new to the collection
-        # New entities are added in bulk
-        self.source_ids = self.storage.get_current_ids(exclude_deleted=False)
+        self.last_events = last_events
         self.add_events = []
 
     def __enter__(self):
@@ -53,7 +52,8 @@ class EventApplicator:
             self.storage.bulk_update_confirms(gob_event, event.eventid)
             action = "CONFIRM"
             count = len(gob_event._data['confirms'])
-        elif isinstance(gob_event, GOB.ADD) and data["_entity_source_id"] not in self.source_ids:
+        elif isinstance(gob_event, GOB.ADD) and self.last_events.get(data["_entity_source_id"]) is None:
+            # Initial add
             self.add_add_event(gob_event)
         else:
             # Get the entity to which the event should be applied, create if ADD event

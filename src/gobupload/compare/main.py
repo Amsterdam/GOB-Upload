@@ -51,16 +51,31 @@ def compare(msg):
         enricher = Enricher(storage, msg)
         populator = Populator(entity_model, msg)
 
-        with EntityCollector(storage) as entity_collector:
-            for entity in msg["contents"]:
-                stats.collect(entity)
-                enricher.enrich(entity)
-                populator.populate(entity)
-                entity_collector.collect(entity)
+        initial_add = not storage.has_any_entity()  # If there are no records in the database all data are ADD events
+        if initial_add:
+            # Write ADD events directly, without using a temporary table
+            contents_writer = ContentsWriter()
+            collector = EventCollector(contents_writer)
+            collect = collector.collect_initial_add
+            filename = contents_writer.filename
+        else:
+            # Collect entities in a temporary table
+            collector = EntityCollector(storage)
+            collect = collector.collect
 
-    with storage.get_session():
-        diff = storage.compare_temporary_data()
-        filename = _process_compare_results(storage, entity_model, diff, stats)
+        for entity in msg["contents"]:
+            stats.collect(entity)
+            enricher.enrich(entity)
+            populator.populate(entity)
+            collect(entity)
+
+        collector.close()
+
+    if not initial_add:
+        # Compare entities from temporary table
+        with storage.get_session():
+            diff = storage.compare_temporary_data()
+            filename = _process_compare_results(storage, entity_model, diff, stats)
 
     # Build result message
     results = stats.results()
@@ -106,7 +121,7 @@ def _process_compare_results(storage, model, results, stats):
     :return: list of events, list of remaining records
     """
     with ContentsWriter() as contents_writer, \
-            EventCollector(contents_writer) as events:
+            EventCollector(contents_writer) as event_collector:
 
         filename = contents_writer.filename
 
@@ -119,23 +134,18 @@ def _process_compare_results(storage, model, results, stats):
                 source_id = row['_source_id']
                 entity["_last_event"] = row['_last_event']
                 event = GOB.ADD.create_event(source_id, source_id, entity)
-            elif row['type'] == 'CONFIRM':
+            elif row['type'] in ['CONFIRM', 'DELETE']:
+                event_cls = getattr(GOB, row['type'])
                 source_id = row['_source_id']
                 data = {
                     '_last_event': row['_last_event']
                 }
-                event = GOB.CONFIRM.create_event(source_id, source_id, data)
+                event = event_cls.create_event(source_id, source_id, data)
             elif row['type'] == 'MODIFY':
                 current_entity = storage.get_current_entity(entity)
                 modifications = get_modifications(current_entity, entity, model['fields'])
                 event = get_event_for(current_entity, entity, modifications)
-            elif row['type'] == 'DELETE':
-                source_id = row['_entity_source_id']
-                data = {
-                    '_last_event': row['_last_event']
-                }
-                event = GOB.DELETE.create_event(source_id, source_id, data)
 
-            events.add(event)
+            event_collector.collect(event)
 
     return filename

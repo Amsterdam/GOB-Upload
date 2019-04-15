@@ -14,26 +14,26 @@ class TestEventCollector(TestCase):
         pass
 
     def test_constructor(self):
-        collector = EventCollector(self.storage)
+        collector = EventCollector(self.storage, {})
         self.assertEqual(collector.events, [])
 
     def test_add_regular_event(self):
-        collector = EventCollector(self.storage)
+        collector = EventCollector(self.storage, {})
         collector.add_event({'event': 'any event'})
         self.assertEqual(collector.events, [{'event': 'any event'}])
 
     def test_add_bulk_event(self):
-        collector = EventCollector(self.storage)
+        collector = EventCollector(self.storage, {})
         collector.add_event({'event': 'BULKCONFIRM'})
         self.assertEqual(collector.events, [])
         print(self.storage.mock_calls)
         self.storage.add_events.assert_called_with([{'event': 'BULKCONFIRM'}])
 
     def test_validate(self):
-        self.storage.get_last_events.return_value = {
+        last_events = {
             1: 100
         }
-        collector = EventCollector(self.storage)
+        collector = EventCollector(self.storage, last_events)
 
         event = {
             'event': 'event',
@@ -54,10 +54,10 @@ class TestEventCollector(TestCase):
         self.assertEqual(result, False)
 
     def test_validate_bulk(self):
-        self.storage.get_last_events.return_value = {
+        last_events = {
             1: 100
         }
-        collector = EventCollector(self.storage)
+        collector = EventCollector(self.storage, last_events)
 
         event = {
             'event': 'BULKCONFIRM',
@@ -81,7 +81,7 @@ class TestEventCollector(TestCase):
 
     def test_exit(self):
         EventCollector.MAX_CHUNK = 2
-        collector = EventCollector(self.storage)
+        collector = EventCollector(self.storage, {})
         collector.add_event({'event': 'any event'})
         self.assertEqual(collector.events, [{'event': 'any event'}])
         collector.add_event({'event': 'any event'})

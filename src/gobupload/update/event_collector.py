@@ -9,10 +9,10 @@ class EventCollector:
 
     MAX_CHUNK = 10000
 
-    def __init__(self, storage):
+    def __init__(self, storage, last_events):
         self.storage = storage
         # Local dictionary that contains the last event number for every source_id
-        self.last_events = self.storage.get_last_events()
+        self.last_events = last_events
         self.events = []
 
     def __enter__(self):
