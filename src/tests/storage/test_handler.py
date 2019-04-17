@@ -6,6 +6,7 @@ from gobcore.events.import_message import ImportMessage
 from gobcore.exceptions import GOBException
 from gobcore.model import GOBModel
 
+import gobupload.storage.handler
 from gobupload.compare.populate import Populator
 from gobupload.storage import queries
 from gobupload.storage.handler import GOBStorageHandler
@@ -31,6 +32,40 @@ class TestStorageHandler(unittest.TestCase):
         metadata = message.metadata
 
         self.storage = GOBStorageHandler(metadata)
+
+    @patch("gobupload.storage.handler.alembic")
+    def test_init_storage(self, mock_alembic):
+        self.storage._init_views = MagicMock()
+        self.storage._get_reflected_base = MagicMock()
+        self.storage._init_indexes = MagicMock()
+
+        self.storage.init_storage()
+        mock_alembic.config.main.assert_called_once()
+
+        self.storage._init_views.assert_called_once()
+        self.storage._get_reflected_base.assert_called_once()
+        self.storage._init_indexes.assert_called_once()
+
+
+    def test_init_indexes(self):
+        self.storage.engine = MagicMock()
+        gobupload.storage.handler.indexes = {
+            "indexname": {
+                "table_name": "sometable",
+                "columns": ["cola", "colb"],
+            },
+            "index2name": {
+                "table_name": "someothertable",
+                "columns": ["cola"],
+            },
+        }
+
+        self.storage._init_indexes()
+        self.storage.engine.execute.assert_has_calls([
+            call("CREATE INDEX IF NOT EXISTS \"indexname\" ON sometable(cola,colb)"),
+            call("CREATE INDEX IF NOT EXISTS \"index2name\" ON someothertable(cola)"),
+        ])
+
 
     def test_create_temporary_table(self):
         expected_table = f'{self.msg["header"]["catalogue"]}_{self.msg["header"]["entity"]}_tmp'

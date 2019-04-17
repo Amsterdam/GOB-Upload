@@ -132,6 +132,10 @@ def _process_compare_results(storage, model, results, stats):
         for row in results:
             # Get the data for this record and create the event
             entity = row["_original_value"]
+
+            # _source_id is the source id of the new entity
+            # _entity_source_id is the source id of the current entity
+
             stats.compare(row)
 
             if row['type'] == 'ADD':
