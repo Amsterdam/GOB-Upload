@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from gobcore.exceptions import GOBException
 from gobcore.model import GOBModel
-from gobcore.model.sa.gob import get_column
+from gobcore.model.sa.gob import get_column, indexes
 from gobcore.typesystem import get_gob_type
 from gobcore.typesystem.json import GobTypeJSONEncoder
 from gobcore.views import GOBViews
@@ -102,6 +102,9 @@ class GOBStorageHandler():
         # refresh reflected base
         self._get_reflected_base()
 
+        # Create necessary indexes
+        self._init_indexes()
+
     def _init_views(self):
         """
         Initialize the views for the gobviews.
@@ -130,6 +133,17 @@ class GOBStorageHandler():
         """
         statements = [f"DROP VIEW IF EXISTS {name} CASCADE", f"CREATE VIEW {name} AS {definition}"]
         for statement in statements:
+            self.engine.execute(statement)
+
+    def _init_indexes(self):
+        """Create indexes
+
+        :return:
+        """
+
+        for name, definition in indexes.items():
+            columns = ','.join(definition['columns'])
+            statement = f"CREATE INDEX IF NOT EXISTS \"{name}\" ON {definition['table_name']}({columns})"
             self.engine.execute(statement)
 
     def create_temporary_table(self):
