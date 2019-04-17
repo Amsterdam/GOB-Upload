@@ -33,12 +33,14 @@ class TestStorageHandler(unittest.TestCase):
 
         self.storage = GOBStorageHandler(metadata)
 
-    def test_init_storage(self):
+    @patch("gobupload.storage.handler.alembic")
+    def test_init_storage(self, mock_alembic):
         self.storage._init_views = MagicMock()
         self.storage._get_reflected_base = MagicMock()
         self.storage._init_indexes = MagicMock()
 
         self.storage.init_storage()
+        mock_alembic.config.main.assert_called_once()
 
         self.storage._init_views.assert_called_once()
         self.storage._get_reflected_base.assert_called_once()
