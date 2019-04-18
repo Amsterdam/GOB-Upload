@@ -144,7 +144,9 @@ class GOBStorageHandler():
 
         for name, definition in indexes.items():
             columns = ','.join(definition['columns'])
-            statement = f"CREATE INDEX IF NOT EXISTS \"{name}\" ON {definition['table_name']}({columns})"
+            index_type = "USING GIST" if definition.get('type') == "geo" else ""
+            statement = f"CREATE INDEX IF NOT EXISTS \"{name}\" ON {definition['table_name']} {index_type}({columns})"
+
             try:
                 self.engine.execute(statement)
             except OperationalError as e:
