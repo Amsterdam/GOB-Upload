@@ -17,6 +17,7 @@ import json
 from sqlalchemy import create_engine, Table, update
 from sqlalchemy.engine.url import URL
 from sqlalchemy.ext.automap import automap_base
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from gobcore.exceptions import GOBException
@@ -144,7 +145,10 @@ class GOBStorageHandler():
         for name, definition in indexes.items():
             columns = ','.join(definition['columns'])
             statement = f"CREATE INDEX IF NOT EXISTS \"{name}\" ON {definition['table_name']}({columns})"
-            self.engine.execute(statement)
+            try:
+                self.engine.execute(statement)
+            except OperationalError as e:
+                print(f"ERROR: Index {name} failed")
 
     def create_temporary_table(self):
         """ Create a new temporary table based on the current table for a collection
