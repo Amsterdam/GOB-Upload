@@ -164,6 +164,4 @@ def _autoid(storage, data, specs, column, assigned):
     assigned[column]["issued"][data[on]] = value    # Register the issuance for the give 'on' value
     assigned[column]["last"] = value    # Register that last issued value
 
-    logging = f"{specs['type']}: {column} = '{value}' for {on} = '{data[on]}'"
-
-    return value, logging
+    return value, None
