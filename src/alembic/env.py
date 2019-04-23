@@ -32,15 +32,8 @@ target_metadata = Base.metadata
 
 
 def include_object(object, name, type_, reflected, compare_to):
-    skip_objects = [
-        'spatial_ref_sys',
-        'idx_meetbouten_meetbouten_geometrie',
-        'idx_meetbouten_referentiepunten_geometrie',
-        'idx_nap_peilmerken_geometrie',
-        'idx_test_catalogue_test_entity_point'
-    ]
-
-    if name in skip_objects:
+    if type_ == "index" or name == "spatial_ref_sys":
+        # Indexes are created by gobupload upon startup
         return False
     else:
         return True
