@@ -71,4 +71,5 @@ class UpdateStatistics():
     def log(self):
         for process in ["stored", "skipped", "applied"]:
             for action, n in getattr(self, process).items():
-                logger.info(f"{n} {action} events {process}")
+                log = logger.warning if process == "skipped" else logger.info
+                log(f"{n} {action} events {process}")
