@@ -136,6 +136,14 @@ class GOBStorageHandler():
         for statement in statements:
             self.engine.execute(statement)
 
+    def _get_index_type(self, type: str) -> str:
+        if type == "geo":
+            return "GIST"
+        elif type == "json":
+            return "GIN"
+        else:
+            return "BTREE"
+
     def _init_indexes(self):
         """Create indexes
 
@@ -144,8 +152,9 @@ class GOBStorageHandler():
 
         for name, definition in indexes.items():
             columns = ','.join(definition['columns'])
-            index_type = "USING GIST" if definition.get('type') == "geo" else ""
-            statement = f"CREATE INDEX IF NOT EXISTS \"{name}\" ON {definition['table_name']} {index_type}({columns})"
+            index_type = self._get_index_type(definition.get('type'))
+            statement = f"CREATE INDEX IF NOT EXISTS \"{name}\" " \
+                f"ON {definition['table_name']} USING {index_type}({columns})"
 
             try:
                 self.engine.execute(statement)

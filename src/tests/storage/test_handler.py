@@ -62,14 +62,20 @@ class TestStorageHandler(unittest.TestCase):
                 "table_name": "table_with_geo",
                 "columns": ["geocol"],
                 "type": "geo",
-            }
+            },
+            "json_index": {
+                "table_name": "table_with_json",
+                "columns": ["somejsoncol"],
+                "type": "json",
+            },
         }
 
         self.storage._init_indexes()
         self.storage.engine.execute.assert_has_calls([
-            call("CREATE INDEX IF NOT EXISTS \"indexname\" ON sometable (cola,colb)"),
-            call("CREATE INDEX IF NOT EXISTS \"index2name\" ON someothertable (cola)"),
+            call("CREATE INDEX IF NOT EXISTS \"indexname\" ON sometable USING BTREE(cola,colb)"),
+            call("CREATE INDEX IF NOT EXISTS \"index2name\" ON someothertable USING BTREE(cola)"),
             call("CREATE INDEX IF NOT EXISTS \"geo_index\" ON table_with_geo USING GIST(geocol)"),
+            call("CREATE INDEX IF NOT EXISTS \"json_index\" ON table_with_json USING GIN(somejsoncol)"),
         ])
 
 
