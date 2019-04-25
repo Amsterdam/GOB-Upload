@@ -44,7 +44,9 @@ class TestInit(TestCase):
         expect = {
             'header': {},
             'summary': {
-                'num_records': 1
+                'num_records': 1,
+                'warnings': mock.ANY,
+                'errors': mock.ANY
             },
             'contents': [{
                 'source': 'src_source.dst_source',
@@ -62,9 +64,9 @@ class TestInit(TestCase):
             }]
         }
         publish_relations(msg, relations.copy(), False, False)
-        mocked_publish.assert_called_with('gob.workflow.proposal', 'fullimport.proposal', expect)
+        mocked_publish.assert_called_with('gob.workflow.result', 'relate_relation.result', expect)
 
         expect["contents"][0]["id"] = expect["contents"][0]["id"] + ".begin"
         expect["contents"][0]["_source_id"] = expect["contents"][0]["id"]
         publish_relations(msg, relations.copy(), False, True)
-        mocked_publish.assert_called_with('gob.workflow.proposal', 'fullimport.proposal', expect)
+        mocked_publish.assert_called_with('gob.workflow.result', 'relate_relation.result', mock.ANY)
