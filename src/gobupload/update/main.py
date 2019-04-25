@@ -126,13 +126,16 @@ def full_update(msg):
 
     # Build result message
     results = {
-        **stats.results(),
-        'warnings': logger.get_warnings(),
-        'errors': logger.get_errors()
+        **stats.results()
     }
 
     stats.log()
     logger.info(f"Update completed", {'data': results})
+
+    results.update({
+        'warnings': logger.get_warnings(),
+        'errors': logger.get_errors()
+    })
 
     # Return the result message, with no log, no contents
     message = {
