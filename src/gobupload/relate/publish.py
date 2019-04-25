@@ -10,6 +10,18 @@ from gobcore.logging.logger import logger
 from gobcore.model.relations import create_relation, DERIVATION
 
 
+def publish_result(msg, relates):
+    result_msg = {
+        'header': msg['header'],
+        'summary': {
+            'warnings': logger.get_warnings(),
+            'errors': logger.get_errors()
+        },
+        'contents': relates
+    }
+    publish(RESULT_QUEUE, "relate.result", result_msg)
+
+
 def publish_relations(msg, relations, src_has_states, dst_has_states):
     """
     Publish relations as import messages
@@ -55,4 +67,4 @@ def publish_relations(msg, relations, src_has_states, dst_has_states):
         "contents": contents
     }
 
-    return publish(RESULT_QUEUE, "relate.result", import_message)
+    return publish(RESULT_QUEUE, "relate_relation.result", import_message)
