@@ -125,7 +125,11 @@ def full_update(msg):
     _process_events(storage, events, stats)
 
     # Build result message
-    results = stats.results()
+    results = {
+        **stats.results(),
+        'warnings': logger.get_warnings(),
+        'errors': logger.get_errors()
+    }
 
     stats.log()
     logger.info(f"Update completed", {'data': results})
