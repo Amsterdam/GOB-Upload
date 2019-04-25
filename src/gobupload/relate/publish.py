@@ -53,7 +53,10 @@ def publish_relations(msg, relations, src_has_states, dst_has_states):
             contents.append(entity)
 
     num_records = len(contents)
-    logger.info(f"NUM RECORDS: {num_records}")
+    if num_records > 0:
+        logger.info(f"NUM RECORDS: {num_records}")
+    else:
+        logger.error("No relations found")
 
     summary = {
         'num_records': num_records,

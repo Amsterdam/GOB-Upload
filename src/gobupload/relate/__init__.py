@@ -17,7 +17,7 @@ from gobupload.storage.relate import get_last_change
 
 from gobupload.relate.relate import relate as get_relations
 from gobupload.relate.apply import apply_relations
-from gobupload.relate.publish import publish_relations
+from gobupload.relate.publish import publish_relations, publish_result
 from gobupload.relate.exceptions import RelateException
 
 
@@ -82,48 +82,89 @@ def _process_references(msg, catalog_name, collection_name, references):
         "catalogue": "rel"
     }
 
-    model = GOBModel()
-    for reference_name, reference in references.items():
-        display_name = f"{catalog_name}:{collection_name} {reference_name}"
+    relates = []
 
+    timestamp = datetime.datetime.utcnow().isoformat()
+    process_id = f"{timestamp}.{application}.{catalog_name}.{collection_name}"
+
+    msg["header"].update({
+        "entity": f"{catalog_name} {collection_name}",
+        "timestamp": timestamp,
+        "process_id": process_id
+    })
+
+    logger.configure(msg, "RELATE")
+    logger.info(f"Relate {catalog_name} {collection_name} started")
+
+    for reference_name, reference in references.items():
         if not _relation_needs_update(catalog_name, collection_name, reference_name, reference):
+            logger.info(f"Relation {reference_name} is up-to-date")
             continue
 
         sources = GOBSources()
         relation_specs = sources.get_field_relations(catalog_name, collection_name, reference_name)
         if not relation_specs:
+            logger.warning(f"Relation {reference_name} is not defined")
             continue
 
-        relation_name = get_relation_name(model, catalog_name, collection_name, reference_name)
-        timestamp = datetime.datetime.utcnow().isoformat()
-        process_id = f"{timestamp}.{application}.{catalog_name}.{collection_name}.{reference_name}"
-
-        msg["header"].update({
-            "entity": relation_name if relation_name else display_name,
-            "timestamp": timestamp,
-            "process_id": process_id
+        logger.info(f"Relation {reference_name} needs update")
+        relates.append({
+            'catalogue': catalog_name,
+            'entity': collection_name,
+            'reference': reference_name
         })
-        logger.configure(msg, "RELATE")
 
-        logger.info(f"Relate '{display_name}'")
-        try:
-            relations, src_has_states, dst_has_states = get_relations(
-                catalog_name,
-                collection_name,
-                reference_name
-            )
-        except RelateException as e:
-            logger.error(f"Relate {catalog_name} - {collection_name}:{reference_name} FAILED: {str(e)}")
-            print(f"Relate Error: {str(e)}")
-            continue
+    logger.info(f"Relate completed")
+    publish_result(msg, relates)
 
-        # Apply result on current entities
-        apply_relations(catalog_name, collection_name, reference_name, relations)
 
-        # Publish results as import message
-        publish_relations(msg, relations, src_has_states, dst_has_states)
+def relate_relation(msg):
+    """
+    Derive relations for a specific reference field
 
-        logger.info(f"Relate {display_name} OK")
+    :param msg: Message holding the catalog, collection and reference name
+    :return: None
+    """
+    catalog_name = msg['contents']['catalogue']
+    collection_name = msg['contents']['entity']
+    reference_name = msg['contents']['reference']
+
+    model = GOBModel()
+    relation_name = get_relation_name(model, catalog_name, collection_name, reference_name)
+
+    timestamp = datetime.datetime.utcnow().isoformat()
+    process_id = f"{timestamp}.{catalog_name}.{collection_name}.{reference_name}"
+
+    display_name = f"{catalog_name}:{collection_name} {reference_name}"
+
+    msg["header"].update({
+        "entity": relation_name if relation_name else display_name,
+        "process_id": process_id
+    })
+
+    logger.configure(msg, "RELATE")
+    logger.info(f"Relate '{display_name}' started")
+
+    relations = []
+    src_has_states = False
+    dst_has_states = False
+    try:
+        relations, src_has_states, dst_has_states = get_relations(
+            catalog_name,
+            collection_name,
+            reference_name
+        )
+    except RelateException as e:
+        logger.error(f"Relate {catalog_name} - {collection_name}:{reference_name} FAILED: {str(e)}")
+        print(f"Relate Error: {str(e)}")
+
+    # Apply result on current entities
+    apply_relations(catalog_name, collection_name, reference_name, relations)
+
+    # Publish results
+    publish_relations(msg, relations, src_has_states, dst_has_states)
+
+    logger.info(f"Relate {display_name} completed")
 
 
 def build_relations(msg):
