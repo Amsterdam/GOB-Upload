@@ -73,29 +73,9 @@ def _process_references(msg, catalog_name, collection_name, references):
     :param references:
     :return:
     """
-    application = "GOBRelate"
-    msg["header"] = {
-        **msg.get("header", {}),
-        "version": "0.1",
-        "source": "GOB",
-        "application": application,
-        "catalogue": "rel"
-    }
-
-    relates = []
-
-    timestamp = datetime.datetime.utcnow().isoformat()
-    process_id = f"{timestamp}.{application}.{catalog_name}.{collection_name}"
-
-    msg["header"].update({
-        "entity": f"{catalog_name} {collection_name}",
-        "timestamp": timestamp,
-        "process_id": process_id
-    })
-
-    logger.configure(msg, "RELATE")
     logger.info(f"Relate {catalog_name} {collection_name} started")
 
+    relates = []
     for reference_name, reference in references.items():
         if not _relation_needs_update(catalog_name, collection_name, reference_name, reference):
             logger.info(f"Relation {reference_name} is up-to-date")
@@ -114,8 +94,8 @@ def _process_references(msg, catalog_name, collection_name, references):
             'reference': reference_name
         })
 
-    logger.info(f"Relate completed")
-    publish_result(msg, relates)
+    logger.info(f"Relate {catalog_name} {collection_name} completed")
+    return relates
 
 
 def relate_relation(msg):
@@ -161,10 +141,10 @@ def relate_relation(msg):
     # Apply result on current entities
     apply_relations(catalog_name, collection_name, reference_name, relations)
 
-    # Publish results
-    publish_relations(msg, relations, src_has_states, dst_has_states)
-
     logger.info(f"Relate {display_name} completed")
+
+    # Publish results
+    return publish_relations(msg, relations, src_has_states, dst_has_states)
 
 
 def build_relations(msg):
@@ -192,9 +172,33 @@ def build_relations(msg):
     else:
         collection_names = collection_names.split(" ")
 
+    assert collection_names, f"No collections specified or found for catalog {catalog_name}"
+
+    application = "GOBRelate"
+    msg["header"] = {
+        **msg.get("header", {}),
+        "version": "0.1",
+        "source": "GOB",
+        "application": application,
+        "catalogue": "rel"
+    }
+
+    timestamp = datetime.datetime.utcnow().isoformat()
+    process_id = f"{timestamp}.{application}.{catalog_name}"
+
+    msg["header"].update({
+        "entity": f"{catalog_name}",
+        "timestamp": timestamp,
+        "process_id": process_id
+    })
+    logger.configure(msg, "RELATE")
+
+    relates = []
     for collection_name in collection_names:
         collection = model.get_collection(catalog_name, collection_name)
         assert collection is not None, f"Invalid collection name '{collection_name}'"
 
         references = model._extract_references(collection['attributes'])
-        _process_references(msg, catalog_name, collection_name, references)
+        relates += _process_references(msg, catalog_name, collection_name, references)
+
+    return publish_result(msg, relates)

@@ -14,16 +14,22 @@ class TestInit(TestCase):
     def tearDown(self):
         pass
 
-    @patch('gobupload.relate.publish.publish')
-    def test_publish_empty_relations(self, mocked_publish):
+    def test_publish_empty_relations(self):
         msg = {
             "header": {}
         }
-        publish_relations(msg, [], False, False)
-        mocked_publish.assert_called()
+        result = publish_relations(msg, [], False, False)
+        self.assertEqual(result, {
+            "header": msg["header"],
+            'summary': {
+                'num_records': 0,
+                'warnings': mock.ANY,
+                'errors': mock.ANY
+            },
+            'contents': []
+        })
 
-    @patch('gobupload.relate.publish.publish')
-    def test_publish_relations(self, mocked_publish):
+    def test_publish_relations(self):
         relations = [
             {
                 "src": {
@@ -65,31 +71,27 @@ class TestInit(TestCase):
                 '_source_id': 'src_id.src_volgnummer.dst_id.dst_volgnummer'
             }]
         }
-        publish_relations(msg, relations.copy(), False, False)
-        mocked_publish.assert_called_with('gob.workflow.result', 'relate_relation.result', expect)
+        result = publish_relations(msg, relations.copy(), False, False)
+        self.assertEqual(result, expect)
 
         expect["contents"][0]["id"] = expect["contents"][0]["id"] + ".begin"
         expect["contents"][0]["_source_id"] = expect["contents"][0]["id"]
-        publish_relations(msg, relations.copy(), False, True)
-        mocked_publish.assert_called_with('gob.workflow.result', 'relate_relation.result', mock.ANY)
 
-    @patch('gobupload.relate.publish.publish')
-    def test_publish_result(self, mocked_publish):
+        result = publish_relations(msg, relations.copy(), False, True)
+        self.assertEqual(result, expect)
+
+    def test_publish_result(self):
         msg = {
             'header': 'any header',
             'anything else': 'any values'
         }
         relates = "any relates"
-        publish_result(msg, relates)
-        mocked_publish.assert_called_with(
-            RESULT_QUEUE,
-            "relate.result",
-            {
-                'header': msg['header'],
-                'summary': {
-                    'warnings': mock.ANY,
-                    'errors': mock.ANY
-                },
-                'contents': relates
-            }
-        )
+        result = publish_result(msg, relates)
+        self.assertEqual(result, {
+            'header': msg['header'],
+            'summary': {
+                'warnings': mock.ANY,
+                'errors': mock.ANY
+            },
+            'contents': relates
+        })
