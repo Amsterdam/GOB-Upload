@@ -12,18 +12,23 @@ class TestInit(TestCase):
     def tearDown(self):
         pass
 
-    @patch('gobupload.relate.apply_relations', MagicMock())
-    @patch('gobupload.relate.GOBModel', MagicMock())
     def test_build_relations(self):
         with self.assertRaises(AssertionError):
             build_relations({})
+
+    @patch('gobupload.relate.GOBModel', MagicMock())
+    def test_build_relations(self):
+        result = build_relations({'catalogue': 'any catalogue'})
+        self.assertIsNone(result)
 
     def test_needs_update(self):
         result = _relation_needs_update("catalog", "collection", "reference", {"ref": "dst_cat:dst_col"})
         self.assertEqual(result, False)
 
+    @patch('gobupload.relate.publish_result')
     @patch('gobupload.relate._relation_needs_update')
-    def test_has_sources(self, mock_needs_update):
+    def test_has_sources(self, mock_needs_update, mock_publish):
         mock_needs_update.return_value = True
         result = _process_references({}, "catalog", "collection", {})
         self.assertEqual(result, None)
+        mock_publish.assert_called_with({'header': mock.ANY}, [])
