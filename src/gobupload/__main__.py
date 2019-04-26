@@ -40,16 +40,25 @@ SERVICEDEFINITION = {
         'exchange': WORKFLOW_EXCHANGE,
         'queue': REQUEST_QUEUE,
         'key': 'relate.start',
-        'handler': relate.build_relations
+        'handler': relate.build_relations,
+        'report': {
+            'exchange': WORKFLOW_EXCHANGE,
+            'queue': RESULT_QUEUE,
+            'key': 'relate.result'
+        }
     },
     'relate_relation': {
         'exchange': WORKFLOW_EXCHANGE,
         'queue': REQUEST_QUEUE,
         'key': 'relate_relation.start',
-        'handler': relate.relate_relation
+        'handler': relate.relate_relation,
+        'report': {
+            'exchange': WORKFLOW_EXCHANGE,
+            'queue': RESULT_QUEUE,
+            'key': 'relate_relation.result'
+        }
     },
 }
-
 
 # Initialize database tables
 storage = GOBStorageHandler()

@@ -3,8 +3,6 @@ Relation publication module
 
 Publishes relations as import messages
 """
-from gobcore.message_broker import publish
-from gobcore.message_broker.config import RESULT_QUEUE
 from gobcore.logging.logger import logger
 
 from gobcore.model.relations import create_relation, DERIVATION
@@ -19,7 +17,7 @@ def publish_result(msg, relates):
         },
         'contents': relates
     }
-    publish(RESULT_QUEUE, "relate.result", result_msg)
+    return result_msg
 
 
 def publish_relations(msg, relations, src_has_states, dst_has_states):
@@ -70,4 +68,4 @@ def publish_relations(msg, relations, src_has_states, dst_has_states):
         "contents": contents
     }
 
-    return publish(RESULT_QUEUE, "relate_relation.result", import_message)
+    return import_message
