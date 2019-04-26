@@ -82,9 +82,7 @@ def compare(msg):
             filename = _process_compare_results(storage, entity_model, diff, stats)
 
     # Build result message
-    results = {
-        **stats.results()
-    }
+    results = stats.results()
 
     logger.info(f"Compare completed", {'data': results})
 
