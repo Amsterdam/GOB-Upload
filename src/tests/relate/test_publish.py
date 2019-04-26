@@ -1,7 +1,9 @@
 from unittest import TestCase, mock
 from unittest.mock import MagicMock, patch
 
-from gobupload.relate.publish import publish_relations
+from gobcore.message_broker.config import RESULT_QUEUE
+
+from gobupload.relate.publish import publish_relations, publish_result
 
 @patch('gobupload.relate.publish.logger', MagicMock())
 class TestInit(TestCase):
@@ -70,3 +72,24 @@ class TestInit(TestCase):
         expect["contents"][0]["_source_id"] = expect["contents"][0]["id"]
         publish_relations(msg, relations.copy(), False, True)
         mocked_publish.assert_called_with('gob.workflow.result', 'relate_relation.result', mock.ANY)
+
+    @patch('gobupload.relate.publish.publish')
+    def test_publish_result(self, mocked_publish):
+        msg = {
+            'header': 'any header',
+            'anything else': 'any values'
+        }
+        relates = "any relates"
+        publish_result(msg, relates)
+        mocked_publish.assert_called_with(
+            RESULT_QUEUE,
+            "relate.result",
+            {
+                'header': msg['header'],
+                'summary': {
+                    'warnings': mock.ANY,
+                    'errors': mock.ANY
+                },
+                'contents': relates
+            }
+        )
