@@ -240,7 +240,7 @@ class RelationUpdater:
         """
         query = f"""
 UPDATE {self.table_name}
-SET    {field_name} = '{json.dumps(row[field_name])}'
+SET    {field_name} = $quotedString${json.dumps(row[field_name])}$quotedString$
 WHERE  {FIELD.GOBID} = {row[FIELD.GOBID]}
 """
         self.queries.append(query)
