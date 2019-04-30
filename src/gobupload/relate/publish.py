@@ -3,10 +3,21 @@ Relation publication module
 
 Publishes relations as import messages
 """
-from gobcore.message_broker import publish
 from gobcore.logging.logger import logger
 
 from gobcore.model.relations import create_relation, DERIVATION
+
+
+def publish_result(msg, relates):
+    result_msg = {
+        'header': msg['header'],
+        'summary': {
+            'warnings': logger.get_warnings(),
+            'errors': logger.get_errors()
+        },
+        'contents': relates
+    }
+    return result_msg
 
 
 def publish_relations(msg, relations, src_has_states, dst_has_states):
@@ -40,10 +51,15 @@ def publish_relations(msg, relations, src_has_states, dst_has_states):
             contents.append(entity)
 
     num_records = len(contents)
-    logger.info(f"NUM RECORDS: {num_records}")
+    if num_records > 0:
+        logger.info(f"NUM RECORDS: {num_records}")
+    else:
+        logger.error("No relations found")
 
     summary = {
-        'num_records': num_records
+        'num_records': num_records,
+        'warnings': logger.get_warnings(),
+        'errors': logger.get_errors()
     }
 
     import_message = {
@@ -52,4 +68,4 @@ def publish_relations(msg, relations, src_has_states, dst_has_states):
         "contents": contents
     }
 
-    return publish("gob.workflow.proposal", "fullimport.proposal", import_message)
+    return import_message

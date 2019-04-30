@@ -1,7 +1,9 @@
 from unittest import TestCase, mock
 from unittest.mock import MagicMock, patch
 
-from gobupload.relate.publish import publish_relations
+from gobcore.message_broker.config import RESULT_QUEUE
+
+from gobupload.relate.publish import publish_relations, publish_result
 
 @patch('gobupload.relate.publish.logger', MagicMock())
 class TestInit(TestCase):
@@ -12,16 +14,22 @@ class TestInit(TestCase):
     def tearDown(self):
         pass
 
-    @patch('gobupload.relate.publish.publish')
-    def test_publish_empty_relations(self, mocked_publish):
+    def test_publish_empty_relations(self):
         msg = {
             "header": {}
         }
-        publish_relations(msg, [], False, False)
-        mocked_publish.assert_called()
+        result = publish_relations(msg, [], False, False)
+        self.assertEqual(result, {
+            "header": msg["header"],
+            'summary': {
+                'num_records': 0,
+                'warnings': mock.ANY,
+                'errors': mock.ANY
+            },
+            'contents': []
+        })
 
-    @patch('gobupload.relate.publish.publish')
-    def test_publish_relations(self, mocked_publish):
+    def test_publish_relations(self):
         relations = [
             {
                 "src": {
@@ -44,7 +52,9 @@ class TestInit(TestCase):
         expect = {
             'header': {},
             'summary': {
-                'num_records': 1
+                'num_records': 1,
+                'warnings': mock.ANY,
+                'errors': mock.ANY
             },
             'contents': [{
                 'source': 'src_source.dst_source',
@@ -61,10 +71,27 @@ class TestInit(TestCase):
                 '_source_id': 'src_id.src_volgnummer.dst_id.dst_volgnummer'
             }]
         }
-        publish_relations(msg, relations.copy(), False, False)
-        mocked_publish.assert_called_with('gob.workflow.proposal', 'fullimport.proposal', expect)
+        result = publish_relations(msg, relations.copy(), False, False)
+        self.assertEqual(result, expect)
 
         expect["contents"][0]["id"] = expect["contents"][0]["id"] + ".begin"
         expect["contents"][0]["_source_id"] = expect["contents"][0]["id"]
-        publish_relations(msg, relations.copy(), False, True)
-        mocked_publish.assert_called_with('gob.workflow.proposal', 'fullimport.proposal', expect)
+
+        result = publish_relations(msg, relations.copy(), False, True)
+        self.assertEqual(result, expect)
+
+    def test_publish_result(self):
+        msg = {
+            'header': 'any header',
+            'anything else': 'any values'
+        }
+        relates = "any relates"
+        result = publish_result(msg, relates)
+        self.assertEqual(result, {
+            'header': msg['header'],
+            'summary': {
+                'warnings': mock.ANY,
+                'errors': mock.ANY
+            },
+            'contents': relates
+        })

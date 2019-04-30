@@ -33,7 +33,7 @@ WHERE  catalogue = 'catalog' AND
         updater.update("field", {"field": "field", "_gobid": "_gobid"})
         self.assertEqual(updater.queries, ["""
 UPDATE catalog_collection
-SET    field = '"field"'
+SET    field = $quotedString$"field"$quotedString$
 WHERE  _gobid = _gobid
 """
         ])

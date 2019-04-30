@@ -86,6 +86,11 @@ def compare(msg):
 
     logger.info(f"Compare completed", {'data': results})
 
+    results.update({
+        'warnings': logger.get_warnings(),
+        'errors': logger.get_errors()
+    })
+
     message = {
         "header": msg["header"],
         "summary": results,
