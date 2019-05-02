@@ -2,6 +2,7 @@
 Module that contains logic to apply new relation data on the current entities
 
 """
+from gobcore.logging.logger import logger
 from gobcore.model import GOBModel
 from gobcore.model.metadata import FIELD
 from gobcore.utils import ProgressTicker
@@ -24,7 +25,8 @@ def update_row_relation(row, relation, field_name, field_type):
     dst = relation['dst']
     if field_type == 'GOB.Reference':
         # {'bronwaarde': 'xxx'} => {'bronwaarde': 'xxx', '_id': '123'}
-        assert len(dst) == 1, f"Error: Single reference with multiple values ({len(dst)})"
+        if len(dst) > 1:
+            logger.warning(f"Single reference with multiple values: {row[FIELD.ID]} - {len(dst)}")
         id = dst[0]['id']
         is_changed = row[field_name].get(FIELD.ID) != id
         row[field_name] = {
@@ -44,19 +46,35 @@ def update_row_relation(row, relation, field_name, field_type):
         # ROW = {
         #     field_name: [{'bronwaarde': 'B', _id='12789002'}, {'bronwaarde': 'A', _id='13588001'}]
         # }
-        ids = {}
-        for item in dst:
-            for bronwaarde in item['bronwaardes']:
-                ids[bronwaarde] = item
+        is_changed = update_row_many_relation(row, dst, field_name)
 
-        for item in row[field_name]:
-            id = ids.get(item["bronwaarde"])
-            if id is None:
-                is_changed = is_changed or item.get(FIELD.ID, False) is not None
-            else:
-                id = id['id']
-                is_changed = is_changed or item.get(FIELD.ID) != id
-            item[FIELD.ID] = id
+    return is_changed
+
+
+def update_row_many_relation(row, dst, field_name):
+    """
+    Update a current relation (row) with new values (relation)
+
+    :param row:
+    :param dst:
+    :param field_name:
+    :return: True if any change in relation data has been found
+    """
+    is_changed = False
+
+    ids = {}
+    for item in dst:
+        for bronwaarde in item['bronwaardes']:
+            ids[bronwaarde] = item
+
+    for item in row[field_name]:
+        id = ids.get(item["bronwaarde"])
+        if id is None:
+            is_changed = is_changed or item.get(FIELD.ID, False) is not None
+        else:
+            id = id['id']
+            is_changed = is_changed or item.get(FIELD.ID) != id
+        item[FIELD.ID] = id
 
     return is_changed
 
