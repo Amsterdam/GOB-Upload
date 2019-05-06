@@ -10,9 +10,7 @@ Use it like this:
     with storage.get_session():
         entity = storage.get_entity_for_update(entity_id, source_id, gob_event)
 """
-import copy
 import functools
-import json
 
 from sqlalchemy import create_engine, Table, update
 from sqlalchemy.engine.url import URL
@@ -30,6 +28,7 @@ from gobcore.utils import ProgressTicker
 
 from gobupload.config import GOB_DB
 from gobupload.storage import queries
+from gobupload.storage.event_contents import dumps
 
 import alembic.config
 
@@ -517,7 +516,7 @@ class GOBStorageHandler():
             'source': self.metadata.source,
             'application': self.metadata.application,
             'source_id': event['data'].get('_source_id'),
-            'contents': json.dumps(copy.deepcopy(event['data']), cls=GobTypeJSONEncoder),
+            'contents': dumps(event['data']),
         } for event in events]
         table = self.base.metadata.tables[self.EVENTS_TABLE]
         self.session.execute(table.insert(), rows)
@@ -543,7 +542,7 @@ class GOBStorageHandler():
                 'source': self.metadata.source,
                 'application': self.metadata.application,
                 'source_id': event['data'].get('_source_id'),
-                'contents': json.dumps(copy.deepcopy(event['data']), cls=GobTypeJSONEncoder),
+                'contents': dumps(event['data']),
             }
             insert_data.append(row)
         table = self.base.metadata.tables[self.EVENTS_TABLE]
