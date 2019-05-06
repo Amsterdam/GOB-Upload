@@ -33,6 +33,12 @@ def _apply_events(storage, last_events, start_after, stats):
                 action, count = event_applicator.apply(event)
                 stats.add_applied(action, count)
 
+    with storage.get_session():
+        logger.info(f"Post-process CONFIRM events")
+
+        # Confirms are deleted once they have been applied
+        storage.delete_confirms()
+
 
 def _store_events(storage, last_events, events, stats):
     """Store events in GOB
