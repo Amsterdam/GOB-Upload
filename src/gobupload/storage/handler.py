@@ -22,7 +22,6 @@ from gobcore.exceptions import GOBException
 from gobcore.model import GOBModel
 from gobcore.model.sa.gob import get_column, indexes
 from gobcore.typesystem import get_gob_type
-from gobcore.typesystem.json import GobTypeJSONEncoder
 from gobcore.views import GOBViews
 from gobcore.utils import ProgressTicker
 
