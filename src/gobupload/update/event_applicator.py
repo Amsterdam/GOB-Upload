@@ -4,10 +4,10 @@ Event applicator
 Applies events to the respective entity in the current model
 
 """
+import json
+
 from gobcore.events import GOB, GobEvent
 from gobcore.events.import_message import MessageMetaData
-
-from gobupload.storage.event_contents import loads
 
 
 class EventApplicator:
@@ -39,7 +39,7 @@ class EventApplicator:
 
     def apply(self, event):
         # Parse the json data of the event
-        data = loads(event.contents)
+        data = json.loads(event.contents)
 
         # Reconstruct the gob event out of the database event
         gob_event = _get_gob_event(event, data)
