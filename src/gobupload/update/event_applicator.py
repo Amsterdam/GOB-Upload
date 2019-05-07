@@ -63,7 +63,9 @@ class EventApplicator:
             gob_event.apply_to(entity)
 
             # and register the last event that has updated this entity
-            entity._last_event = event.eventid
+            # except for CONFIRM events. These events are deleted once they have been applied
+            if not isinstance(gob_event, GOB.CONFIRM):
+                entity._last_event = event.eventid
 
         return action, count
 

@@ -290,6 +290,21 @@ class GOBStorageHandler():
 
         return session_context()
 
+    def delete_confirms(self):
+        """
+        Once (BULK)CONFIRM events have been applied they are deleted
+
+        :return:
+        """
+        statement = f"""
+        DELETE
+        FROM {self.EVENTS_TABLE}
+        WHERE catalogue = '{self.metadata.catalogue}' AND
+              entity = '{self.metadata.entity}' AND
+              action IN ('BULKCONFIRM', 'CONFIRM')
+        """
+        self.engine.execute(statement)
+
     @with_session
     def get_entity_max_eventid(self):
         """Get the highest last_event property of entity
@@ -553,8 +568,9 @@ class GOBStorageHandler():
     def bulk_update_confirms(self, event, eventid):
         """ Confirm entities in bulk
 
-        Takes a BULKCONFIRM event and updates all source_ids with the bulkconfirm event's
-        id and timestamp
+        Takes a BULKCONFIRM event and updates all source_ids with the bulkconfirm timestamp
+
+        The _last_event is not updated for (BULK)CONFIRM events
 
         :param event: the BULKCONFIRM event
         :param eventid: the id of the event to store as _last_event
@@ -562,7 +578,7 @@ class GOBStorageHandler():
         """
         source_ids = [record['_source_id'] for record in event._data['confirms']]
         stmt = update(self.DbEntity).where(self.DbEntity._source_id.in_(source_ids)).\
-            values({event.timestamp_field: event._metadata.timestamp, '_last_event': eventid})
+            values({event.timestamp_field: event._metadata.timestamp})
         self.engine.execute(stmt)
 
     def bulk_insert(self, table, insert_data):
