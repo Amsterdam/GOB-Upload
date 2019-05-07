@@ -161,6 +161,18 @@ class TestStorageHandler(unittest.TestCase):
         # Assert the query is performed
         self.storage.engine.execute.assert_called()
 
+    def test_delete_confirms(self):
+        catalogue = self.msg["header"]["catalogue"]
+        entity = self.msg["header"]["entity"]
+        events = self.storage.EVENTS_TABLE
+        self.storage.delete_confirms()
+
+        self.storage.engine.execute.assert_called()
+        args = self.storage.engine.execute.call_args[0][0]
+        args = ' '.join(args.split())
+        expect = f"DELETE FROM {events} WHERE catalogue = '{catalogue}' AND entity = '{entity}' AND action IN ('BULKCONFIRM', 'CONFIRM')"
+        self.assertEqual(args, expect)
+
     def test_get_entity_for_update_modify_non_existing_entity(self):
         event = fixtures.get_event_fixure()
         event.action = 'MODIFY'
