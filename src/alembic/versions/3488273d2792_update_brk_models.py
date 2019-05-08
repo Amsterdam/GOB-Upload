@@ -1,8 +1,8 @@
-"""Update ZRT. Add TNG, ART
+"""Update BRK models
 
-Revision ID: d75af57e694f
+Revision ID: 3488273d2792
 Revises: 08e482f6bad6
-Create Date: 2019-05-08 12:03:13.787782
+Create Date: 2019-05-08 14:31:19.253676
 
 """
 from alembic import op
@@ -11,7 +11,7 @@ import geoalchemy2
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision = 'd75af57e694f'
+revision = '3488273d2792'
 down_revision = '08e482f6bad6'
 branch_labels = None
 depends_on = None
@@ -25,7 +25,7 @@ def upgrade():
     sa.Column('omschrijving', sa.String(), autoincrement=False, nullable=True),
     sa.Column('betrokken_tenaamstelling', postgresql.JSONB(astext_type=sa.Text()), autoincrement=False, nullable=True),
     sa.Column('heeft_betrokken_persoon', postgresql.JSONB(astext_type=sa.Text()), autoincrement=False, nullable=True),
-    sa.Column('is_gebaseerd_op', postgresql.JSONB(astext_type=sa.Text()), autoincrement=False, nullable=True),
+    sa.Column('is_gebaseerd_op_stukdeel', postgresql.JSONB(astext_type=sa.Text()), autoincrement=False, nullable=True),
     sa.Column('aard_zakelijk_recht', postgresql.JSONB(astext_type=sa.Text()), autoincrement=False, nullable=True),
     sa.Column('einddatum', sa.DateTime(), autoincrement=False, nullable=True),
     sa.Column('_source', sa.String(), autoincrement=False, nullable=True),
@@ -45,13 +45,13 @@ def upgrade():
     )
     op.create_table('brk_tenaamstellingen',
     sa.Column('identificatie', sa.String(), autoincrement=False, nullable=True),
-    sa.Column('van_kadastraal_subject', postgresql.JSONB(astext_type=sa.Text()), autoincrement=False, nullable=True),
+    sa.Column('van_kadastraalsubject', postgresql.JSONB(astext_type=sa.Text()), autoincrement=False, nullable=True),
     sa.Column('aandeel', postgresql.JSONB(astext_type=sa.Text()), autoincrement=False, nullable=True),
     sa.Column('geldt_voor', postgresql.JSONB(astext_type=sa.Text()), autoincrement=False, nullable=True),
     sa.Column('burgerlijke_staat_ten_tijde_van_verkrijging', postgresql.JSONB(astext_type=sa.Text()), autoincrement=False, nullable=True),
     sa.Column('verkregen_namens_samenwerkingsverband', postgresql.JSONB(astext_type=sa.Text()), autoincrement=False, nullable=True),
     sa.Column('in_onderzoek', sa.String(), autoincrement=False, nullable=True),
-    sa.Column('van_zakelijk_recht', postgresql.JSONB(astext_type=sa.Text()), autoincrement=False, nullable=True),
+    sa.Column('van_zakelijkrecht', postgresql.JSONB(astext_type=sa.Text()), autoincrement=False, nullable=True),
     sa.Column('gebaseerd_op', postgresql.JSONB(astext_type=sa.Text()), autoincrement=False, nullable=True),
     sa.Column('_source', sa.String(), autoincrement=False, nullable=True),
     sa.Column('_application', sa.String(), autoincrement=False, nullable=True),
@@ -122,7 +122,7 @@ def upgrade():
     sa.Column('_id', sa.String(), autoincrement=False, nullable=True),
     sa.PrimaryKeyConstraint('_gobid')
     )
-    op.create_table('rel_brk_tng_brk_sjt_van_kadastraal_subject',
+    op.create_table('rel_brk_tng_brk_sjt_van_kadastraalsubject',
     sa.Column('source', sa.String(), autoincrement=False, nullable=True),
     sa.Column('id', sa.String(), autoincrement=False, nullable=True),
     sa.Column('src_source', sa.String(), autoincrement=False, nullable=True),
@@ -149,7 +149,7 @@ def upgrade():
     sa.Column('_id', sa.String(), autoincrement=False, nullable=True),
     sa.PrimaryKeyConstraint('_gobid')
     )
-    op.create_table('rel_brk_tng_brk_zrt_van_zakelijk_recht',
+    op.create_table('rel_brk_tng_brk_zrt_van_zakelijkrecht',
     sa.Column('source', sa.String(), autoincrement=False, nullable=True),
     sa.Column('id', sa.String(), autoincrement=False, nullable=True),
     sa.Column('src_source', sa.String(), autoincrement=False, nullable=True),
@@ -176,7 +176,7 @@ def upgrade():
     sa.Column('_id', sa.String(), autoincrement=False, nullable=True),
     sa.PrimaryKeyConstraint('_gobid')
     )
-    op.create_table('rel_brk_zrt_brk_zrt_betrokken_bij',
+    op.create_table('rel_brk_zrt_brk_zrt_belast_met_zakelijkerechten',
     sa.Column('source', sa.String(), autoincrement=False, nullable=True),
     sa.Column('id', sa.String(), autoincrement=False, nullable=True),
     sa.Column('src_source', sa.String(), autoincrement=False, nullable=True),
@@ -203,7 +203,7 @@ def upgrade():
     sa.Column('_id', sa.String(), autoincrement=False, nullable=True),
     sa.PrimaryKeyConstraint('_gobid')
     )
-    op.create_table('rel_brk_zrt_brk_zrt_ontstaan_uit',
+    op.create_table('rel_brk_zrt_brk_zrt_belast_zakelijkerechten',
     sa.Column('source', sa.String(), autoincrement=False, nullable=True),
     sa.Column('id', sa.String(), autoincrement=False, nullable=True),
     sa.Column('src_source', sa.String(), autoincrement=False, nullable=True),
@@ -230,25 +230,143 @@ def upgrade():
     sa.Column('_id', sa.String(), autoincrement=False, nullable=True),
     sa.PrimaryKeyConstraint('_gobid')
     )
-    op.add_column('brk_zakelijkerechten', sa.Column('_betrokken_bij_asg', postgresql.JSONB(astext_type=sa.Text()), autoincrement=False, nullable=True))
-    op.add_column('brk_zakelijkerechten', sa.Column('_ontstaan_uit_asg', postgresql.JSONB(astext_type=sa.Text()), autoincrement=False, nullable=True))
-    op.alter_column('brk_zakelijkerechten', 'ontstaan_uit', type_=postgresql.JSONB(astext_type=sa.Text()))
-    op.alter_column('brk_zakelijkerechten', 'betrokken_bij', type_=postgresql.JSONB(astext_type=sa.Text()))
-
-
+    op.create_table('rel_brk_zrt_brk_zrt_betrokken_bij_zakelijkerechten',
+    sa.Column('source', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('id', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('src_source', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('src_id', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('src_volgnummer', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('derivation', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('begin_geldigheid', sa.DateTime(), autoincrement=False, nullable=True),
+    sa.Column('eind_geldigheid', sa.DateTime(), autoincrement=False, nullable=True),
+    sa.Column('dst_source', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('dst_id', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('dst_volgnummer', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('_source', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('_application', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('_source_id', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('_last_event', sa.Integer(), autoincrement=False, nullable=True),
+    sa.Column('_hash', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('_version', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('_date_created', sa.DateTime(), autoincrement=False, nullable=True),
+    sa.Column('_date_confirmed', sa.DateTime(), autoincrement=False, nullable=True),
+    sa.Column('_date_modified', sa.DateTime(), autoincrement=False, nullable=True),
+    sa.Column('_date_deleted', sa.DateTime(), autoincrement=False, nullable=True),
+    sa.Column('_expiration_date', sa.DateTime(), autoincrement=False, nullable=True),
+    sa.Column('_gobid', sa.Integer(), autoincrement=True, nullable=False),
+    sa.Column('_id', sa.String(), autoincrement=False, nullable=True),
+    sa.PrimaryKeyConstraint('_gobid')
+    )
+    op.create_table('rel_brk_zrt_brk_zrt_ontstaan_uit_zakelijkerechten',
+    sa.Column('source', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('id', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('src_source', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('src_id', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('src_volgnummer', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('derivation', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('begin_geldigheid', sa.DateTime(), autoincrement=False, nullable=True),
+    sa.Column('eind_geldigheid', sa.DateTime(), autoincrement=False, nullable=True),
+    sa.Column('dst_source', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('dst_id', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('dst_volgnummer', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('_source', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('_application', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('_source_id', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('_last_event', sa.Integer(), autoincrement=False, nullable=True),
+    sa.Column('_hash', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('_version', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('_date_created', sa.DateTime(), autoincrement=False, nullable=True),
+    sa.Column('_date_confirmed', sa.DateTime(), autoincrement=False, nullable=True),
+    sa.Column('_date_modified', sa.DateTime(), autoincrement=False, nullable=True),
+    sa.Column('_date_deleted', sa.DateTime(), autoincrement=False, nullable=True),
+    sa.Column('_expiration_date', sa.DateTime(), autoincrement=False, nullable=True),
+    sa.Column('_gobid', sa.Integer(), autoincrement=True, nullable=False),
+    sa.Column('_id', sa.String(), autoincrement=False, nullable=True),
+    sa.PrimaryKeyConstraint('_gobid')
+    )
+    op.drop_table('rel_brk_zrt_brk_zrt_belast_met')
+    op.drop_table('rel_brk_zrt_brk_zrt_belast')
+    op.add_column('brk_zakelijkerechten', sa.Column('belast_met_zakelijkerechten', postgresql.JSONB(astext_type=sa.Text()), autoincrement=False, nullable=True))
+    op.add_column('brk_zakelijkerechten', sa.Column('belast_zakelijkerechten', postgresql.JSONB(astext_type=sa.Text()), autoincrement=False, nullable=True))
+    op.add_column('brk_zakelijkerechten', sa.Column('betrokken_bij_zakelijkerechten', postgresql.JSONB(astext_type=sa.Text()), autoincrement=False, nullable=True))
+    op.add_column('brk_zakelijkerechten', sa.Column('ontstaan_uit_zakelijkerechten', postgresql.JSONB(astext_type=sa.Text()), autoincrement=False, nullable=True))
+    op.drop_column('brk_zakelijkerechten', 'belast_met')
+    op.drop_column('brk_zakelijkerechten', 'betrokken_bij')
+    op.drop_column('brk_zakelijkerechten', 'belast')
+    op.drop_column('brk_zakelijkerechten', 'ontstaan_uit')
     # ### end Alembic commands ###
 
 
 def downgrade():
     # ### commands auto generated by Alembic - please adjust! ###
-    op.alter_column('brk_zakelijkerechten', 'betrokken_bij', type_=sa.String())
-    op.alter_column('brk_zakelijkerechten', 'ontstaan_uit', type_=sa.String())
-    op.drop_column('brk_zakelijkerechten', '_ontstaan_uit_asg')
-    op.drop_column('brk_zakelijkerechten', '_betrokken_bij_asg')
-    op.drop_table('rel_brk_zrt_brk_zrt_ontstaan_uit')
-    op.drop_table('rel_brk_zrt_brk_zrt_betrokken_bij')
-    op.drop_table('rel_brk_tng_brk_zrt_van_zakelijk_recht')
-    op.drop_table('rel_brk_tng_brk_sjt_van_kadastraal_subject')
+    op.add_column('brk_zakelijkerechten', sa.Column('ontstaan_uit', sa.VARCHAR(), autoincrement=False, nullable=True))
+    op.add_column('brk_zakelijkerechten', sa.Column('belast', postgresql.JSONB(astext_type=sa.Text()), autoincrement=False, nullable=True))
+    op.add_column('brk_zakelijkerechten', sa.Column('betrokken_bij', sa.VARCHAR(), autoincrement=False, nullable=True))
+    op.add_column('brk_zakelijkerechten', sa.Column('belast_met', postgresql.JSONB(astext_type=sa.Text()), autoincrement=False, nullable=True))
+    op.drop_column('brk_zakelijkerechten', 'ontstaan_uit_zakelijkerechten')
+    op.drop_column('brk_zakelijkerechten', 'betrokken_bij_zakelijkerechten')
+    op.drop_column('brk_zakelijkerechten', 'belast_zakelijkerechten')
+    op.drop_column('brk_zakelijkerechten', 'belast_met_zakelijkerechten')
+    op.create_table('rel_brk_zrt_brk_zrt_belast',
+    sa.Column('source', sa.VARCHAR(), autoincrement=False, nullable=True),
+    sa.Column('id', sa.VARCHAR(), autoincrement=False, nullable=True),
+    sa.Column('src_source', sa.VARCHAR(), autoincrement=False, nullable=True),
+    sa.Column('src_id', sa.VARCHAR(), autoincrement=False, nullable=True),
+    sa.Column('src_volgnummer', sa.VARCHAR(), autoincrement=False, nullable=True),
+    sa.Column('derivation', sa.VARCHAR(), autoincrement=False, nullable=True),
+    sa.Column('begin_geldigheid', sa.DATE(), autoincrement=False, nullable=True),
+    sa.Column('eind_geldigheid', sa.DATE(), autoincrement=False, nullable=True),
+    sa.Column('dst_source', sa.VARCHAR(), autoincrement=False, nullable=True),
+    sa.Column('dst_id', sa.VARCHAR(), autoincrement=False, nullable=True),
+    sa.Column('dst_volgnummer', sa.VARCHAR(), autoincrement=False, nullable=True),
+    sa.Column('_source', sa.VARCHAR(), autoincrement=False, nullable=True),
+    sa.Column('_application', sa.VARCHAR(), autoincrement=False, nullable=True),
+    sa.Column('_source_id', sa.VARCHAR(), autoincrement=False, nullable=True),
+    sa.Column('_last_event', sa.INTEGER(), autoincrement=False, nullable=True),
+    sa.Column('_hash', sa.VARCHAR(), autoincrement=False, nullable=True),
+    sa.Column('_version', sa.VARCHAR(), autoincrement=False, nullable=True),
+    sa.Column('_date_created', postgresql.TIMESTAMP(), autoincrement=False, nullable=True),
+    sa.Column('_date_confirmed', postgresql.TIMESTAMP(), autoincrement=False, nullable=True),
+    sa.Column('_date_modified', postgresql.TIMESTAMP(), autoincrement=False, nullable=True),
+    sa.Column('_date_deleted', postgresql.TIMESTAMP(), autoincrement=False, nullable=True),
+    sa.Column('_expiration_date', postgresql.TIMESTAMP(), autoincrement=False, nullable=True),
+    sa.Column('_gobid', sa.INTEGER(), autoincrement=True, nullable=False),
+    sa.Column('_id', sa.VARCHAR(), autoincrement=False, nullable=True),
+    sa.PrimaryKeyConstraint('_gobid', name='rel_brk_zrt_brk_zrt_belast_pkey')
+    )
+    op.create_table('rel_brk_zrt_brk_zrt_belast_met',
+    sa.Column('source', sa.VARCHAR(), autoincrement=False, nullable=True),
+    sa.Column('id', sa.VARCHAR(), autoincrement=False, nullable=True),
+    sa.Column('src_source', sa.VARCHAR(), autoincrement=False, nullable=True),
+    sa.Column('src_id', sa.VARCHAR(), autoincrement=False, nullable=True),
+    sa.Column('src_volgnummer', sa.VARCHAR(), autoincrement=False, nullable=True),
+    sa.Column('derivation', sa.VARCHAR(), autoincrement=False, nullable=True),
+    sa.Column('begin_geldigheid', sa.DATE(), autoincrement=False, nullable=True),
+    sa.Column('eind_geldigheid', sa.DATE(), autoincrement=False, nullable=True),
+    sa.Column('dst_source', sa.VARCHAR(), autoincrement=False, nullable=True),
+    sa.Column('dst_id', sa.VARCHAR(), autoincrement=False, nullable=True),
+    sa.Column('dst_volgnummer', sa.VARCHAR(), autoincrement=False, nullable=True),
+    sa.Column('_source', sa.VARCHAR(), autoincrement=False, nullable=True),
+    sa.Column('_application', sa.VARCHAR(), autoincrement=False, nullable=True),
+    sa.Column('_source_id', sa.VARCHAR(), autoincrement=False, nullable=True),
+    sa.Column('_last_event', sa.INTEGER(), autoincrement=False, nullable=True),
+    sa.Column('_hash', sa.VARCHAR(), autoincrement=False, nullable=True),
+    sa.Column('_version', sa.VARCHAR(), autoincrement=False, nullable=True),
+    sa.Column('_date_created', postgresql.TIMESTAMP(), autoincrement=False, nullable=True),
+    sa.Column('_date_confirmed', postgresql.TIMESTAMP(), autoincrement=False, nullable=True),
+    sa.Column('_date_modified', postgresql.TIMESTAMP(), autoincrement=False, nullable=True),
+    sa.Column('_date_deleted', postgresql.TIMESTAMP(), autoincrement=False, nullable=True),
+    sa.Column('_expiration_date', postgresql.TIMESTAMP(), autoincrement=False, nullable=True),
+    sa.Column('_gobid', sa.INTEGER(), autoincrement=True, nullable=False),
+    sa.Column('_id', sa.VARCHAR(), autoincrement=False, nullable=True),
+    sa.PrimaryKeyConstraint('_gobid', name='rel_brk_zrt_brk_zrt_belast_met_pkey')
+    )
+    op.drop_table('rel_brk_zrt_brk_zrt_ontstaan_uit_zakelijkerechten')
+    op.drop_table('rel_brk_zrt_brk_zrt_betrokken_bij_zakelijkerechten')
+    op.drop_table('rel_brk_zrt_brk_zrt_belast_zakelijkerechten')
+    op.drop_table('rel_brk_zrt_brk_zrt_belast_met_zakelijkerechten')
+    op.drop_table('rel_brk_tng_brk_zrt_van_zakelijkrecht')
+    op.drop_table('rel_brk_tng_brk_sjt_van_kadastraalsubject')
     op.drop_table('rel_brk_art_brk_tng_betrokken_tenaamstelling')
     op.drop_table('rel_brk_art_brk_sjt_heeft_betrokken_persoon')
     op.drop_table('brk_tenaamstellingen')
