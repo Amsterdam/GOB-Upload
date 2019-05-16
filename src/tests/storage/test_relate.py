@@ -20,11 +20,13 @@ class TestRelations(TestCase):
         result = get_last_change("catalog", "collection")
         # self.assertEqual(result, "")
         mock_execute.assert_called_with("""
-SELECT MAX(eventid)
+SELECT eventid
 FROM   events
 WHERE  catalogue = 'catalog' AND
        entity = 'collection' AND
        action != 'CONFIRM'
+ORDER BY eventid
+LIMIT 1
 """)
 
     @patch('gobupload.storage.relate._execute_multiple')
@@ -333,4 +335,3 @@ ORDER BY
     def test_get_data(self):
         result = _get_data('')
         self.assertEqual(result, [])
-
