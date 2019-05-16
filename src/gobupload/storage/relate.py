@@ -166,12 +166,15 @@ def get_last_change(catalog_name, collection_name):
     :param collection_name:
     :return:
     """
+    # Using MAX(eventid) doesn't use the available indexes correctly resulting in a slow query
     query = f"""
-SELECT MAX(eventid)
+SELECT eventid
 FROM   events
 WHERE  catalogue = '{catalog_name}' AND
        entity = '{collection_name}' AND
        action != 'CONFIRM'
+ORDER BY eventid
+LIMIT 1
 """
     last_change = _execute(query).scalar()
     return 0 if last_change is None else last_change
