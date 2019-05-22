@@ -74,7 +74,7 @@ class GOBStorageHandler():
         self.metadata = gob_metadata
         self.gob_model = GOBModel()
 
-        self.engine = create_engine(URL(**GOB_DB))
+        self.engine = self.__class__.get_engine()
         self._get_reflected_base()
 
         self.session = None
@@ -83,6 +83,10 @@ class GOBStorageHandler():
         self.base = automap_base()
         self.base.prepare(self.engine, reflect=True)
         self.base.metadata.reflect(bind=self.engine)
+
+    @staticmethod
+    def get_engine():
+        return create_engine(URL(**GOB_DB))
 
     def init_storage(self):
         """Check if the necessary tables (for events, and for the entities in gobmodel) are present

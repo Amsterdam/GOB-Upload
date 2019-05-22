@@ -30,8 +30,7 @@ LIES_IN = "lies_in"   # geometric comparison, eg src.geometrie lies_in dst_geome
 
 
 def _execute_multiple(queries):
-    storage = GOBStorageHandler()
-    engine = storage.engine
+    engine = GOBStorageHandler.get_engine()
 
     result = None
     with engine.connect() as connection:
