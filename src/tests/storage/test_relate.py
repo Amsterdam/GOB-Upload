@@ -25,7 +25,7 @@ FROM   events
 WHERE  catalogue = 'catalog' AND
        entity = 'collection' AND
        action != 'CONFIRM'
-ORDER BY eventid DESC
+ORDER BY eventid, timestamp DESC
 LIMIT 1
 """)
 
