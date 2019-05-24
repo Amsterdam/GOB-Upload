@@ -36,7 +36,7 @@ def publish_relations(msg, relations, src_has_states, dst_has_states):
     has_validity = src_has_states or dst_has_states
 
     with ContentsWriter() as writer, \
-            ProgressTicker(f"Relate", 100) as progress:
+            ProgressTicker(f"Relate", 10000) as progress:
         filename = writer.filename
         for relation in relations:
             progress.tick()
