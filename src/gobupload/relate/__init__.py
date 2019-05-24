@@ -139,12 +139,12 @@ def relate_relation(msg):
         print(f"Relate Error: {str(e)}")
 
     # Apply result on current entities
-    apply_relations(catalog_name, collection_name, reference_name, relations)
+    applied_relations = apply_relations(catalog_name, collection_name, reference_name, relations)
 
     logger.info(f"Relate {display_name} completed")
 
     # Publish results
-    return publish_relations(msg, relations, src_has_states, dst_has_states)
+    return publish_relations(msg, applied_relations, src_has_states, dst_has_states)
 
 
 def build_relations(msg):

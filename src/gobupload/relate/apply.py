@@ -231,7 +231,6 @@ def apply_relations(catalog_name, collection_name, field_name, relations):
     field_type = _get_field_type(catalog_name, collection_name, field_name)
 
     current_relations = get_current_relations(catalog_name, collection_name, field_name)
-    relations_iter = iter(relations)
 
     updater = RelationUpdater(catalog_name, collection_name)
 
@@ -245,7 +244,9 @@ def apply_relations(catalog_name, collection_name, field_name, relations):
             current_relation = get_next_item(current_relations)
 
         if next_relation:
-            relation = get_next_item(relations_iter)
+            relation = get_next_item(relations)
+            if relation is not None:
+                yield relation
 
         is_changed, next_current_relation, next_relation = match_relation(
             current_relation, relation, field_name, field_type)
