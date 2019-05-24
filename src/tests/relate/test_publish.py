@@ -26,7 +26,7 @@ class TestInit(TestCase):
                 'warnings': mock.ANY,
                 'errors': mock.ANY
             },
-            'contents': []
+            'contents_ref': mock.ANY
         })
 
     def test_publish_relations(self):
@@ -56,26 +56,27 @@ class TestInit(TestCase):
                 'warnings': mock.ANY,
                 'errors': mock.ANY
             },
-            'contents': [{
-                'source': 'src_source.dst_source',
-                'id': 'src_id.src_volgnummer.dst_id.dst_volgnummer',
-                'src_source': 'src_source',
-                'src_id': 'src_id',
-                'src_volgnummer': 'src_volgnummer',
-                'derivation': 'key',
-                'begin_geldigheid': 'begin',
-                'eind_geldigheid': 'eind',
-                'dst_source': 'dst_source',
-                'dst_id': 'dst_id',
-                'dst_volgnummer': 'dst_volgnummer',
-                '_source_id': 'src_id.src_volgnummer.dst_id.dst_volgnummer'
-            }]
+            'contents_ref': mock.ANY
+            # 'contents': [{
+            #     'source': 'src_source.dst_source',
+            #     'id': 'src_id.src_volgnummer.dst_id.dst_volgnummer',
+            #     'src_source': 'src_source',
+            #     'src_id': 'src_id',
+            #     'src_volgnummer': 'src_volgnummer',
+            #     'derivation': 'key',
+            #     'begin_geldigheid': 'begin',
+            #     'eind_geldigheid': 'eind',
+            #     'dst_source': 'dst_source',
+            #     'dst_id': 'dst_id',
+            #     'dst_volgnummer': 'dst_volgnummer',
+            #     '_source_id': 'src_id.src_volgnummer.dst_id.dst_volgnummer'
+            # }]
         }
         result = publish_relations(msg, relations.copy(), False, False)
         self.assertEqual(result, expect)
 
-        expect["contents"][0]["id"] = expect["contents"][0]["id"] + ".begin"
-        expect["contents"][0]["_source_id"] = expect["contents"][0]["id"]
+        # expect["contents"][0]["id"] = expect["contents"][0]["id"] + ".begin"
+        # expect["contents"][0]["_source_id"] = expect["contents"][0]["id"]
 
         result = publish_relations(msg, relations.copy(), False, True)
         self.assertEqual(result, expect)

@@ -333,5 +333,5 @@ ORDER BY
 
     @patch('gobupload.storage.relate.GOBStorageHandler', MagicMock())
     def test_get_data(self):
-        result = _get_data('')
+        result = [r for r in _get_data('')]
         self.assertEqual(result, [])
