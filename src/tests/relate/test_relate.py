@@ -19,7 +19,7 @@ class TestRelate(TestCase):
         pass
 
     def test_empty(self):
-        result = _handle_relations([])
+        result = [r for r in _handle_relations([])]
         self.assertEqual(result, [])
 
     @patch('gobupload.relate.relate._handle_relations')
@@ -60,7 +60,7 @@ class TestRelateNoStates(TestCase):
                 "dst": [{'source': 'src_dst_1', 'id': 'dst_1', 'volgnummer': None}]
             }
         ]
-        result = _handle_relations(relations)
+        result = [r for r in _handle_relations(relations)]
         self.assertEqual(result, expect)
 
     def test_single_more(self):
@@ -82,7 +82,7 @@ class TestRelateNoStates(TestCase):
                 "dst": [{'source': 'src_dst_1', 'id': 'dst_2', 'volgnummer': None}]
             }
         ]
-        result = _handle_relations(relations)
+        result = [r for r in _handle_relations(relations)]
         self.assertEqual(result, expect)
 
     def test_many(self):
@@ -98,7 +98,7 @@ class TestRelateNoStates(TestCase):
                 "dst": [{'source': 'src_dst_1', 'id': 'dst_1', 'volgnummer': None}, {'source': 'src_dst_1', 'id': 'dst_2', 'volgnummer': None}]
             }
         ]
-        result = _handle_relations(relations)
+        result = [r for r in _handle_relations(relations)]
         self.assertEqual(result, expect)
 
     def test_many_more(self):
@@ -122,7 +122,7 @@ class TestRelateNoStates(TestCase):
                 "dst": [{'source': 'src_dst_1', 'id': 'dst_3', 'volgnummer': None}, {'source': 'src_dst_1', 'id': 'dst_4', 'volgnummer': None}]
             }
         ]
-        result = _handle_relations(relations)
+        result = [r for r in _handle_relations(relations)]
         self.assertEqual(result, expect)
 
 @patch('gobupload.relate.relate.logger', MagicMock())
@@ -157,7 +157,7 @@ class TestRelateBothStates(TestCase):
                 'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
             }
         ]
-        result = _handle_relations(relations)
+        result = [r for r in _handle_relations(relations)]
         self.assertEqual(result, expect)
 
     def test_empty_start(self):
@@ -189,7 +189,7 @@ class TestRelateBothStates(TestCase):
                 'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
             }
         ]
-        result = _handle_relations(relations)
+        result = [r for r in _handle_relations(relations)]
         self.assertEqual(result, expect)
 
     def test_single_single(self):
@@ -208,7 +208,7 @@ class TestRelateBothStates(TestCase):
                 'dst_match_code': 'match_1'
             }]
         expect = []
-        result = _handle_relations(relations)
+        result = [r for r in _handle_relations(relations)]
         self.assertEqual(result, expect)
 
     def test_multi_multi(self):
@@ -367,7 +367,7 @@ class TestRelateBothStates(TestCase):
                               }]
                   }]
 
-        result = _handle_relations(relations)
+        result = [r for r in _handle_relations(relations)]
         self.assertEqual(result, expect)
 
     def test_multi_periods(self):
@@ -462,7 +462,7 @@ class TestRelateBothStates(TestCase):
                                   'volgnummer': '3'
                               }]
                   }]
-        result = _handle_relations(relations)
+        result = [r for r in _handle_relations(relations)]
         self.assertEqual(result, expect)
 
     def test_empty_end(self):
@@ -494,7 +494,7 @@ class TestRelateBothStates(TestCase):
                 'dst': [{'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
             }
         ]
-        result = _handle_relations(relations)
+        result = [r for r in _handle_relations(relations)]
         self.assertEqual(result, expect)
 
     def test_empty_between(self):
@@ -544,7 +544,7 @@ class TestRelateBothStates(TestCase):
                 'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '2'}]
             }
         ]
-        result = _handle_relations(relations)
+        result = [r for r in _handle_relations(relations)]
         self.assertEqual(result, expect)
 
     def test_empty_begin_end(self):
@@ -582,7 +582,7 @@ class TestRelateBothStates(TestCase):
                 'dst': [{'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
             }
         ]
-        result = _handle_relations(relations)
+        result = [r for r in _handle_relations(relations)]
         self.assertEqual(result, expect)
 
     def test_before(self):
@@ -608,7 +608,7 @@ class TestRelateBothStates(TestCase):
                 'dst': [{'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
             }
         ]
-        result = _handle_relations(relations)
+        result = [r for r in _handle_relations(relations)]
         self.assertEqual(result, expect)
 
     def test_after(self):
@@ -634,7 +634,7 @@ class TestRelateBothStates(TestCase):
                 'dst': [{'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
             }
         ]
-        result = _handle_relations(relations)
+        result = [r for r in _handle_relations(relations)]
         self.assertEqual(result, expect)
 
     def test_before_and_after(self):
@@ -660,7 +660,7 @@ class TestRelateBothStates(TestCase):
                 'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
             }
         ]
-        result = _handle_relations(relations)
+        result = [r for r in _handle_relations(relations)]
         self.assertEqual(result, expect)
 
     def test_more(self):
@@ -704,7 +704,7 @@ class TestRelateBothStates(TestCase):
                 'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '2'}]
             }
         ]
-        result = _handle_relations(relations)
+        result = [r for r in _handle_relations(relations)]
         self.assertEqual(result, expect)
 
     def test_many(self):
@@ -768,7 +768,7 @@ class TestRelateBothStates(TestCase):
             }
         ]
 
-        result = _handle_relations(relations)
+        result = [r for r in _handle_relations(relations)]
         self.assertEqual(result, expect)
 
     def test_many_with_diff(self):
@@ -812,7 +812,7 @@ class TestRelateBothStates(TestCase):
                 'dst': [{'source': 'dst_src_1', 'id': 'dst_2', 'volgnummer': '1'}]
             }
         ]
-        result = _handle_relations(relations)
+        result = [r for r in _handle_relations(relations)]
         self.assertEqual(result, expect)
 
 @patch('gobupload.relate.relate.logger', MagicMock())
@@ -856,7 +856,7 @@ class TestRelateNoStatesWithStates(TestCase):
                 'dst': [{'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
             }
         ]
-        result = _handle_relations(relations)
+        result = [r for r in _handle_relations(relations)]
         self.assertEqual(result, expect)
 
 @patch('gobupload.relate.relate.logger', MagicMock())
@@ -888,7 +888,7 @@ class TestRelateWithStatesNoStates(TestCase):
                 'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': None}]
             }
         ]
-        result = _handle_relations(relations)
+        result = [r for r in _handle_relations(relations)]
         self.assertEqual(result, expect)
 
     def test_many(self):
@@ -921,7 +921,7 @@ class TestRelateWithStatesNoStates(TestCase):
                         {'source': 'dst_src_1', 'id': 'dst_2', 'volgnummer': None}]
             }
         ]
-        result = _handle_relations(relations)
+        result = [r for r in _handle_relations(relations)]
         self.assertEqual(result, expect)
 
     def test_multiple_volgnummer(self):
@@ -959,7 +959,7 @@ class TestRelateWithStatesNoStates(TestCase):
                 'dst': [{'source': 'dst_src_1', 'id': 'dst_2', 'volgnummer': None}]
             }
         ]
-        result = _handle_relations(relations)
+        result = [r for r in _handle_relations(relations)]
         self.assertEqual(result, expect)
 
 @patch('gobupload.relate.relate.logger', MagicMock())
@@ -1003,7 +1003,7 @@ class TestRelateDateTime(TestCase):
                 'dst': [{'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
             }
         ]
-        result = _handle_relations(relations)
+        result = [r for r in _handle_relations(relations)]
         self.assertEqual(result, expect)
 
     def test_without_time_with_time(self):
