@@ -241,8 +241,6 @@ def _handle_relations(rows):
     :param rows:
     :return:
     """
-    results = []
-
     # One source may have multiple relations
     src = None
     dsts = []
@@ -256,7 +254,7 @@ def _handle_relations(rows):
 
         if id != previous_id:
             # Close previous
-            results.extend(_end_source(src, dsts))
+            yield from _end_source(src, dsts)
             # Start new
             src = record['src']
             dsts = []
@@ -265,9 +263,7 @@ def _handle_relations(rows):
         previous_id = id
 
     # Close last
-    results.extend(_end_source(src, dsts))
-
-    return results
+    yield from _end_source(src, dsts)
 
 
 def relate(catalog_name, collection_name, field_name):
