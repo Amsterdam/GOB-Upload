@@ -136,7 +136,8 @@ def _get_data(query):
     storage = GOBStorageHandler()
     engine = storage.engine
     data = engine.execute(query).fetchall()
-    return [_convert_row(row) for row in data]
+    for row in data:
+        yield _convert_row(row)
 
 
 def _get_fields(has_states):

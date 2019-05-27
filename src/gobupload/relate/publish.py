@@ -4,7 +4,8 @@ Relation publication module
 Publishes relations as import messages
 """
 from gobcore.logging.logger import logger
-
+from gobcore.message_broker.offline_contents import ContentsWriter
+from gobcore.utils import ProgressTicker
 from gobcore.model.relations import create_relation, DERIVATION
 
 
@@ -31,26 +32,30 @@ def publish_relations(msg, relations, src_has_states, dst_has_states):
     :return:
     """
     # Convert relations into contents
-    contents = []
+    num_records = 0
     has_validity = src_has_states or dst_has_states
-    while relations:
-        relation = relations.pop(0)
 
-        validity = {
-            "begin_geldigheid": relation["begin_geldigheid"],
-            "eind_geldigheid": relation["eind_geldigheid"]
-        }
+    with ContentsWriter() as writer, \
+            ProgressTicker(f"Relate", 10000) as progress:
+        filename = writer.filename
+        for relation in relations:
+            progress.tick()
 
-        for dst in relation['dst']:
-            entity = create_relation(relation['src'], validity, dst, DERIVATION["ON_KEY"])
-            if has_validity:
-                # Add begin date for uniqueness
-                suffix = relation['begin_geldigheid']
-                entity['id'] = f"{entity['id']}.{suffix}"
-            entity['_source_id'] = entity['id']
-            contents.append(entity)
+            validity = {
+                "begin_geldigheid": relation["begin_geldigheid"],
+                "eind_geldigheid": relation["eind_geldigheid"]
+            }
 
-    num_records = len(contents)
+            for dst in relation['dst']:
+                entity = create_relation(relation['src'], validity, dst, DERIVATION["ON_KEY"])
+                if has_validity:
+                    # Add begin date for uniqueness
+                    suffix = relation['begin_geldigheid']
+                    entity['id'] = f"{entity['id']}.{suffix}"
+                entity['_source_id'] = entity['id']
+                writer.write(entity)
+                num_records += 1
+
     if num_records > 0:
         logger.info(f"NUM RECORDS: {num_records}")
     else:
@@ -65,7 +70,7 @@ def publish_relations(msg, relations, src_has_states, dst_has_states):
     import_message = {
         "header": msg["header"],
         "summary": summary,
-        "contents": contents
+        "contents_ref": filename
     }
 
     return import_message

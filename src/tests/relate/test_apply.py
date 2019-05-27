@@ -205,7 +205,8 @@ class TestApply(TestCase):
         mock_field_type.return_value = ''
         mock_match_relation.return_value = (True, False, False)
         with patch.object(RelationUpdater, 'update'):
-            apply_relations("catalog", "collection", "field", [])
+            result = [r for r in apply_relations("catalog", "collection", "field", iter([]))]
+            self.assertEqual(result, [])
 
     def test_prepare_row(self):
         row = {"field": "value"}
