@@ -12,6 +12,7 @@ from gobcore.model import GOBModel
 from gobcore.typesystem import get_modifications
 from gobcore.logging.logger import logger
 from gobcore.message_broker.offline_contents import ContentsWriter
+from gobcore.utils import ProgressTicker
 
 from gobupload.storage.handler import GOBStorageHandler
 from gobupload.compare.enrich import Enricher
@@ -44,33 +45,36 @@ def compare(msg):
     stats = CompareStatistics()
 
     with storage.get_session():
-        # Check any dependencies
-        if not meets_dependencies(storage, msg):
-            return None
+        with ProgressTicker("Collect compare events", 10000) as progress:
+            # Check any dependencies
+            if not meets_dependencies(storage, msg):
+                return None
 
-        enricher = Enricher(storage, msg)
-        populator = Populator(entity_model, msg)
+            enricher = Enricher(storage, msg)
+            populator = Populator(entity_model, msg)
 
-        initial_add = not storage.has_any_entity()  # If there are no records in the database all data are ADD events
-        if initial_add:
-            logger.info("Initial load of new collection detected")
-            # Write ADD events directly, without using a temporary table
-            contents_writer = ContentsWriter()
-            contents_writer.open()
-            collector = EventCollector(contents_writer)
-            collect = collector.collect_initial_add
-        else:
-            # Collect entities in a temporary table
-            collector = EntityCollector(storage)
-            collect = collector.collect
+            # If there are no records in the database all data are ADD events
+            initial_add = not storage.has_any_entity()
+            if initial_add:
+                logger.info("Initial load of new collection detected")
+                # Write ADD events directly, without using a temporary table
+                contents_writer = ContentsWriter()
+                contents_writer.open()
+                collector = EventCollector(contents_writer)
+                collect = collector.collect_initial_add
+            else:
+                # Collect entities in a temporary table
+                collector = EntityCollector(storage)
+                collect = collector.collect
 
-        for entity in msg["contents"]:
-            stats.collect(entity)
-            enricher.enrich(entity)
-            populator.populate(entity)
-            collect(entity)
+            for entity in msg["contents"]:
+                progress.tick()
+                stats.collect(entity)
+                enricher.enrich(entity)
+                populator.populate(entity)
+                collect(entity)
 
-        collector.close()
+            collector.close()
 
     if initial_add:
         filename = contents_writer.filename
@@ -129,12 +133,14 @@ def _process_compare_results(storage, model, results, stats):
     :param data_by_source_id: a mapping of import data by source_id
     :return: list of events, list of remaining records
     """
-    with ContentsWriter() as contents_writer, \
+    with ProgressTicker("Process compare result", 10000) as progress, \
+            ContentsWriter() as contents_writer, \
             EventCollector(contents_writer) as event_collector:
 
         filename = contents_writer.filename
 
         for row in results:
+            progress.tick()
             # Get the data for this record and create the event
             entity = row["_original_value"]
 
