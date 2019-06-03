@@ -48,7 +48,14 @@ def compare(msg):
         with ProgressTicker("Collect compare events", 10000) as progress:
             # Check any dependencies
             if not meets_dependencies(storage, msg):
-                return None
+                return {
+                    "header": msg["header"],
+                    "summary": {
+                        'warnings': logger.get_warnings(),
+                        'errors': logger.get_errors()
+                    },
+                    "contents": None
+                }
 
             enricher = Enricher(storage, msg)
             populator = Populator(entity_model, msg)
