@@ -43,7 +43,6 @@ class TestCompare(TestCase):
         }
 
         result = compare(message)
-        print(result)
         self.assertEqual(result, {'header': mock.ANY, 'summary': {'warnings': mock.ANY, 'errors': mock.ANY}, 'contents': None})
 
     def test_compare_succeeds_on_found_dependencies(self, storage_mock, model_mock):
