@@ -162,6 +162,7 @@ class TestApply(TestCase):
             with patch.object(GOBModel, 'get_collection', lambda *args: mock_collection):
                 result = _get_field_type("catalog", "collection", "field")
 
+    @patch('gobupload.relate.apply.logger', MagicMock())
     @patch('gobupload.relate.apply.get_match')
     @patch('gobupload.relate.apply.update_row_relation')
     @patch('gobupload.relate.apply.clear_row_relation')
@@ -169,10 +170,16 @@ class TestApply(TestCase):
         mock_clear_row.return_value = "clear row"
         mock_update_row.return_value = "update row"
         mock_get_match.return_value = (True, True, False)
-        current_relation = {"field": None}
         relation = "relation"
         field_name = "field"
         field_type = "type"
+        current_relation = {
+            "field": None,
+            "_id": "any id",
+            field_name: {
+                "bronwaarde": "any bronwaarde"
+            }
+        }
         result = match_relation(current_relation, relation, field_name, field_type)
         self.assertEqual(result, ("update row", True, True))
 

@@ -213,6 +213,16 @@ def match_relation(current_relation, relation, field_name, field_type):
         elif partly_match:
             is_changed = False
         else:
+            msg = f"Missing relations for {field_name}"
+            data = {
+                'id': current_relation[FIELD.ID],
+                FIELD.SEQNR: current_relation.get(FIELD.SEQNR),  # Only available for entities with state
+                'bronwaarde': current_relation[field_name]['bronwaarde']
+            }
+            logger.warning(msg, {
+                'id': msg,
+                'data': {k: v for k, v in data.items() if v is not None}
+            })
             is_changed = clear_row_relation(current_relation, field_name, field_type)
 
     return is_changed, next_current_relation, next_relation

@@ -21,7 +21,7 @@ class TestInit(TestCase):
         result = build_relations({'catalogue': 'any catalogue'})
         self.assertEqual(result, {
             'header': mock.ANY,
-            'summary': {'warnings': [], 'errors': []},
+            'summary': {'warnings': mock.ANY, 'errors': []},
             'contents': []
         })
 
