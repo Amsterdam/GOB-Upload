@@ -1,7 +1,7 @@
 import logging
 
-from unittest import TestCase
-from unittest.mock import Mock, MagicMock, patch, call, ANY
+from unittest import TestCase, mock
+from unittest.mock import MagicMock, patch, ANY
 from tests import fixtures
 
 from gobcore.events import GOB
@@ -43,7 +43,7 @@ class TestCompare(TestCase):
         }
 
         result = compare(message)
-        self.assertEqual(result, None)
+        self.assertEqual(result, {'header': mock.ANY, 'summary': {'warnings': mock.ANY, 'errors': mock.ANY}, 'contents': None})
 
     def test_compare_succeeds_on_found_dependencies(self, storage_mock, model_mock):
         storage_mock.return_value = self.mock_storage
