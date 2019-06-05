@@ -218,6 +218,8 @@ def match_relation(current_relation, relation, field_name, field_type):
                 'id': current_relation[FIELD.ID],
                 FIELD.SEQNR: current_relation.get(FIELD.SEQNR),  # Only available for entities with state
                 'bronwaarde': current_relation[field_name]['bronwaarde']
+                if isinstance(current_relation[field_name], dict)  # GOB.Reference (single)
+                else [item['bronwaarde'] for item in current_relation[field_name]]  # GOB.ManyReference
             }
             logger.warning(msg, {
                 'id': msg,
