@@ -25,7 +25,7 @@ FROM   events
 WHERE  catalogue = 'catalog' AND
        entity = 'collection' AND
        action != 'CONFIRM'
-ORDER BY eventid DESC
+ORDER BY timestamp DESC
 LIMIT 1
 """)
 
@@ -184,13 +184,13 @@ SELECT
 FROM dst_catalogue_dst_collection) AS dst
 ON
     (src._application = 'src_application' AND dst.dst_attr = src.src_attr->>'bronwaarde') AND
-    (dst.begin_geldigheid < src.eind_geldigheid OR src.eind_geldigheid IS NULL) AND
-    (dst.eind_geldigheid > src.begin_geldigheid OR dst.eind_geldigheid IS NULL)
+    (dst.begin_geldigheid <= src.eind_geldigheid OR src.eind_geldigheid IS NULL) AND
+    (dst.eind_geldigheid >= src.begin_geldigheid OR dst.eind_geldigheid IS NULL)
 WHERE
     (src._application = 'src_application' AND src.src_attr->>'bronwaarde' IS NOT NULL) AND
     (src._date_deleted IS NULL AND dst._date_deleted IS NULL)
 ORDER BY
-    src._source, src._id, src.volgnummer, src.begin_geldigheid, dst.begin_geldigheid, dst.eind_geldigheid
+    src._source, src._id, src.volgnummer::int, src.begin_geldigheid, dst.begin_geldigheid, dst.eind_geldigheid
 """
         with patch.object(GOBSources, 'get_field_relations', mock_get_field_relations), \
              patch.object(GOBModel, 'get_collection', mock_get_collection), \
@@ -245,13 +245,13 @@ SELECT
 FROM dst_catalogue_dst_collection) AS dst
 ON
     (src._application = 'src_application' AND dst.dst_attr = ANY(ARRAY(SELECT x->>'bronwaarde' FROM jsonb_array_elements(src.src_attr) as x))) AND
-    (dst.begin_geldigheid < src.eind_geldigheid OR src.eind_geldigheid IS NULL) AND
-    (dst.eind_geldigheid > src.begin_geldigheid OR dst.eind_geldigheid IS NULL)
+    (dst.begin_geldigheid <= src.eind_geldigheid OR src.eind_geldigheid IS NULL) AND
+    (dst.eind_geldigheid >= src.begin_geldigheid OR dst.eind_geldigheid IS NULL)
 WHERE
     (src._application = 'src_application' AND ARRAY(SELECT x->>'bronwaarde' FROM jsonb_array_elements(src.src_attr) as x) IS NOT NULL) AND
     (src._date_deleted IS NULL AND dst._date_deleted IS NULL)
 ORDER BY
-    src._source, src._id, src.volgnummer, src.begin_geldigheid, dst.begin_geldigheid, dst.eind_geldigheid
+    src._source, src._id, src.volgnummer::int, src.begin_geldigheid, dst.begin_geldigheid, dst.eind_geldigheid
 """
         with patch.object(GOBSources, 'get_field_relations', mock_get_field_relations), \
              patch.object(GOBModel, 'get_collection', mock_get_collection), \
@@ -315,14 +315,14 @@ FROM dst_catalogue_dst_collection) AS dst
 ON
     ((src._application = 'src_application1' AND dst.dst_attr1 = src.src_attr1->>'bronwaarde') OR
     (src._application = 'src_application2' AND dst.dst_attr2 = src.src_attr2->>'bronwaarde')) AND
-    (dst.begin_geldigheid < src.eind_geldigheid OR src.eind_geldigheid IS NULL) AND
-    (dst.eind_geldigheid > src.begin_geldigheid OR dst.eind_geldigheid IS NULL)
+    (dst.begin_geldigheid <= src.eind_geldigheid OR src.eind_geldigheid IS NULL) AND
+    (dst.eind_geldigheid >= src.begin_geldigheid OR dst.eind_geldigheid IS NULL)
 WHERE
     (src._application = 'src_application1' AND src.src_attr1->>'bronwaarde' IS NOT NULL) OR
     (src._application = 'src_application2' AND src.src_attr2->>'bronwaarde' IS NOT NULL) AND
     (src._date_deleted IS NULL AND dst._date_deleted IS NULL)
 ORDER BY
-    src._source, src._id, src.volgnummer, src.begin_geldigheid, dst.begin_geldigheid, dst.eind_geldigheid
+    src._source, src._id, src.volgnummer::int, src.begin_geldigheid, dst.begin_geldigheid, dst.eind_geldigheid
 """
         with patch.object(GOBSources, 'get_field_relations', mock_get_field_relations), \
              patch.object(GOBModel, 'get_collection', mock_get_collection), \

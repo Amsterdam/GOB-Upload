@@ -156,7 +156,8 @@ def get_match(current_relation, relation):
                       (src['volgnummer'] == current_relation.get(FIELD.SEQNR) and
                        relation["eind_geldigheid"] == current_relation.get(FIELD.END_VALIDITY))
 
-        higher_seqnr = (src["volgnummer"] is not None and src["volgnummer"] > current_relation.get(FIELD.SEQNR))
+        higher_seqnr = (src["volgnummer"] is not None and
+                        int(src["volgnummer"]) > int(current_relation.get(FIELD.SEQNR)))
 
     return match_srcid, match_seqnr, higher_seqnr
 
@@ -218,6 +219,8 @@ def match_relation(current_relation, relation, field_name, field_type):
                 'id': current_relation[FIELD.ID],
                 FIELD.SEQNR: current_relation.get(FIELD.SEQNR),  # Only available for entities with state
                 'bronwaarde': current_relation[field_name]['bronwaarde']
+                if isinstance(current_relation[field_name], dict)  # GOB.Reference (single)
+                else [item['bronwaarde'] for item in current_relation[field_name]]  # GOB.ManyReference
             }
             logger.warning(msg, {
                 'id': msg,

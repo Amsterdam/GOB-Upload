@@ -207,7 +207,22 @@ class TestRelateBothStates(TestCase):
                 'dst_eind_geldigheid': datetime.date(2001, 1, 1),
                 'dst_match_code': 'match_1'
             }]
-        expect = []
+        expect = [{
+                      'src': {
+                          'source': 'source',
+                          'id': 'src_1',
+                          'volgnummer': '1',
+                          'bronwaardes': ['match_1']
+                      },
+                      'begin_geldigheid': datetime.date(2001, 1, 1),
+                      'eind_geldigheid': datetime.date(2001, 1, 1),
+                      'dst': [{
+                                  'source': 'source',
+                                  'id': 'dst_1',
+                                  'volgnummer': '1',
+                                  'bronwaardes': ['match_1']
+                              }]
+                  }]
         result = [r for r in _handle_relations(relations)]
         self.assertEqual(result, expect)
 

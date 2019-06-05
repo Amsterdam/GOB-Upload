@@ -173,7 +173,7 @@ FROM   events
 WHERE  catalogue = '{catalog_name}' AND
        entity = '{collection_name}' AND
        action != 'CONFIRM'
-ORDER BY eventid DESC
+ORDER BY timestamp DESC
 LIMIT 1
 """
     last_change = _execute(query).scalar()
@@ -406,15 +406,15 @@ def get_relations(src_catalog_name, src_collection_name, src_field_name):
     # If both collections have states then join with corresponding geldigheid intervals
     if src_has_states and dst_has_states:
         join_on.extend([
-            f"(dst.{FIELD.START_VALIDITY} < src.{FIELD.END_VALIDITY} OR src.{FIELD.END_VALIDITY} IS NULL)",
-            f"(dst.{FIELD.END_VALIDITY} > src.{FIELD.START_VALIDITY} OR dst.{FIELD.END_VALIDITY} IS NULL)"
+            f"(dst.{FIELD.START_VALIDITY} <= src.{FIELD.END_VALIDITY} OR src.{FIELD.END_VALIDITY} IS NULL)",
+            f"(dst.{FIELD.END_VALIDITY} >= src.{FIELD.START_VALIDITY} OR dst.{FIELD.END_VALIDITY} IS NULL)"
         ])
 
     # Main order is on src id
     order_by = [f"src.{FIELD.SOURCE}", f"src.{FIELD.ID}"]
     if src_has_states:
         # then on source volgnummer and begin geldigheid
-        order_by.extend([f"src.{FIELD.SEQNR}", f"src.{FIELD.START_VALIDITY}"])
+        order_by.extend([f"src.{FIELD.SEQNR}::int", f"src.{FIELD.START_VALIDITY}"])
     if dst_has_states:
         # then on destination begin and eind geldigheid
         order_by.extend([f"dst.{FIELD.START_VALIDITY}", f"dst.{FIELD.END_VALIDITY}"])
