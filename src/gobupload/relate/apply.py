@@ -156,7 +156,8 @@ def get_match(current_relation, relation):
                       (src['volgnummer'] == current_relation.get(FIELD.SEQNR) and
                        relation["eind_geldigheid"] == current_relation.get(FIELD.END_VALIDITY))
 
-        higher_seqnr = (src["volgnummer"] is not None and src["volgnummer"] > current_relation.get(FIELD.SEQNR))
+        higher_seqnr = (src["volgnummer"] is not None and
+                        int(src["volgnummer"]) > int(current_relation.get(FIELD.SEQNR)))
 
     return match_srcid, match_seqnr, higher_seqnr
 
