@@ -107,6 +107,10 @@ def _get_slots(src, dsts):
     # Sorted from oldest to newest
     dates.sort(key=lambda v: _compare_date(v))
 
+    if len(dates) == 1:
+        # Allow for intervals that have equal start - end date
+        dates = [dates[0], dates[0]]
+
     # Transform into time slots and return the result
     return [{
         "src": {

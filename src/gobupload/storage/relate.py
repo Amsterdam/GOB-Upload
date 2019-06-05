@@ -406,8 +406,8 @@ def get_relations(src_catalog_name, src_collection_name, src_field_name):
     # If both collections have states then join with corresponding geldigheid intervals
     if src_has_states and dst_has_states:
         join_on.extend([
-            f"(dst.{FIELD.START_VALIDITY} < src.{FIELD.END_VALIDITY} OR src.{FIELD.END_VALIDITY} IS NULL)",
-            f"(dst.{FIELD.END_VALIDITY} > src.{FIELD.START_VALIDITY} OR dst.{FIELD.END_VALIDITY} IS NULL)"
+            f"(dst.{FIELD.START_VALIDITY} <= src.{FIELD.END_VALIDITY} OR src.{FIELD.END_VALIDITY} IS NULL)",
+            f"(dst.{FIELD.END_VALIDITY} >= src.{FIELD.START_VALIDITY} OR dst.{FIELD.END_VALIDITY} IS NULL)"
         ])
 
     # Main order is on src id
