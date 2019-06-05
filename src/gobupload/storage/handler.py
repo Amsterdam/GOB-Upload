@@ -344,19 +344,11 @@ class GOBStorageHandler():
             .filter(self.DbEvent.eventid > eventid if eventid else True)
 
     @with_session
-    def has_any_event(self, custom_filter):
+    def has_any_event(self, filter):
         """True if any event matches the filter condition
 
-        The condition is default checked for the current source, catalogue and entity
-
-        :return:
+        :return: true is any event has been found given the filter
         """
-        filter = {
-            "source": self.metadata.source,
-            "catalogue": self.metadata.catalogue,
-            "entity": self.metadata.entity,
-            **custom_filter
-        }
         result = self.session.query(self.DbEvent) \
             .filter_by(**filter) \
             .first()

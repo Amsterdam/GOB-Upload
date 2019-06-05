@@ -184,8 +184,8 @@ SELECT
 FROM dst_catalogue_dst_collection) AS dst
 ON
     (src._application = 'src_application' AND dst.dst_attr = src.src_attr->>'bronwaarde') AND
-    (dst.begin_geldigheid < src.eind_geldigheid OR src.eind_geldigheid IS NULL) AND
-    (dst.eind_geldigheid > src.begin_geldigheid OR dst.eind_geldigheid IS NULL)
+    (dst.begin_geldigheid <= src.eind_geldigheid OR src.eind_geldigheid IS NULL) AND
+    (dst.eind_geldigheid >= src.begin_geldigheid OR dst.eind_geldigheid IS NULL)
 WHERE
     (src._application = 'src_application' AND src.src_attr->>'bronwaarde' IS NOT NULL) AND
     (src._date_deleted IS NULL AND dst._date_deleted IS NULL)
@@ -245,8 +245,8 @@ SELECT
 FROM dst_catalogue_dst_collection) AS dst
 ON
     (src._application = 'src_application' AND dst.dst_attr = ANY(ARRAY(SELECT x->>'bronwaarde' FROM jsonb_array_elements(src.src_attr) as x))) AND
-    (dst.begin_geldigheid < src.eind_geldigheid OR src.eind_geldigheid IS NULL) AND
-    (dst.eind_geldigheid > src.begin_geldigheid OR dst.eind_geldigheid IS NULL)
+    (dst.begin_geldigheid <= src.eind_geldigheid OR src.eind_geldigheid IS NULL) AND
+    (dst.eind_geldigheid >= src.begin_geldigheid OR dst.eind_geldigheid IS NULL)
 WHERE
     (src._application = 'src_application' AND ARRAY(SELECT x->>'bronwaarde' FROM jsonb_array_elements(src.src_attr) as x) IS NOT NULL) AND
     (src._date_deleted IS NULL AND dst._date_deleted IS NULL)
@@ -315,8 +315,8 @@ FROM dst_catalogue_dst_collection) AS dst
 ON
     ((src._application = 'src_application1' AND dst.dst_attr1 = src.src_attr1->>'bronwaarde') OR
     (src._application = 'src_application2' AND dst.dst_attr2 = src.src_attr2->>'bronwaarde')) AND
-    (dst.begin_geldigheid < src.eind_geldigheid OR src.eind_geldigheid IS NULL) AND
-    (dst.eind_geldigheid > src.begin_geldigheid OR dst.eind_geldigheid IS NULL)
+    (dst.begin_geldigheid <= src.eind_geldigheid OR src.eind_geldigheid IS NULL) AND
+    (dst.eind_geldigheid >= src.begin_geldigheid OR dst.eind_geldigheid IS NULL)
 WHERE
     (src._application = 'src_application1' AND src.src_attr1->>'bronwaarde' IS NOT NULL) OR
     (src._application = 'src_application2' AND src.src_attr2->>'bronwaarde' IS NOT NULL) AND
