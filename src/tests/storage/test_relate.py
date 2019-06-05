@@ -190,7 +190,7 @@ WHERE
     (src._application = 'src_application' AND src.src_attr->>'bronwaarde' IS NOT NULL) AND
     (src._date_deleted IS NULL AND dst._date_deleted IS NULL)
 ORDER BY
-    src._source, src._id, src.volgnummer, src.begin_geldigheid, dst.begin_geldigheid, dst.eind_geldigheid
+    src._source, src._id, src.volgnummer::int, src.begin_geldigheid, dst.begin_geldigheid, dst.eind_geldigheid
 """
         with patch.object(GOBSources, 'get_field_relations', mock_get_field_relations), \
              patch.object(GOBModel, 'get_collection', mock_get_collection), \
@@ -251,7 +251,7 @@ WHERE
     (src._application = 'src_application' AND ARRAY(SELECT x->>'bronwaarde' FROM jsonb_array_elements(src.src_attr) as x) IS NOT NULL) AND
     (src._date_deleted IS NULL AND dst._date_deleted IS NULL)
 ORDER BY
-    src._source, src._id, src.volgnummer, src.begin_geldigheid, dst.begin_geldigheid, dst.eind_geldigheid
+    src._source, src._id, src.volgnummer::int, src.begin_geldigheid, dst.begin_geldigheid, dst.eind_geldigheid
 """
         with patch.object(GOBSources, 'get_field_relations', mock_get_field_relations), \
              patch.object(GOBModel, 'get_collection', mock_get_collection), \
@@ -322,7 +322,7 @@ WHERE
     (src._application = 'src_application2' AND src.src_attr2->>'bronwaarde' IS NOT NULL) AND
     (src._date_deleted IS NULL AND dst._date_deleted IS NULL)
 ORDER BY
-    src._source, src._id, src.volgnummer, src.begin_geldigheid, dst.begin_geldigheid, dst.eind_geldigheid
+    src._source, src._id, src.volgnummer::int, src.begin_geldigheid, dst.begin_geldigheid, dst.eind_geldigheid
 """
         with patch.object(GOBSources, 'get_field_relations', mock_get_field_relations), \
              patch.object(GOBModel, 'get_collection', mock_get_collection), \
