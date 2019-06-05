@@ -173,7 +173,7 @@ FROM   events
 WHERE  catalogue = '{catalog_name}' AND
        entity = '{collection_name}' AND
        action != 'CONFIRM'
-ORDER BY eventid, timestamp DESC
+ORDER BY eventid DESC
 LIMIT 1
 """
     last_change = _execute(query).scalar()
