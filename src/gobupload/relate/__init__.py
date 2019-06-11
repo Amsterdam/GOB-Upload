@@ -16,7 +16,6 @@ from gobcore.model.relations import get_relation_name
 from gobupload.storage.relate import get_last_change
 
 from gobupload.relate.relate import relate as get_relations
-from gobupload.relate.apply import apply_relations
 from gobupload.relate.publish import publish_relations, publish_result
 from gobupload.relate.exceptions import RelateException
 
@@ -138,13 +137,10 @@ def relate_relation(msg):
         logger.error(f"Relate {catalog_name} - {collection_name}:{reference_name} FAILED: {str(e)}")
         print(f"Relate Error: {str(e)}")
 
-    # Apply result on current entities
-    applied_relations = apply_relations(catalog_name, collection_name, reference_name, relations)
-
     logger.info(f"Relate {display_name} completed")
 
     # Publish results
-    return publish_relations(msg, applied_relations, src_has_states, dst_has_states)
+    return publish_relations(msg, relations, src_has_states, dst_has_states)
 
 
 def build_relations(msg):
