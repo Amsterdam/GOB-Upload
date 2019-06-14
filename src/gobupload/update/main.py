@@ -2,7 +2,6 @@
 
 Process events and apply the event on the current state of the entity
 """
-
 from gobcore.events.import_message import ImportMessage
 from gobcore.logging.logger import logger
 from gobcore.utils import ProgressTicker
@@ -11,6 +10,7 @@ from gobupload.storage.handler import GOBStorageHandler
 from gobupload.update.update_statistics import UpdateStatistics
 from gobupload.update.event_collector import EventCollector
 from gobupload.update.event_applicator import EventApplicator
+from gobupload.utils import ActiveGarbageCollection
 
 
 def _apply_events(storage, last_events, start_after, stats):
@@ -21,7 +21,7 @@ def _apply_events(storage, last_events, start_after, stats):
     :param stats: update statitics for this action
     :return:
     """
-    with storage.get_session():
+    with ActiveGarbageCollection("Apply events"), storage.get_session():
         logger.info(f"Apply events")
 
         with ProgressTicker("Apply events", 10000) as progress, \
@@ -33,8 +33,8 @@ def _apply_events(storage, last_events, start_after, stats):
                 action, count = event_applicator.apply(event)
                 stats.add_applied(action, count)
 
-    with storage.get_session():
-        logger.info(f"Post-process CONFIRM events")
+    with ActiveGarbageCollection("Delete any confirm events"), storage.get_session():
+        logger.info(f"Post-process any CONFIRM events")
 
         # Confirms are deleted once they have been applied
         storage.delete_confirms()
@@ -51,7 +51,7 @@ def _store_events(storage, last_events, events, stats):
     :param stats: update statitics for this action
     :return:
     """
-    with storage.get_session():
+    with ActiveGarbageCollection("Store events"), storage.get_session():
         # Use a session to commit all or rollback on any error
         logger.info(f"Store events")
 
