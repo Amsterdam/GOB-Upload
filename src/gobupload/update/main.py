@@ -93,18 +93,33 @@ def _process_events(storage, events, stats):
     with storage.get_session():
         last_events = storage.get_last_events()  # { source_id: last_event, ... }
 
-    if entity_max_eventid == last_eventid:
+    if is_corrupted(entity_max_eventid, last_eventid):
+        logger.error(f"Model is inconsistent! data is more recent than events")
+    elif entity_max_eventid == last_eventid:
         logger.info(f"Model is up to date")
         # Add new events
         _store_events(storage, last_events, events, stats)
         # Apply the new events
         _apply_events(storage, last_events, entity_max_eventid, stats)
-    elif entity_max_eventid and not last_eventid or entity_max_eventid > last_eventid:
-        logger.error(f"Model is inconsistent! data is more recent than events")
     else:
         logger.warning(f"Model is out of date! Start application of unhandled events")
         _apply_events(storage, last_events, entity_max_eventid, stats)
         logger.error(f"Further processing has stopped")
+
+
+def is_corrupted(entity_max_eventid, last_eventid):
+    if last_eventid is None and entity_max_eventid is None:
+        # no events, no entities
+        return False
+    elif last_eventid is not None and entity_max_eventid is None:
+        # events but no data (apply has failed or upload has been aborted)
+        return False
+    elif entity_max_eventid is not None and last_eventid is None:
+        # entities but no events (data is corrupted)
+        return True
+    elif entity_max_eventid is not None and last_eventid is not None:
+        # entities and events, entities can never be newer than events
+        return entity_max_eventid > last_eventid
 
 
 def full_update(msg):
