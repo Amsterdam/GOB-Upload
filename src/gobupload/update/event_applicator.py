@@ -9,6 +9,8 @@ import json
 from gobcore.events import GOB, GobEvent
 from gobcore.events.import_message import MessageMetaData
 
+from gobupload.utils import ActiveGarbageCollection
+
 
 class EventApplicator:
 
@@ -34,8 +36,9 @@ class EventApplicator:
 
     def apply_add_events(self):
         if self.add_events:
-            self.storage.add_add_events(self.add_events)
-            self.add_events = []
+            with ActiveGarbageCollection("Apply add events"):
+                self.storage.add_add_events(self.add_events)
+                self.add_events = []
 
     def apply(self, event):
         # Parse the json data of the event
