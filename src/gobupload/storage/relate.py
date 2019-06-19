@@ -386,6 +386,11 @@ def get_relations(src_catalog_name, src_collection_name, src_field_name):
                             if spec.get('source_attribute') is not None]))
     dst_match_fields = list(dict.fromkeys([spec['destination_attribute'] for spec in relation_specs]))
 
+    matches = [f"WHEN src._application = '{spec['source']}' THEN dst.{spec['destination_attribute']}"
+               for spec in relation_specs]
+    methods = [f"WHEN src._application = '{spec['source']}' THEN '{spec['method']}'"
+               for spec in relation_specs]
+
     # Define the join of source and destination, src:bronwaarde = dst:field:value
     join_on = ([f"(src.{FIELD.APPLICATION} = '{spec['source']}' AND " +
                 f"{_resolve_match(spec, src_field, JOIN)})" for spec in relation_specs])
@@ -395,6 +400,7 @@ def get_relations(src_catalog_name, src_collection_name, src_field_name):
                        f"{_resolve_match(spec, src_field, WHERE)})" for spec in relation_specs])
 
     # Build a properly formatted select statement
+    space_join = ' \n    '
     comma_join = ',\n    '
     and_join = ' AND\n    '
     or_join = ' OR\n    '
@@ -426,6 +432,10 @@ def get_relations(src_catalog_name, src_collection_name, src_field_name):
 
     query = f"""
 SELECT
+    CASE
+    {space_join.join(methods)} END AS method,
+    CASE
+    {space_join.join(matches)} END AS match,
     {comma_join.join(select_from)}
 FROM {src_table_name} AS src
 LEFT OUTER JOIN (
@@ -442,12 +452,17 @@ ORDER BY
 """
     # Example result
     # {
-    #     'src__id': '10181000',
+    #     'method': 'equals',
+    #     'match': 'BC27',
+    #     'src__date_deleted': None,
     #     'src__source': 'AMSBI',
-    #     'dst__id': '03630012097126',
-    #     'dst_volgnummer': '1',
+    #     'src__id': '11080002',
+    #     'dst__date_deleted': None,
     #     'dst__source': 'AMSBI',
+    #     'dst__id': '03630012100860',
+    #     'dst_volgnummer': '1',
     #     'dst_begin_geldigheid': datetime.date(2006, 6, 12),
-    #     'dst_eind_geldigheid': None
+    #     'dst_eind_geldigheid': None,
+    #     'dst_match_code': 'BC27'
     # }
     return _get_data(query), src_has_states, dst_has_states

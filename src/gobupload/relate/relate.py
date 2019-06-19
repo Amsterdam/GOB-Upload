@@ -148,7 +148,9 @@ def _post_process_slots(slots, src, dsts):
             slot["dst"] = [{
                 "source": dsts[0]["source"],
                 "id": None,
-                "volgnummer": None
+                "volgnummer": None,
+                "method": None,
+                "match": None
             }]
 
     return slots
@@ -182,7 +184,9 @@ def _end_source(src, dsts):
                 item = {
                     "source": dst["source"],
                     "id": dst["id"],
-                    "volgnummer": dst["volgnummer"]
+                    "volgnummer": dst["volgnummer"],
+                    "method": dst["method"],
+                    "match": dst["match"]
                 }
                 if dst.get("bronwaardes"):
                     # Register the values on which the match was made
@@ -219,7 +223,9 @@ def _get_record(row):
             "id": row[f"dst_{FIELD.ID}"],
             "volgnummer": row.get(f"dst_{FIELD.SEQNR}"),
             "begin": row.get(f"dst_{FIELD.START_VALIDITY}"),
-            "end": row.get(f"dst_{FIELD.END_VALIDITY}")
+            "end": row.get(f"dst_{FIELD.END_VALIDITY}"),
+            "method": row["method"],
+            "match": row["match"]
         }
     }
 
