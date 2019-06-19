@@ -452,12 +452,17 @@ ORDER BY
 """
     # Example result
     # {
-    #     'src__id': '10181000',
+    #     'method': 'equals',
+    #     'match': 'BC27',
+    #     'src__date_deleted': None,
     #     'src__source': 'AMSBI',
-    #     'dst__id': '03630012097126',
-    #     'dst_volgnummer': '1',
+    #     'src__id': '11080002',
+    #     'dst__date_deleted': None,
     #     'dst__source': 'AMSBI',
+    #     'dst__id': '03630012100860',
+    #     'dst_volgnummer': '1',
     #     'dst_begin_geldigheid': datetime.date(2006, 6, 12),
-    #     'dst_eind_geldigheid': None
+    #     'dst_eind_geldigheid': None,
+    #     'dst_match_code': 'BC27'
     # }
     return _get_data(query), src_has_states, dst_has_states
