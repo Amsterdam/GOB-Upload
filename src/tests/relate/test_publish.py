@@ -42,7 +42,9 @@ class TestInit(TestCase):
                 "dst": [{
                     "source": "dst_source",
                     "id": "dst_id",
-                    "volgnummer": "dst_volgnummer"
+                    "volgnummer": "dst_volgnummer",
+                    "match": "any match",
+                    "method": "any method"
                 }]
             }
         ]

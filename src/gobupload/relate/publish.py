@@ -6,7 +6,7 @@ Publishes relations as import messages
 from gobcore.logging.logger import logger
 from gobcore.message_broker.offline_contents import ContentsWriter
 from gobcore.utils import ProgressTicker
-from gobcore.model.relations import create_relation, DERIVATION
+from gobcore.model.relations import create_relation
 
 
 def publish_result(msg, relates):
@@ -47,7 +47,8 @@ def publish_relations(msg, relations, src_has_states, dst_has_states):
             }
 
             for dst in relation['dst']:
-                entity = create_relation(relation['src'], validity, dst, DERIVATION["ON_KEY"])
+                derivation = dst['match'] if dst['method'] == 'equals' else dst['method']
+                entity = create_relation(relation['src'], validity, dst, derivation)
                 if has_validity:
                     # Add begin date for uniqueness
                     suffix = relation['begin_geldigheid']
