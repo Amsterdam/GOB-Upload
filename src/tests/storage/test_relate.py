@@ -109,6 +109,10 @@ ORDER BY _source, _id, volgnummer, begin_geldigheid
         ]
         expect = """
 SELECT
+    CASE
+    WHEN src._application = 'src_application' THEN 'equals' END AS method,
+    CASE
+    WHEN src._application = 'src_application' THEN dst.dst_attr END AS match,
     src._date_deleted AS src__date_deleted,
     src._source AS src__source,
     src._id AS src__id,
@@ -158,6 +162,10 @@ ORDER BY
         ]
         expect = """
 SELECT
+    CASE
+    WHEN src._application = 'src_application' THEN 'equals' END AS method,
+    CASE
+    WHEN src._application = 'src_application' THEN dst.dst_attr END AS match,
     src._date_deleted AS src__date_deleted,
     src._source AS src__source,
     src._id AS src__id,
@@ -219,6 +227,10 @@ ORDER BY
         ]
         expect = """
 SELECT
+    CASE
+    WHEN src._application = 'src_application' THEN 'equals' END AS method,
+    CASE
+    WHEN src._application = 'src_application' THEN dst.dst_attr END AS match,
     src._date_deleted AS src__date_deleted,
     src._source AS src__source,
     src._id AS src__id,
@@ -286,6 +298,12 @@ ORDER BY
         ]
         expect = """
 SELECT
+    CASE
+    WHEN src._application = 'src_application1' THEN 'equals' 
+    WHEN src._application = 'src_application2' THEN 'equals' END AS method,
+    CASE
+    WHEN src._application = 'src_application1' THEN dst.dst_attr1 
+    WHEN src._application = 'src_application2' THEN dst.dst_attr2 END AS match,
     src._date_deleted AS src__date_deleted,
     src._source AS src__source,
     src._id AS src__id,
