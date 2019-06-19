@@ -50,14 +50,14 @@ class TestRelateNoStates(TestCase):
 
     def test_single(self):
         relations = [
-            {'src__source': 'src_src_1', 'src__id': 'src_1', 'dst__source': 'src_dst_1', 'dst__id': 'dst_1'}
+            {'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1', 'src__id': 'src_1', 'dst__source': 'src_dst_1', 'dst__id': 'dst_1'}
         ]
         expect = [
             {
                 "src": {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
                 "begin_geldigheid": None,
                 "eind_geldigheid": None,
-                "dst": [{'source': 'src_dst_1', 'id': 'dst_1', 'volgnummer': None}]
+                "dst": [{'match': 'any match', 'method': 'any method', 'source': 'src_dst_1', 'id': 'dst_1', 'volgnummer': None}]
             }
         ]
         result = [r for r in _handle_relations(relations)]
@@ -65,21 +65,21 @@ class TestRelateNoStates(TestCase):
 
     def test_single_more(self):
         relations = [
-            {'src__source': 'src_src_1', 'src__id': 'src_1', 'dst__source': 'src_dst_1', 'dst__id': 'dst_1'},
-            {'src__source': 'src_src_1', 'src__id': 'src_2', 'dst__source': 'src_dst_1', 'dst__id': 'dst_2'}
+            {'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1', 'src__id': 'src_1', 'dst__source': 'src_dst_1', 'dst__id': 'dst_1'},
+            {'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1', 'src__id': 'src_2', 'dst__source': 'src_dst_1', 'dst__id': 'dst_2'}
         ]
         expect = [
             {
                 "src": {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
                 "begin_geldigheid": None,
                 "eind_geldigheid": None,
-                "dst": [{'source': 'src_dst_1', 'id': 'dst_1', 'volgnummer': None}]
+                "dst": [{'match': 'any match', 'method': 'any method', 'source': 'src_dst_1', 'id': 'dst_1', 'volgnummer': None}]
             },
             {
                 "src": {'source': 'src_src_1', 'id': 'src_2', 'volgnummer': None},
                 "begin_geldigheid": None,
                 "eind_geldigheid": None,
-                "dst": [{'source': 'src_dst_1', 'id': 'dst_2', 'volgnummer': None}]
+                "dst": [{'match': 'any match', 'method': 'any method', 'source': 'src_dst_1', 'id': 'dst_2', 'volgnummer': None}]
             }
         ]
         result = [r for r in _handle_relations(relations)]
@@ -87,15 +87,15 @@ class TestRelateNoStates(TestCase):
 
     def test_many(self):
         relations = [
-            {'src__source': 'src_src_1', 'src__id': 'src_1', 'dst__source': 'src_dst_1', 'dst__id': 'dst_1'},
-            {'src__source': 'src_src_1', 'src__id': 'src_1', 'dst__source': 'src_dst_1', 'dst__id': 'dst_2'}
+            {'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1', 'src__id': 'src_1', 'dst__source': 'src_dst_1', 'dst__id': 'dst_1'},
+            {'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1', 'src__id': 'src_1', 'dst__source': 'src_dst_1', 'dst__id': 'dst_2'}
         ]
         expect = [
             {
                 "src": {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
                 "begin_geldigheid": None,
                 "eind_geldigheid": None,
-                "dst": [{'source': 'src_dst_1', 'id': 'dst_1', 'volgnummer': None}, {'source': 'src_dst_1', 'id': 'dst_2', 'volgnummer': None}]
+                "dst": [{'match': 'any match', 'method': 'any method', 'source': 'src_dst_1', 'id': 'dst_1', 'volgnummer': None}, {'match': 'any match', 'method': 'any method', 'source': 'src_dst_1', 'id': 'dst_2', 'volgnummer': None}]
             }
         ]
         result = [r for r in _handle_relations(relations)]
@@ -103,23 +103,23 @@ class TestRelateNoStates(TestCase):
 
     def test_many_more(self):
         relations = [
-            {'src__source': 'src_src_1', 'src__id': 'src_1', 'dst__source': 'src_dst_1', 'dst__id': 'dst_1'},
-            {'src__source': 'src_src_1', 'src__id': 'src_1', 'dst__source': 'src_dst_1', 'dst__id': 'dst_2'},
-            {'src__source': 'src_src_1', 'src__id': 'src_2', 'dst__source': 'src_dst_1', 'dst__id': 'dst_3'},
-            {'src__source': 'src_src_1', 'src__id': 'src_2', 'dst__source': 'src_dst_1', 'dst__id': 'dst_4'}
+            {'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1', 'src__id': 'src_1', 'dst__source': 'src_dst_1', 'dst__id': 'dst_1'},
+            {'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1', 'src__id': 'src_1', 'dst__source': 'src_dst_1', 'dst__id': 'dst_2'},
+            {'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1', 'src__id': 'src_2', 'dst__source': 'src_dst_1', 'dst__id': 'dst_3'},
+            {'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1', 'src__id': 'src_2', 'dst__source': 'src_dst_1', 'dst__id': 'dst_4'}
         ]
         expect = [
             {
                 "src": {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
                 "begin_geldigheid": None,
                 "eind_geldigheid": None,
-                "dst": [{'source': 'src_dst_1', 'id': 'dst_1', 'volgnummer': None}, {'source': 'src_dst_1', 'id': 'dst_2', 'volgnummer': None}]
+                "dst": [{'match': 'any match', 'method': 'any method', 'source': 'src_dst_1', 'id': 'dst_1', 'volgnummer': None}, {'match': 'any match', 'method': 'any method', 'source': 'src_dst_1', 'id': 'dst_2', 'volgnummer': None}]
             },
             {
                 "src": {'source': 'src_src_1', 'id': 'src_2', 'volgnummer': None},
                 "begin_geldigheid": None,
                 "eind_geldigheid": None,
-                "dst": [{'source': 'src_dst_1', 'id': 'dst_3', 'volgnummer': None}, {'source': 'src_dst_1', 'id': 'dst_4', 'volgnummer': None}]
+                "dst": [{'match': 'any match', 'method': 'any method', 'source': 'src_dst_1', 'id': 'dst_3', 'volgnummer': None}, {'match': 'any match', 'method': 'any method', 'source': 'src_dst_1', 'id': 'dst_4', 'volgnummer': None}]
             }
         ]
         result = [r for r in _handle_relations(relations)]
@@ -137,7 +137,7 @@ class TestRelateBothStates(TestCase):
     def test_single(self):
         relations = [
             {
-                'src__source': 'src_src_1',
+                'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2006, 1, 1),
@@ -154,7 +154,7 @@ class TestRelateBothStates(TestCase):
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
-                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
+                'dst': [{'match': 'any match', 'method': 'any method', 'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
             }
         ]
         result = [r for r in _handle_relations(relations)]
@@ -163,7 +163,7 @@ class TestRelateBothStates(TestCase):
     def test_empty_start(self):
         relations = [
             {
-                'src__source': 'src_src_1',
+                'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2006, 1, 1),
@@ -180,13 +180,13 @@ class TestRelateBothStates(TestCase):
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2007, 1, 1),
-                'dst': [{'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
+                'dst': [{'match': None, 'method': None, 'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
             },
             {
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2007, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
-                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
+                'dst': [{'match': 'any match', 'method': 'any method', 'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
             }
         ]
         result = [r for r in _handle_relations(relations)]
@@ -195,7 +195,7 @@ class TestRelateBothStates(TestCase):
     def test_single_single(self):
         relations = [
             {
-                'src__source': 'source',
+                'match': 'any match', 'method': 'any method', 'src__source': 'source',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2001, 1, 1),
@@ -217,7 +217,7 @@ class TestRelateBothStates(TestCase):
                       'begin_geldigheid': datetime.date(2001, 1, 1),
                       'eind_geldigheid': datetime.date(2001, 1, 1),
                       'dst': [{
-                                  'source': 'source',
+                          'match': 'any match', 'method': 'any method', 'source': 'source',
                                   'id': 'dst_1',
                                   'volgnummer': '1',
                                   'bronwaardes': ['match_1']
@@ -230,7 +230,7 @@ class TestRelateBothStates(TestCase):
         relations = [
             {
                 'src__date_deleted': None,
-                'src__source': 'source',
+                'match': 'any match', 'method': 'any method', 'src__source': 'source',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2000, 1, 1),
@@ -245,7 +245,7 @@ class TestRelateBothStates(TestCase):
             },
             {
                 'src__date_deleted': None,
-                'src__source': 'source',
+                'match': 'any match', 'method': 'any method', 'src__source': 'source',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2000, 1, 1),
@@ -260,7 +260,7 @@ class TestRelateBothStates(TestCase):
             },
             {
                 'src__date_deleted': None,
-                'src__source': 'source',
+                'match': 'any match', 'method': 'any method', 'src__source': 'source',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2000, 1, 1),
@@ -283,7 +283,7 @@ class TestRelateBothStates(TestCase):
                       'begin_geldigheid': datetime.date(2000, 1, 1),
                       'eind_geldigheid': datetime.date(2001, 1, 1),
                       'dst': [{
-                                  'source': 'source',
+                                  'match': None, 'method': None, 'source': 'source',
                                   'id': None,
                                   'volgnummer': None
                               }]
@@ -297,12 +297,12 @@ class TestRelateBothStates(TestCase):
                       'begin_geldigheid': datetime.date(2001, 1, 1),
                       'eind_geldigheid': datetime.date(2002, 1, 1),
                       'dst': [{
-                                  'source': 'source',
+                                  'match': 'any match', 'method': 'any method', 'source': 'source',
                                   'id': 'dst_1',
                                   'volgnummer': '1',
                                   'bronwaardes': ['match_1']
                               }, {
-                                  'source': 'source',
+                                  'match': 'any match', 'method': 'any method', 'source': 'source',
                                   'id': 'dst_2',
                                   'volgnummer': '2',
                                   'bronwaardes': ['match_2']
@@ -317,17 +317,17 @@ class TestRelateBothStates(TestCase):
                       'begin_geldigheid': datetime.date(2002, 1, 1),
                       'eind_geldigheid': datetime.date(2008, 1, 1),
                       'dst': [{
-                                  'source': 'source',
+                                  'match': 'any match', 'method': 'any method', 'source': 'source',
                                   'id': 'dst_1',
                                   'volgnummer': '1',
                                   'bronwaardes': ['match_1']
                               }, {
-                                  'source': 'source',
+                                  'match': 'any match', 'method': 'any method', 'source': 'source',
                                   'id': 'dst_2',
                                   'volgnummer': '2',
                                   'bronwaardes': ['match_2']
                               }, {
-                                  'source': 'source',
+                                  'match': 'any match', 'method': 'any method', 'source': 'source',
                                   'id': 'dst_3',
                                   'volgnummer': '3',
                                   'bronwaardes': ['match_3']
@@ -342,12 +342,12 @@ class TestRelateBothStates(TestCase):
                       'begin_geldigheid': datetime.date(2008, 1, 1),
                       'eind_geldigheid': datetime.date(2010, 1, 1),
                       'dst': [{
-                                  'source': 'source',
+                          'match': 'any match', 'method': 'any method', 'source': 'source',
                                   'id': 'dst_1',
                                   'volgnummer': '1',
                                   'bronwaardes': ['match_1']
                               }, {
-                                  'source': 'source',
+                          'match': 'any match', 'method': 'any method', 'source': 'source',
                                   'id': 'dst_2',
                                   'volgnummer': '2',
                                   'bronwaardes': ['match_2']
@@ -362,7 +362,7 @@ class TestRelateBothStates(TestCase):
                       'begin_geldigheid': datetime.date(2010, 1, 1),
                       'eind_geldigheid': datetime.date(2011, 1, 1),
                       'dst': [{
-                                  'source': 'source',
+                          'match': 'any match', 'method': 'any method', 'source': 'source',
                                   'id': 'dst_2',
                                   'volgnummer': '2',
                                   'bronwaardes': ['match_2']
@@ -376,7 +376,7 @@ class TestRelateBothStates(TestCase):
                       'begin_geldigheid': datetime.date(2011, 1, 1),
                       'eind_geldigheid': None,
                       'dst': [{
-                                  'source': 'source',
+                          'match': None, 'method': None, 'source': 'source',
                                   'id': None,
                                   'volgnummer': None
                               }]
@@ -388,7 +388,7 @@ class TestRelateBothStates(TestCase):
     def test_multi_periods(self):
         relations = [
             {
-                'src__source': 'src_src_1',
+                'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2006, 1, 1),
@@ -400,7 +400,7 @@ class TestRelateBothStates(TestCase):
                 'dst_eind_geldigheid': datetime.date(2008, 1, 1)
             },
             {
-                'src__source': 'src_src_1',
+                'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2006, 1, 1),
@@ -412,7 +412,7 @@ class TestRelateBothStates(TestCase):
                 'dst_eind_geldigheid': datetime.date(2009, 1, 1)
             },
             {
-                'src__source': 'src_src_1',
+                'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2006, 1, 1),
@@ -433,7 +433,7 @@ class TestRelateBothStates(TestCase):
                       'begin_geldigheid': datetime.date(2006, 1, 1),
                       'eind_geldigheid': datetime.date(2007, 1, 1),
                       'dst': [{
-                                  'source': 'dst_src_1',
+                          'match': None, 'method': None, 'source': 'dst_src_1',
                                   'id': None,
                                   'volgnummer': None
                               }]
@@ -446,7 +446,7 @@ class TestRelateBothStates(TestCase):
                       'begin_geldigheid': datetime.date(2007, 1, 1),
                       'eind_geldigheid': datetime.date(2008, 1, 1),
                       'dst': [{
-                                  'source': 'dst_src_1',
+                          'match': 'any match', 'method': 'any method', 'source': 'dst_src_1',
                                   'id': 'dst_1',
                                   'volgnummer': '1'
                               }]
@@ -459,7 +459,7 @@ class TestRelateBothStates(TestCase):
                       'begin_geldigheid': datetime.date(2008, 1, 1),
                       'eind_geldigheid': datetime.date(2009, 1, 1),
                       'dst': [{
-                                  'source': 'dst_src_1',
+                          'match': 'any match', 'method': 'any method', 'source': 'dst_src_1',
                                   'id': 'dst_1',
                                   'volgnummer': '2'
                               }]
@@ -472,7 +472,7 @@ class TestRelateBothStates(TestCase):
                       'begin_geldigheid': datetime.date(2009, 1, 1),
                       'eind_geldigheid': datetime.date(2011, 1, 1),
                       'dst': [{
-                                  'source': 'dst_src_1',
+                          'match': 'any match', 'method': 'any method', 'source': 'dst_src_1',
                                   'id': 'dst_1',
                                   'volgnummer': '3'
                               }]
@@ -483,7 +483,7 @@ class TestRelateBothStates(TestCase):
     def test_empty_end(self):
         relations = [
             {
-                'src__source': 'src_src_1',
+                'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2006, 1, 1),
@@ -500,13 +500,13 @@ class TestRelateBothStates(TestCase):
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2010, 1, 1),
-                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
+                'dst': [{'match': 'any match', 'method': 'any method', 'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
             },
             {
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2010, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
-                'dst': [{'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
+                'dst': [{'match': None, 'method': None, 'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
             }
         ]
         result = [r for r in _handle_relations(relations)]
@@ -515,7 +515,7 @@ class TestRelateBothStates(TestCase):
     def test_empty_between(self):
         relations = [
             {
-                'src__source': 'src_src_1',
+                'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2006, 1, 1),
@@ -527,7 +527,7 @@ class TestRelateBothStates(TestCase):
                 'dst_eind_geldigheid': datetime.date(2008, 1, 1)
             },
             {
-                'src__source': 'src_src_1',
+                'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2006, 1, 1),
@@ -544,19 +544,19 @@ class TestRelateBothStates(TestCase):
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2008, 1, 1),
-                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
+                'dst': [{'match': 'any match', 'method': 'any method', 'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
             },
             {
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2008, 1, 1),
                 'eind_geldigheid': datetime.date(2009, 1, 1),
-                'dst': [{'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
+                'dst': [{'match': None, 'method': None, 'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
             },
             {
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2009, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
-                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '2'}]
+                'dst': [{'match': 'any match', 'method': 'any method', 'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '2'}]
             }
         ]
         result = [r for r in _handle_relations(relations)]
@@ -565,7 +565,7 @@ class TestRelateBothStates(TestCase):
     def test_empty_begin_end(self):
         relations = [
             {
-                'src__source': 'src_src_1',
+                'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2006, 1, 1),
@@ -582,19 +582,19 @@ class TestRelateBothStates(TestCase):
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2007, 1, 1),
-                'dst': [{'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
+                'dst': [{'match': None, 'method': None, 'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
             },
             {
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2007, 1, 1),
                 'eind_geldigheid': datetime.date(2010, 1, 1),
-                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
+                'dst': [{'match': 'any match', 'method': 'any method', 'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
             },
             {
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2010, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
-                'dst': [{'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
+                'dst': [{'match': None, 'method': None, 'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
             }
         ]
         result = [r for r in _handle_relations(relations)]
@@ -603,7 +603,7 @@ class TestRelateBothStates(TestCase):
     def test_before(self):
         relations = [
             {
-                'src__source': 'src_src_1',
+                'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2006, 1, 1),
@@ -620,7 +620,7 @@ class TestRelateBothStates(TestCase):
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
-                'dst': [{'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
+                'dst': [{'match': None, 'method': None, 'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
             }
         ]
         result = [r for r in _handle_relations(relations)]
@@ -629,7 +629,7 @@ class TestRelateBothStates(TestCase):
     def test_after(self):
         relations = [
             {
-                'src__source': 'src_src_1',
+                'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2006, 1, 1),
@@ -646,7 +646,7 @@ class TestRelateBothStates(TestCase):
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
-                'dst': [{'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
+                'dst': [{'match': None, 'method': None, 'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
             }
         ]
         result = [r for r in _handle_relations(relations)]
@@ -655,7 +655,7 @@ class TestRelateBothStates(TestCase):
     def test_before_and_after(self):
         relations = [
             {
-                'src__source': 'src_src_1',
+                'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2006, 1, 1),
@@ -672,7 +672,7 @@ class TestRelateBothStates(TestCase):
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
-                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
+                'dst': [{'match': 'any match', 'method': 'any method', 'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
             }
         ]
         result = [r for r in _handle_relations(relations)]
@@ -681,7 +681,7 @@ class TestRelateBothStates(TestCase):
     def test_more(self):
         relations = [
             {
-                'src__source': 'src_src_1',
+                'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2006, 1, 1),
@@ -693,7 +693,7 @@ class TestRelateBothStates(TestCase):
                 'dst_eind_geldigheid': datetime.date(2007, 1, 1)
             },
             {
-                'src__source': 'src_src_1',
+                'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2006, 1, 1),
@@ -710,13 +710,13 @@ class TestRelateBothStates(TestCase):
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2007, 1, 1),
-                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
+                'dst': [{'match': 'any match', 'method': 'any method', 'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
             },
             {
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2007, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
-                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '2'}]
+                'dst': [{'match': 'any match', 'method': 'any method', 'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '2'}]
             }
         ]
         result = [r for r in _handle_relations(relations)]
@@ -725,7 +725,7 @@ class TestRelateBothStates(TestCase):
     def test_many(self):
         relations = [
             {
-                'src__source': 'src_src_1',
+                'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2006, 1, 1),
@@ -737,7 +737,7 @@ class TestRelateBothStates(TestCase):
                 'dst_eind_geldigheid': datetime.date(2011, 1, 1)
             },
             {
-                'src__source': 'src_src_1',
+                'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2006, 1, 1),
@@ -749,7 +749,7 @@ class TestRelateBothStates(TestCase):
                 'dst_eind_geldigheid': datetime.date(2011, 1, 1)
             },
             {
-                'src__source': 'src_src_1',
+                'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1',
                 'src__id': 'src_2',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2006, 1, 1),
@@ -766,20 +766,20 @@ class TestRelateBothStates(TestCase):
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
-                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'},
-                        {'source': 'dst_src_1', 'id': 'dst_2', 'volgnummer': '1'}]
+                'dst': [{'match': 'any match', 'method': 'any method', 'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'},
+                        {'match': 'any match', 'method': 'any method', 'source': 'dst_src_1', 'id': 'dst_2', 'volgnummer': '1'}]
             },
             {
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2011, 1, 1),
                 'eind_geldigheid': datetime.date(2012, 1, 1),
-                'dst': [{'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
+                'dst': [{'match': None, 'method': None, 'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
             },
             {
                 'src': {'source': 'src_src_1', 'id': 'src_2', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2012, 1, 1),
-                'dst': [{'source': 'dst_src_1', 'id': 'dst_2', 'volgnummer': '1'}]
+                'dst': [{'match': 'any match', 'method': 'any method', 'source': 'dst_src_1', 'id': 'dst_2', 'volgnummer': '1'}]
             }
         ]
 
@@ -789,7 +789,7 @@ class TestRelateBothStates(TestCase):
     def test_many_with_diff(self):
         relations = [
             {
-                'src__source': 'src_src_1',
+                'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2006, 1, 1),
@@ -801,7 +801,7 @@ class TestRelateBothStates(TestCase):
                 'dst_eind_geldigheid': datetime.date(2008, 1, 1)
             },
             {
-                'src__source': 'src_src_1',
+                'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2006, 1, 1),
@@ -818,13 +818,13 @@ class TestRelateBothStates(TestCase):
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2008, 1, 1),
-                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}, {'source': 'dst_src_1', 'id': 'dst_2', 'volgnummer': '1'}]
+                'dst': [{'match': 'any match', 'method': 'any method', 'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}, {'match': 'any match', 'method': 'any method', 'source': 'dst_src_1', 'id': 'dst_2', 'volgnummer': '1'}]
             },
             {
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2008, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
-                'dst': [{'source': 'dst_src_1', 'id': 'dst_2', 'volgnummer': '1'}]
+                'dst': [{'match': 'any match', 'method': 'any method', 'source': 'dst_src_1', 'id': 'dst_2', 'volgnummer': '1'}]
             }
         ]
         result = [r for r in _handle_relations(relations)]
@@ -842,7 +842,7 @@ class TestRelateNoStatesWithStates(TestCase):
     def test_single(self):
         relations = [
             {
-                'src__source': 'src_src_1',
+                'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'dst__source': 'dst_src_1',
                 'dst__id': 'dst_1',
@@ -856,19 +856,19 @@ class TestRelateNoStatesWithStates(TestCase):
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
                 'begin_geldigheid': None,
                 'eind_geldigheid': datetime.date(2006, 1, 1),
-                'dst': [{'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
+                'dst': [{'match': None, 'method': None, 'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
             },
             {
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
                 'begin_geldigheid': datetime.date(2006, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
-                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
+                'dst': [{'match': 'any match', 'method': 'any method', 'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
             },
             {
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
                 'begin_geldigheid': datetime.date(2011, 1, 1),
                 'eind_geldigheid': None,
-                'dst': [{'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
+                'dst': [{'match': None, 'method': None, 'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
             }
         ]
         result = [r for r in _handle_relations(relations)]
@@ -886,7 +886,7 @@ class TestRelateWithStatesNoStates(TestCase):
     def test_single(self):
         relations = [
             {
-                'src__source': 'src_src_1',
+                'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2005, 1, 1),
@@ -900,7 +900,7 @@ class TestRelateWithStatesNoStates(TestCase):
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2005, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
-                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': None}]
+                'dst': [{'match': 'any match', 'method': 'any method', 'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': None}]
             }
         ]
         result = [r for r in _handle_relations(relations)]
@@ -909,7 +909,7 @@ class TestRelateWithStatesNoStates(TestCase):
     def test_many(self):
         relations = [
             {
-                'src__source': 'src_src_1',
+                'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2005, 1, 1),
@@ -918,7 +918,7 @@ class TestRelateWithStatesNoStates(TestCase):
                 'dst__id': 'dst_1'
             },
             {
-                'src__source': 'src_src_1',
+                'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2005, 1, 1),
@@ -932,8 +932,8 @@ class TestRelateWithStatesNoStates(TestCase):
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2005, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
-                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': None},
-                        {'source': 'dst_src_1', 'id': 'dst_2', 'volgnummer': None}]
+                'dst': [{'match': 'any match', 'method': 'any method', 'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': None},
+                        {'match': 'any match', 'method': 'any method', 'source': 'dst_src_1', 'id': 'dst_2', 'volgnummer': None}]
             }
         ]
         result = [r for r in _handle_relations(relations)]
@@ -942,7 +942,7 @@ class TestRelateWithStatesNoStates(TestCase):
     def test_multiple_volgnummer(self):
         relations = [
             {
-                'src__source': 'src_src_1',
+                'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '1',
                 'src_begin_geldigheid': datetime.date(2005, 1, 1),
@@ -951,7 +951,7 @@ class TestRelateWithStatesNoStates(TestCase):
                 'dst__id': 'dst_1'
             },
             {
-                'src__source': 'src_src_1',
+                'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'src_volgnummer': '2',
                 'src_begin_geldigheid': datetime.date(2007, 1, 1),
@@ -965,13 +965,13 @@ class TestRelateWithStatesNoStates(TestCase):
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '1'},
                 'begin_geldigheid': datetime.date(2005, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
-                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': None}]
+                'dst': [{'match': 'any match', 'method': 'any method', 'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': None}]
             },
             {
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': '2'},
                 'begin_geldigheid': datetime.date(2007, 1, 1),
                 'eind_geldigheid': datetime.date(2011, 1, 1),
-                'dst': [{'source': 'dst_src_1', 'id': 'dst_2', 'volgnummer': None}]
+                'dst': [{'match': 'any match', 'method': 'any method', 'source': 'dst_src_1', 'id': 'dst_2', 'volgnummer': None}]
             }
         ]
         result = [r for r in _handle_relations(relations)]
@@ -989,7 +989,7 @@ class TestRelateDateTime(TestCase):
     def test_single(self):
         relations = [
             {
-                'src__source': 'src_src_1',
+                'match': 'any match', 'method': 'any method', 'src__source': 'src_src_1',
                 'src__id': 'src_1',
                 'dst__source': 'dst_src_1',
                 'dst__id': 'dst_1',
@@ -1003,19 +1003,19 @@ class TestRelateDateTime(TestCase):
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
                 'begin_geldigheid': None,
                 'eind_geldigheid': datetime.datetime(2006, 1, 1, 12, 0, 0),
-                'dst': [{'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
+                'dst': [{'match': None, 'method': None, 'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
             },
             {
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
                 'begin_geldigheid': datetime.datetime(2006, 1, 1, 12, 0, 0),
                 'eind_geldigheid': datetime.datetime(2011, 1, 1, 12, 0, 0),
-                'dst': [{'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
+                'dst': [{'match': 'any match', 'method': 'any method', 'source': 'dst_src_1', 'id': 'dst_1', 'volgnummer': '1'}]
             },
             {
                 'src': {'source': 'src_src_1', 'id': 'src_1', 'volgnummer': None},
                 'begin_geldigheid': datetime.datetime(2011, 1, 1, 12, 0, 0),
                 'eind_geldigheid': None,
-                'dst': [{'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
+                'dst': [{'match': None, 'method': None, 'source': 'dst_src_1', 'id': None, 'volgnummer': None}]
             }
         ]
         result = [r for r in _handle_relations(relations)]
