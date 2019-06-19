@@ -83,6 +83,12 @@ def _process_references(msg, catalog_name, collection_name, references):
 
 
 def check_relation(msg):
+    """
+    Check for any dangling relations
+
+    :param msg:
+    :return:
+    """
     catalog_name = msg['header']['src_catalogue']
     collection_name = msg['header']['src_entity']
     reference_name = msg['header']['src_reference_name']

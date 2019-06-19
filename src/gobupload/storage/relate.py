@@ -348,6 +348,13 @@ def _get_select_from(dst_fields, dst_match_fields, src_fields, src_match_fields)
 
 
 def _query_missing(query, items_name):
+    """
+    Query for anu missing attributes
+
+    :param query: query to execute
+    :param items_name: name of the missing attribute
+    :return: None
+    """
     for data in _get_data(query):
         current = data.get('eind_geldigheid') is None
         msg = f"Missing {'' if current else 'historic'} {items_name}"
@@ -358,6 +365,17 @@ def _query_missing(query, items_name):
 
 
 def check_relations(src_catalog_name, src_collection_name, src_field_name):
+    """
+    Check relations for any dangling relations
+
+    Dangling can be because a relation exist without any bronwaarde
+    or the bronmwaarde cannot be matched with any referenced entity
+
+    :param src_catalog_name:
+    :param src_collection_name:
+    :param src_field_name:
+    :return: None
+    """
     # Get the source catalog, collection and field for the given names
     model = GOBModel()
 
