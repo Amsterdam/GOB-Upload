@@ -616,6 +616,9 @@ class GOBStorageHandler():
 
         return entity
 
+    def execute(self, statement):
+        return self.engine.execute(statement)
+
     def get_query_value(self, query):
         """Execute a query and return the result value
 
