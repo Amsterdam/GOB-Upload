@@ -58,6 +58,17 @@ SERVICEDEFINITION = {
             'key': 'relate_relation.result'
         }
     },
+    'check_relation': {
+        'exchange': WORKFLOW_EXCHANGE,
+        'queue': REQUEST_QUEUE,
+        'key': 'check_relation.start',
+        'handler': relate.check_relation,
+        'report': {
+            'exchange': WORKFLOW_EXCHANGE,
+            'queue': RESULT_QUEUE,
+            'key': 'check_relation.result'
+        }
+    },
 }
 
 # Initialize database tables

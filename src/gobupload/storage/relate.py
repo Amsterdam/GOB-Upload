@@ -7,8 +7,10 @@ import json
 
 from gobupload.storage.handler import GOBStorageHandler
 
+from gobcore.logging.logger import logger
 from gobcore.model import GOBModel
 from gobcore.model.metadata import FIELD
+from gobcore.model.relations import get_relation_name
 from gobcore.sources import GOBSources
 
 from gobupload.relate.exceptions import RelateException
@@ -343,6 +345,67 @@ def _get_select_from(dst_fields, dst_match_fields, src_fields, src_match_fields)
                   [f'dst.{field} AS dst_{field}' for field in dst_fields] + \
                   [f'dst.{field} AS {DST_MATCH_PREFIX}{field}' for field in dst_match_fields]
     return select_from
+
+
+def _query_missing(query, items_name):
+    for data in _get_data(query):
+        current = data.get('eind_geldigheid') is None
+        msg = f"Missing {'' if current else 'historic'} {items_name}"
+        logger.warning(msg, {
+            'id': msg,
+            'data': {k: v for k, v in data.items() if v is not None}
+        })
+
+
+def check_relations(src_catalog_name, src_collection_name, src_field_name):
+    # Get the source catalog, collection and field for the given names
+    model = GOBModel()
+
+    src_table_name = model.get_table_name(src_catalog_name, src_collection_name)
+    rel_name = get_relation_name(model, src_catalog_name, src_collection_name, src_field_name)
+    rel_table_name = f"rel_{rel_name}"
+
+    src_has_states = model.has_states(src_catalog_name, src_collection_name)
+
+    select = ["_id"]
+    where = [f"src_id = {src_table_name}._id"]
+    if src_has_states:
+        select.extend(["volgnummer", "begin_geldigheid", "eind_geldigheid"])
+        where.extend([f"src_volgnummer = {src_table_name}.volgnummer"])
+    select = ",\n    ".join(select)
+    where = " AND\n            ".join(where)
+
+    relations = f"""
+SELECT
+    {select}
+FROM
+    {src_table_name}
+WHERE
+    _date_deleted IS NULL AND
+    {src_field_name} ->> 'bronwaarde' IS NOT NULL AND
+    NOT EXISTS (
+        SELECT
+            1
+        FROM
+            {rel_table_name}
+        WHERE
+            _date_deleted IS NULL AND
+            dst_id IS NOT NULL AND
+            {where}
+    )
+"""
+    _query_missing(relations, "relations")
+
+    bronwaarden = f"""
+SELECT
+    {select}
+FROM
+    {src_table_name}
+WHERE
+    _date_deleted IS NULL AND
+    {src_field_name} ->> 'bronwaarde' IS NULL
+"""
+    _query_missing(bronwaarden, "bronwaarden")
 
 
 def get_relations(src_catalog_name, src_collection_name, src_field_name):
