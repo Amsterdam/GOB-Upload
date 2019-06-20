@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 from gobcore.model import GOBModel
 from gobcore.sources import GOBSources
 
-from gobupload.storage.relate import get_relations, _get_data, get_last_change, get_current_relations, RelationUpdater
+from gobupload.storage.relate import get_relations, _get_data, get_last_change, get_current_relations, RelationUpdater, _query_missing, check_relations
 
 @patch('gobupload.relate.relate.logger', MagicMock())
 class TestRelations(TestCase):
@@ -353,3 +353,25 @@ ORDER BY
     def test_get_data(self):
         result = [r for r in _get_data('')]
         self.assertEqual(result, [])
+
+    @patch('gobupload.storage.relate.logger')
+    @patch('gobupload.storage.relate._get_data')
+    def test_query_missing(self, mock_data, mock_logger):
+        mock_data.return_value = []
+        _query_missing("any query", "any items name")
+        mock_data.assert_called_with("any query")
+
+        mock_logger.warning = mock.MagicMock()
+        mock_data.return_value = [{"a": "b"}]
+        _query_missing("any query", "any items name")
+        mock_logger.warning.assert_called()
+
+    # @patch('gobupload.storage.relate.GOBModel')
+    @patch('gobupload.storage.relate.get_relation_name')
+    @patch('gobupload.storage.relate._query_missing')
+    def test_check_relations(self, mock_missing, mock_rel):
+        with patch.object(GOBModel, 'get_table_name', lambda s, a, b: a + b), \
+             patch.object(GOBModel, 'has_states', lambda s, a, b: True):
+            check_relations("any_catalog", "any_collection", "any_field name")
+        mock_missing.assert_called()
+        self.assertEqual(mock_missing.call_count, 2)
