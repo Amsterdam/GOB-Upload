@@ -404,6 +404,10 @@ def check_relations(src_catalog_name, src_collection_name, src_field_name):
     where = " AND\n            ".join(where)
 
     # select all relations that do not have an entry in the relations table
+    #
+    # ->> 'bronwaarde' IS NOT NULL
+    # is True for all json fields that have a non NULL value for bronwaarde
+    #
     srcs_without_relations = f"""
 SELECT
     {select}
@@ -440,6 +444,10 @@ WHERE
     _query_missing(relations_without_dst, "dangling relations")
 
     # Select all relations without bronwaarde
+    #
+    # ->> 'bronwaarde' IS NULL
+    # is True for all json fields (including empty ones) that have no bronwaarde, or a null value for bronwaarde
+    #
     select = ["_id"]
     if src_has_states:
         select.extend(["volgnummer", "begin_geldigheid", "eind_geldigheid"])
