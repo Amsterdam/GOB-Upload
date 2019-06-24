@@ -347,7 +347,7 @@ def _get_select_from(dst_fields, dst_match_fields, src_fields, src_match_fields)
     return select_from
 
 
-def _query_missing(query, items_name):
+def _query_missing(query, items_name, max_warnings=50):
     """
     Query for anu missing attributes
 
@@ -355,13 +355,23 @@ def _query_missing(query, items_name):
     :param items_name: name of the missing attribute
     :return: None
     """
+    count = {
+        'current': 0,
+        'historic': 0
+    }
     for data in _get_data(query):
-        current = data.get('eind_geldigheid') is None
-        msg = f"Missing {'' if current else 'historic'} {items_name}"
-        logger.warning(msg, {
-            'id': msg,
-            'data': {k: v for k, v in data.items() if v is not None}
-        })
+        period = 'current' if data.get('eind_geldigheid') is None else 'historic'
+        if count[period] < max_warnings:
+            msg = f"{period} {items_name}"
+            logger.warning(msg, {
+                'id': msg,
+                'data': {k: v for k, v in data.items() if v is not None}
+            })
+        count[period] += 1
+        if count[period] == max_warnings:
+            logger.warning(f"Too many (>{max_warnings}) {items_name}")
+        if count['current'] >= max_warnings and count['historic'] >= max_warnings:
+            break
 
 
 def check_relations(src_catalog_name, src_collection_name, src_field_name):
@@ -393,7 +403,8 @@ def check_relations(src_catalog_name, src_collection_name, src_field_name):
     select = ",\n    ".join(select)
     where = " AND\n            ".join(where)
 
-    relations = f"""
+    # select all relations that do not have an entry in the relations table
+    srcs_without_relations = f"""
 SELECT
     {select}
 FROM
@@ -408,12 +419,31 @@ WHERE
             {rel_table_name}
         WHERE
             _date_deleted IS NULL AND
-            dst_id IS NOT NULL AND
             {where}
     )
 """
-    _query_missing(relations, "relations")
+    _query_missing(srcs_without_relations, f"missing relations")
 
+    # Select all relations that do not point to a destination
+    relations_without_dst = f"""
+SELECT
+    src_id,
+    src_volgnummer,
+    begin_geldigheid,
+    eind_geldigheid
+FROM
+    {rel_table_name}
+WHERE
+    _date_deleted IS NULL AND
+    dst_id IS NULL
+"""
+    _query_missing(relations_without_dst, "dangling relations")
+
+    # Select all relations without bronwaarde
+    select = ["_id"]
+    if src_has_states:
+        select.extend(["volgnummer", "begin_geldigheid", "eind_geldigheid"])
+    select = ",\n    ".join(select)
     bronwaarden = f"""
 SELECT
     {select}
@@ -423,7 +453,7 @@ WHERE
     _date_deleted IS NULL AND
     {src_field_name} ->> 'bronwaarde' IS NULL
 """
-    _query_missing(bronwaarden, "bronwaarden")
+    _query_missing(bronwaarden, "missing bronwaarden")
 
 
 def get_relations(src_catalog_name, src_collection_name, src_field_name):

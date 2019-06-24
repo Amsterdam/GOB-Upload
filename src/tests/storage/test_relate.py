@@ -374,4 +374,4 @@ ORDER BY
              patch.object(GOBModel, 'has_states', lambda s, a, b: True):
             check_relations("any_catalog", "any_collection", "any_field name")
         mock_missing.assert_called()
-        self.assertEqual(mock_missing.call_count, 2)
+        self.assertEqual(mock_missing.call_count, 3)
