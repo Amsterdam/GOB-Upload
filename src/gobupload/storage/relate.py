@@ -723,8 +723,7 @@ FROM (
             {src_identification},
             src_matchcolumn,
             {dst_identification},
-            jsonb_set(src_matchcolumn, '{{id}}', COALESCE(to_jsonb(dst__id::TEXT), 'null'::JSONB))
-                {src_field_name}_{updated}
+            jsonb_set({jsonb_set_arg}, '{{id}}', COALESCE(to_jsonb(dst__id::TEXT), 'null'::JSONB)) {src_field_name}_{updated}
         FROM (
 SELECT
     CASE
