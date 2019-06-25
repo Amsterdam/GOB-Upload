@@ -158,15 +158,15 @@ def relate_relation(msg):
 
     if not _relation_needs_update(catalog_name, collection_name, reference_name, reference):
         logger.info(f"Relation {reference_name} is up-to-date")
-        return {
-            "header": msg["header"],
-            "summary": {
-                "errors": logger.get_errors(),
-                "warnings": logger.get_warnings(),
-                "up-to-date": True
-            },
-            "contents": None
-        }
+        # return {
+        #     "header": msg["header"],
+        #     "summary": {
+        #         "errors": logger.get_errors(),
+        #         "warnings": logger.get_warnings(),
+        #         "up-to-date": True
+        #     },
+        #     "contents": None
+        # }
 
     relations = []
     src_has_states = False

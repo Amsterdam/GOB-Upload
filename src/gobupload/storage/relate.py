@@ -585,3 +585,160 @@ ORDER BY
     #     'dst_match_code': 'BC27'
     # }
     return _get_data(query), src_has_states, dst_has_states
+
+
+def update_relations(src_catalog_name, src_collection_name, src_field_name):
+    """
+    Compose a database query to get all relation data for the given catalog, collection and field
+    :param src_catalog_name:
+    :param src_collection_name:
+    :param src_field_name:
+    :return: a list of relation objects
+    """
+
+    # Get the source catalog, collection and field for the given names
+    model = GOBModel()
+    src_collection = model.get_collection(src_catalog_name, src_collection_name)
+    src_field = src_collection['all_fields'].get(src_field_name)
+    src_table_name = model.get_table_name(src_catalog_name, src_collection_name)
+
+    # Get the relations for the given catalog, collection and field names
+    sources = GOBSources()
+    relation_specs = sources.get_field_relations(src_catalog_name, src_collection_name, src_field_name)
+    if not relation_specs:
+        raise RelateException("Missing relation specification for " +
+                              f"{src_catalog_name} {src_collection_name} {src_field_name} " +
+                              "(sources.get_field_relations)")
+
+    # Get the destination catalog and collection names
+    dst_catalog_name, dst_collection_name = src_field['ref'].split(':')
+    dst_table_name = model.get_table_name(dst_catalog_name, dst_collection_name)
+
+    # Check if source or destination has states (volgnummer, begin_geldigheid, eind_geldigheid)
+    src_has_states = model.has_states(src_catalog_name, src_collection_name)
+    dst_has_states = model.has_states(dst_catalog_name, dst_collection_name)
+
+    # And get the source and destination fields to select
+    src_fields = _get_fields(src_has_states)
+    dst_fields = _get_fields(dst_has_states)
+
+    # Get the fields that are required to match upon (multiple may exist, one per application)
+    # Use dict.fromkeys to preserve field order
+    src_match_fields = list(dict.fromkeys([spec['source_attribute'] for spec in relation_specs
+                                           if spec.get('source_attribute') is not None]))
+    dst_match_fields = list(dict.fromkeys([spec['destination_attribute'] for spec in relation_specs]))
+
+    matches = [f"WHEN src._application = '{spec['source']}' THEN dst.{spec['destination_attribute']}"
+               for spec in relation_specs]
+    methods = [f"WHEN src._application = '{spec['source']}' THEN '{spec['method']}'"
+               for spec in relation_specs]
+
+    # Define the join of source and destination, src:bronwaarde = dst:field:value
+    join_on = ([f"(src.{FIELD.APPLICATION} = '{spec['source']}' AND " +
+                f"{_resolve_match(spec, src_field, JOIN)})" for spec in relation_specs])
+
+    # Only get relations when bronwaarde is filled
+    has_bronwaarde = ([f"(src.{FIELD.APPLICATION} = '{spec['source']}' AND " +
+                       f"{_resolve_match(spec, src_field, WHERE)})" for spec in relation_specs])
+
+    # Build a properly formatted select statement
+    space_join = ' \n    '
+    comma_join = ',\n    '
+    and_join = ' AND\n    '
+    or_join = ' OR\n    '
+
+    # If more matches have been defined that catch any of the matches
+    if len(join_on) > 1:
+        join_on = [f"({or_join.join(join_on)})"]
+
+    # If both collections have states then join with corresponding geldigheid intervals
+    if src_has_states and dst_has_states:
+        join_on.extend([
+            f"(dst.{FIELD.START_VALIDITY} <= src.{FIELD.END_VALIDITY} OR src.{FIELD.END_VALIDITY} IS NULL)",
+            f"(dst.{FIELD.END_VALIDITY} >= src.{FIELD.START_VALIDITY} OR dst.{FIELD.END_VALIDITY} IS NULL)"
+        ])
+
+    # Main order is on src id
+    order_by = [f"src.{FIELD.SOURCE}", f"src.{FIELD.ID}"]
+    if src_has_states:
+        # then on source volgnummer and begin geldigheid
+        order_by.extend([f"src.{FIELD.SEQNR}::int", f"src.{FIELD.START_VALIDITY}"])
+    if dst_has_states:
+        # then on destination begin and eind geldigheid
+        order_by.extend([f"dst.{FIELD.START_VALIDITY}", f"dst.{FIELD.END_VALIDITY}"])
+
+    select_from = _get_select_from(dst_fields, dst_match_fields, src_fields, src_match_fields)
+    select_from_join = _get_select_from_join(dst_fields, dst_match_fields)
+
+    not_deleted = f"(src.{FIELD.DATE_DELETED} IS NULL AND dst.{FIELD.DATE_DELETED} IS NULL)"
+
+    is_many = src_field['type'] == "GOB.ManyReference"
+
+    src_identification = "src__id, src_volgnummer" if src_has_states else "src__id"
+    dst_identification = "dst__id, max(dst_volgnummer) dst_volgnummer" if dst_has_states else "dst__id"
+
+    select_many = f"""
+    SELECT
+        {src_identification},
+        array_to_json(array_agg({src_field_name}_updated_elm)) {src_field_name}_updated
+    FROM (
+""" if is_many else ""
+
+    group_many = f"""
+    ) last_dsts
+    GROUP BY {src_identification}
+""" if is_many else ""
+
+    join_many = f"""
+JOIN jsonb_array_elements(src.{src_field_name}) AS json_arr_elm ON TRUE
+""" if is_many else ""
+
+    updated = "updated_elm" if is_many else "updated"
+    src_value = "json_arr_elm" if is_many else f"src.{src_field_name}"
+
+    query = f"""
+--UPDATE
+--    {src_table_name} src
+--SET
+--    {src_field_name} = new_vals.{src_field_name}_updated
+SELECT
+    new_vals.{src_field_name}_updated
+FROM (
+    {select_many}
+        SELECT
+            {src_identification},
+            src_matchcolumn,
+            {dst_identification},
+            jsonb_set(src_matchcolumn, '{{id}}', to_jsonb(dst__id::TEXT)) {src_field_name}_{updated}
+        FROM (
+--
+SELECT
+    CASE
+    {space_join.join(methods)} END AS method,
+    CASE
+    {space_join.join(matches)} END AS match,
+    {src_value} AS src_matchcolumn,
+    {comma_join.join(select_from)}
+FROM {src_table_name} AS src
+{join_many}
+LEFT OUTER JOIN (
+SELECT
+    {comma_join.join(select_from_join)}
+FROM {dst_table_name}) AS dst
+ON
+    {and_join.join(join_on)}
+WHERE
+    {or_join.join(has_bronwaarde)} AND
+    {not_deleted}
+ORDER BY
+    {', '.join(order_by)}
+--
+) relations
+GROUP BY {src_identification}, src_matchcolumn, dst__id
+{group_many}
+) new_vals
+--WHERE
+--    new_vals.src__id = src._id {'AND new_vals.src_volgnummer = src.volgnummer' if src_has_states else ''};
+"""
+    print("Query", query)
+    return [], src_has_states, dst_has_states
