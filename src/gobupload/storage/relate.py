@@ -708,6 +708,10 @@ JOIN jsonb_array_elements(src.{src_field_name}) AS {json_join_alias} ON TRUE
     updated = "updated_elm" if is_many else "updated"
     src_value = "json_arr_elm" if is_many else f"src.{src_field_name}"
 
+    jsonb_set_arg = f"""
+jsonb_set(src_matchcolumn, '{{volgnummer}}', COALESCE(to_jsonb(max(dst_volgnummer)), 'null'::JSONB))
+""" if dst_has_states else 'src_matchcolumn'
+
     query = f"""
 UPDATE
     {src_table_name} src
