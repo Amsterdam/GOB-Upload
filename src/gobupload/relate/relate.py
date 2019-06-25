@@ -35,8 +35,7 @@ import operator
 from gobcore.model.metadata import FIELD
 from gobcore.logging.logger import logger
 
-from gobupload.storage.relate import DST_MATCH_PREFIX, update_relations, date_to_datetime
-# from gobupload.storage.relate import get_relations
+from gobupload.storage.relate import DST_MATCH_PREFIX, get_relations, update_relations, date_to_datetime
 
 
 # Relations can have missing begin and end dates.
@@ -286,11 +285,22 @@ def relate(catalog_name, collection_name, field_name):
     :param field_name:
     :return: the relations for the given catalog, collection and field
     """
-    relations, src_has_states, dst_has_states = update_relations(catalog_name, collection_name, field_name)
-    # relations, src_has_states, dst_has_states = get_relations(catalog_name, collection_name, field_name)
+    relations, src_has_states, dst_has_states = get_relations(catalog_name, collection_name, field_name)
 
     results = _handle_relations(relations)
     if not results:
         logger.warning("Warning: No relations found")
 
     return results, src_has_states, dst_has_states
+
+
+def relate_update(catalog_name, collection_name, field_name):
+    """
+    Update all relations for the given catalog, collection and field
+
+    :param catalog_name:
+    :param collection_name:
+    :param field_name:
+    :return: the relations for the given catalog, collection and field
+    """
+    update_relations(catalog_name, collection_name, field_name)
