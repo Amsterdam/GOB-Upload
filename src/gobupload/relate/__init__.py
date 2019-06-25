@@ -15,8 +15,8 @@ from gobcore.model.relations import get_relation_name
 
 from gobupload.storage.relate import get_last_change, check_relations
 
-from gobupload.relate.relate import relate as get_relations
-from gobupload.relate.publish import publish_relations, publish_result
+from gobupload.relate.relate import relate_update
+from gobupload.relate.publish import publish_result
 from gobupload.relate.exceptions import RelateException
 
 
@@ -156,35 +156,30 @@ def relate_relation(msg):
             "contents": None
         }
 
-    if not _relation_needs_update(catalog_name, collection_name, reference_name, reference):
+    if True or _relation_needs_update(catalog_name, collection_name, reference_name, reference):
+        try:
+            relate_update(
+                catalog_name,
+                collection_name,
+                reference_name
+            )
+        except RelateException as e:
+            logger.error(f"Relate {catalog_name} - {collection_name}:{reference_name} FAILED: {str(e)}")
+            print(f"Relate Error: {str(e)}")
+        else:
+            logger.info(f"Relate {display_name} completed")
+    else:
         logger.info(f"Relation {reference_name} is up-to-date")
-        # return {
-        #     "header": msg["header"],
-        #     "summary": {
-        #         "errors": logger.get_errors(),
-        #         "warnings": logger.get_warnings(),
-        #         "up-to-date": True
-        #     },
-        #     "contents": None
-        # }
 
-    relations = []
-    src_has_states = False
-    dst_has_states = False
-    try:
-        relations, src_has_states, dst_has_states = get_relations(
-            catalog_name,
-            collection_name,
-            reference_name
-        )
-    except RelateException as e:
-        logger.error(f"Relate {catalog_name} - {collection_name}:{reference_name} FAILED: {str(e)}")
-        print(f"Relate Error: {str(e)}")
-
-    logger.info(f"Relate {display_name} completed")
-
-    # Publish results
-    return publish_relations(msg, relations, src_has_states, dst_has_states)
+    return {
+        "header": msg["header"],
+        "summary": {
+            "errors": logger.get_errors(),
+            "warnings": logger.get_warnings(),
+            "up-to-date": True
+        },
+        "contents": None
+    }
 
 
 def build_relations(msg):

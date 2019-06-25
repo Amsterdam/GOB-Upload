@@ -686,7 +686,6 @@ def update_relations(src_catalog_name, src_collection_name, src_field_name):
 
     not_deleted = f"(src.{FIELD.DATE_DELETED} IS NULL AND dst.{FIELD.DATE_DELETED} IS NULL)"
 
-
     src_identification = "src__id, src_volgnummer" if src_has_states else "src__id"
     dst_identification = "dst__id, max(dst_volgnummer) dst_volgnummer" if dst_has_states else "dst__id"
 
@@ -710,21 +709,19 @@ JOIN jsonb_array_elements(src.{src_field_name}) AS {json_join_alias} ON TRUE
     src_value = "json_arr_elm" if is_many else f"src.{src_field_name}"
 
     query = f"""
---UPDATE
---    {src_table_name} src
---SET
---    {src_field_name} = new_vals.{src_field_name}_updated
-SELECT
-    new_vals.{src_field_name}_updated
+UPDATE
+    {src_table_name} src
+SET
+    {src_field_name} = new_vals.{src_field_name}_updated
 FROM (
     {select_many}
         SELECT
             {src_identification},
             src_matchcolumn,
             {dst_identification},
-            jsonb_set(src_matchcolumn, '{{id}}', COALESCE(to_jsonb(dst__id::TEXT), 'null'::JSONB)) {src_field_name}_{updated}
+            jsonb_set(src_matchcolumn, '{{id}}', COALESCE(to_jsonb(dst__id::TEXT), 'null'::JSONB))
+                {src_field_name}_{updated}
         FROM (
---
 SELECT
     CASE
     {space_join.join(methods)} END AS method,
@@ -745,13 +742,11 @@ WHERE
     {not_deleted}
 ORDER BY
     {', '.join(order_by)}
---
 ) relations
 GROUP BY {src_identification}, src_matchcolumn, dst__id
 {group_many}
 ) new_vals
---WHERE
---    new_vals.src__id = src._id {'AND new_vals.src_volgnummer = src.volgnummer' if src_has_states else ''};
+WHERE
+    new_vals.src__id = src._id {'AND new_vals.src_volgnummer = src.volgnummer' if src_has_states else ''};
 """
-    print("Query", query)
-    return [], src_has_states, dst_has_states
+    _execute(query)
