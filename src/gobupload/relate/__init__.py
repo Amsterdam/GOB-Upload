@@ -7,6 +7,7 @@ Triggers application of the newly found relations on the current entities
 Publishes the relation as import messages
 """
 import datetime
+import time
 
 from gobcore.model import GOBModel
 from gobcore.sources import GOBSources
@@ -233,7 +234,26 @@ def build_relations(msg):
         collection = model.get_collection(catalog_name, collection_name)
         assert collection is not None, f"Invalid collection name '{collection_name}'"
 
+        logger.info(f"** Relate {collection_name}")
+
         references = model._extract_references(collection['attributes'])
-        relates += _process_references(msg, catalog_name, collection_name, references)
+        for reference_name, reference in references.items():
+            start = time.time()
+            logger.info(f"{reference_name}")
+            if _relation_needs_update(catalog_name, collection_name, reference_name, reference):
+                try:
+                    count = relate_update(
+                        catalog_name,
+                        collection_name,
+                        reference_name
+                    )
+                except RelateException as e:
+                    logger.error(f"{reference_name} FAILED: {str(e)}")
+                    print(f"Relate Error: {str(e)}")
+                else:
+                    duration = round(time.time() - start, 2)
+                    logger.info(f"{reference_name} completed ({duration} secs, {count} rows updated) ")
+            else:
+                logger.info(f"{reference_name} is up-to-date")
 
     return publish_result(msg, relates)
