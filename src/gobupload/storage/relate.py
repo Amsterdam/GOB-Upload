@@ -587,6 +587,16 @@ ORDER BY
     return _get_data(query), src_has_states, dst_has_states
 
 
+def _update_match(spec, field, query_type):
+    if spec['method'] == EQUALS:
+        if query_type == JOIN:
+            return f"dst.{spec['destination_attribute']} = {field} ->> 'bronwaarde'"
+        else:
+            return f"{field} IS NOT NULL AND {field} ->> 'bronwaarde' IS NOT NULL"
+    else:
+        return _geo_resolve(spec, query_type)
+
+
 def update_relations(src_catalog_name, src_collection_name, src_field_name):
     """
     Compose a database query to get all relation data for the given catalog, collection and field
@@ -639,11 +649,11 @@ def update_relations(src_catalog_name, src_collection_name, src_field_name):
 
     join_relation = json_join_alias if is_many else f"src.{src_field_name}"
     join_on = ([f"(src.{FIELD.APPLICATION} = '{spec['source']}' AND " +
-                f"dst.{spec['destination_attribute']} = {join_relation}->>'bronwaarde')" for spec in relation_specs])
+                f"{_update_match(spec, join_relation, JOIN)})" for spec in relation_specs])
 
     # Only get relations when bronwaarde is filled
     has_bronwaarde = ([f"(src.{FIELD.APPLICATION} = '{spec['source']}' AND " +
-                       f"{join_relation}->>'bronwaarde' IS NOT NULL)" for spec in relation_specs])
+                       f"{_update_match(spec, join_relation, WHERE)})" for spec in relation_specs])
 
     # Build a properly formatted select statement
     space_join = ' \n    '
