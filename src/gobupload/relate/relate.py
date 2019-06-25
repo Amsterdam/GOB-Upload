@@ -303,4 +303,4 @@ def relate_update(catalog_name, collection_name, field_name):
     :param field_name:
     :return: the relations for the given catalog, collection and field
     """
-    update_relations(catalog_name, collection_name, field_name)
+    return update_relations(catalog_name, collection_name, field_name)

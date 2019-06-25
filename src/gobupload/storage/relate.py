@@ -753,4 +753,5 @@ GROUP BY {src_identification}, src_matchcolumn, dst__id
 WHERE
     new_vals.src__id = src._id {'AND new_vals.src_volgnummer = src.volgnummer' if src_has_states else ''};
 """
-    _execute(query)
+    result = _execute(query)
+    return result.rowcount
