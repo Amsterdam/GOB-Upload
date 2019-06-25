@@ -30,12 +30,14 @@ The result is organized as list of:
 }
 """
 import datetime
+import time
 import operator
 
 from gobcore.model.metadata import FIELD
 from gobcore.logging.logger import logger
 
 from gobupload.storage.relate import DST_MATCH_PREFIX, get_relations, update_relations, date_to_datetime
+from gobupload.relate.exceptions import RelateException
 
 
 # Relations can have missing begin and end dates.
@@ -294,7 +296,7 @@ def relate(catalog_name, collection_name, field_name):
     return results, src_has_states, dst_has_states
 
 
-def relate_update(catalog_name, collection_name, field_name):
+def relate_update(catalog_name, collection_name, reference_name):
     """
     Update all relations for the given catalog, collection and field
 
@@ -303,4 +305,12 @@ def relate_update(catalog_name, collection_name, field_name):
     :param field_name:
     :return: the relations for the given catalog, collection and field
     """
-    return update_relations(catalog_name, collection_name, field_name)
+    start = time.time()
+    try:
+        count = update_relations(catalog_name, collection_name, reference_name)
+    except RelateException as e:
+        logger.error(f"{reference_name} FAILED: {str(e)}")
+        print(f"Relate Error: {str(e)}")
+    else:
+        duration = round(time.time() - start, 2)
+        logger.info(f"{reference_name} completed ({duration} secs, {count} rows updated) ")
