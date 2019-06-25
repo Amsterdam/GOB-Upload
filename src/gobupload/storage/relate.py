@@ -635,11 +635,11 @@ def update_relations(src_catalog_name, src_collection_name, src_field_name):
 
     # Define the join of source and destination, src:bronwaarde = dst:field:value
     join_on = ([f"(src.{FIELD.APPLICATION} = '{spec['source']}' AND " +
-                f"{_resolve_match(spec, src_field, JOIN)})" for spec in relation_specs])
+                f"dst.{spec['destination_attribute']} = json_arr_elm->>'bronwaarde')" for spec in relation_specs])
 
     # Only get relations when bronwaarde is filled
     has_bronwaarde = ([f"(src.{FIELD.APPLICATION} = '{spec['source']}' AND " +
-                       f"{_resolve_match(spec, src_field, WHERE)})" for spec in relation_specs])
+                       f"json_arr_elm->>'bronwaarde' IS NOT NULL)" for spec in relation_specs])
 
     # Build a properly formatted select statement
     space_join = ' \n    '
