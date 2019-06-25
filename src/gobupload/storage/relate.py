@@ -634,12 +634,16 @@ def update_relations(src_catalog_name, src_collection_name, src_field_name):
                for spec in relation_specs]
 
     # Define the join of source and destination, src:bronwaarde = dst:field:value
+    is_many = src_field['type'] == "GOB.ManyReference"
+    json_join_alias = 'json_arr_elm'
+
+    join_relation = json_join_alias if is_many else f"src.{src_field_name}"
     join_on = ([f"(src.{FIELD.APPLICATION} = '{spec['source']}' AND " +
-                f"dst.{spec['destination_attribute']} = json_arr_elm->>'bronwaarde')" for spec in relation_specs])
+                f"dst.{spec['destination_attribute']} = {join_relation}->>'bronwaarde')" for spec in relation_specs])
 
     # Only get relations when bronwaarde is filled
     has_bronwaarde = ([f"(src.{FIELD.APPLICATION} = '{spec['source']}' AND " +
-                       f"json_arr_elm->>'bronwaarde' IS NOT NULL)" for spec in relation_specs])
+                       f"{join_relation}->>'bronwaarde' IS NOT NULL)" for spec in relation_specs])
 
     # Build a properly formatted select statement
     space_join = ' \n    '
@@ -672,7 +676,6 @@ def update_relations(src_catalog_name, src_collection_name, src_field_name):
 
     not_deleted = f"(src.{FIELD.DATE_DELETED} IS NULL AND dst.{FIELD.DATE_DELETED} IS NULL)"
 
-    is_many = src_field['type'] == "GOB.ManyReference"
 
     src_identification = "src__id, src_volgnummer" if src_has_states else "src__id"
     dst_identification = "dst__id, max(dst_volgnummer) dst_volgnummer" if dst_has_states else "dst__id"
@@ -690,7 +693,7 @@ def update_relations(src_catalog_name, src_collection_name, src_field_name):
 """ if is_many else ""
 
     join_many = f"""
-JOIN jsonb_array_elements(src.{src_field_name}) AS json_arr_elm ON TRUE
+JOIN jsonb_array_elements(src.{src_field_name}) AS {json_join_alias} ON TRUE
 """ if is_many else ""
 
     updated = "updated_elm" if is_many else "updated"
