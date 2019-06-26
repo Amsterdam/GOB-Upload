@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 from gobcore.model import GOBModel
 from gobcore.sources import GOBSources
 
-from gobupload.relate.relate import relate, _handle_relations
+from gobupload.relate.relate import relate, _handle_relations, relate_update
 from gobupload.storage.relate import get_relations, _get_data, _convert_row
 
 @patch('gobupload.relate.relate.logger', MagicMock())
@@ -1160,3 +1160,9 @@ class TestRelateDateTime(TestCase):
         }
         result = _convert_row(row)
         self.assertEqual(result, expect)
+
+    @patch("gobupload.relate.relate.update_relations")
+    def test_relate_update(self, mock_update_relations):
+        mock_update_relations.return_value = "anything"
+        relate_update("any catalog", "any collection", "any reference")
+        mock_update_relations.assert_called()
