@@ -367,14 +367,21 @@ ORDER BY
         mock_logger.warning.assert_called()
 
     # @patch('gobupload.storage.relate.GOBModel')
-    @patch('gobupload.storage.relate.get_relation_name')
     @patch('gobupload.storage.relate._query_missing')
-    def test_check_relations(self, mock_missing, mock_rel):
+    def test_check_relations(self, mock_missing):
+        mock_collection = {
+            'all_fields': {
+                'any_field_name': {
+                    'type': "any type"
+                }
+            }
+        }
         with patch.object(GOBModel, 'get_table_name', lambda s, a, b: a + b), \
+             patch.object(GOBModel, 'get_collection', lambda s, a, b: mock_collection), \
              patch.object(GOBModel, 'has_states', lambda s, a, b: True):
-            check_relations("any_catalog", "any_collection", "any_field name")
+            check_relations("any_catalog", "any_collection", "any_field_name")
         mock_missing.assert_called()
-        self.assertEqual(mock_missing.call_count, 3)
+        self.assertEqual(mock_missing.call_count, 2)
 
     def test_update_match(self):
         spec = {

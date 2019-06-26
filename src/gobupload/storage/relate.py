@@ -10,7 +10,6 @@ from gobupload.storage.handler import GOBStorageHandler
 from gobcore.logging.logger import logger
 from gobcore.model import GOBModel
 from gobcore.model.metadata import FIELD
-from gobcore.model.relations import get_relation_name
 from gobcore.sources import GOBSources
 
 from gobupload.relate.exceptions import RelateException
@@ -355,23 +354,26 @@ def _query_missing(query, items_name, max_warnings=50):
     :param items_name: name of the missing attribute
     :return: None
     """
-    count = {
-        'current': 0,
-        'historic': 0
-    }
+    count = 0
+    historic_count = 0
     for data in _get_data(query):
-        period = 'current' if data.get('eind_geldigheid') is None else 'historic'
-        if count[period] < max_warnings:
-            msg = f"{period} {items_name}"
-            logger.warning(msg, {
-                'id': msg,
-                'data': {k: v for k, v in data.items() if v is not None}
-            })
-        count[period] += 1
-        if count[period] == max_warnings:
-            logger.warning(f"Too many (>{max_warnings}) {items_name}")
-        if count['current'] >= max_warnings and count['historic'] >= max_warnings:
-            break
+        if data.get('eind_geldigheid') is None:
+            # Report actual warnings
+            count += 1
+            if count <= max_warnings:
+                msg = items_name
+                logger.warning(msg, {
+                    'id': msg,
+                    'data': {k.replace('_', ' '): v for k, v in data.items() if v is not None}
+                })
+        else:
+            # Count historic warnings
+            historic_count += 1
+
+    if count > max_warnings:
+        logger.warning(f"{items_name}: {count} actual errors, reported first {max_warnings} only")
+    if historic_count > 0:
+        logger.info(f"{items_name}: {historic_count} historical errors")
 
 
 def check_relations(src_catalog_name, src_collection_name, src_field_name):
@@ -388,80 +390,65 @@ def check_relations(src_catalog_name, src_collection_name, src_field_name):
     """
     # Get the source catalog, collection and field for the given names
     model = GOBModel()
-
+    src_collection = model.get_collection(src_catalog_name, src_collection_name)
     src_table_name = model.get_table_name(src_catalog_name, src_collection_name)
-    rel_name = get_relation_name(model, src_catalog_name, src_collection_name, src_field_name)
-    rel_table_name = f"rel_{rel_name}"
-
+    src_field = src_collection['all_fields'].get(src_field_name)
     src_has_states = model.has_states(src_catalog_name, src_collection_name)
+    is_many = src_field['type'] == "GOB.ManyReference"
 
-    select = ["_id"]
-    where = [f"src_id = {src_table_name}._id"]
+    main_select = ["_id as id", f"{src_field_name} ->> 'bronwaarde' as bronwaarde"]
+    select = ["_id", f"{src_field_name} ->> 'bronwaarde'"]
     if src_has_states:
-        select.extend(["volgnummer", "begin_geldigheid", "eind_geldigheid"])
-        where.extend([f"src_volgnummer = {src_table_name}.volgnummer"])
+        state_select = ["volgnummer", "begin_geldigheid", "eind_geldigheid"]
+        select.extend(state_select)
+        main_select.extend(state_select)
     select = ",\n    ".join(select)
-    where = " AND\n            ".join(where)
+    main_select = ",\n    ".join(main_select)
 
-    # select all relations that do not have an entry in the relations table
-    #
-    # ->> 'bronwaarde' IS NOT NULL
-    # is True for all json fields that have a non NULL value for bronwaarde
-    #
-    srcs_without_relations = f"""
+    name = f"{src_collection_name} {src_field_name}"
+
+    src = f"""
+(
 SELECT
-    {select}
+    {select},
+    _date_deleted,
+    jsonb_array_elements({src_field_name}) as {src_field_name}
 FROM
     {src_table_name}
-WHERE
-    _date_deleted IS NULL AND
-    {src_field_name} ->> 'bronwaarde' IS NOT NULL AND
-    NOT EXISTS (
-        SELECT
-            1
-        FROM
-            {rel_table_name}
-        WHERE
-            _date_deleted IS NULL AND
-            {where}
-    )
-"""
-    _query_missing(srcs_without_relations, f"missing relations")
-
-    # Select all relations that do not point to a destination
-    relations_without_dst = f"""
-SELECT
-    src_id,
-    src_volgnummer,
-    begin_geldigheid,
-    eind_geldigheid
-FROM
-    {rel_table_name}
-WHERE
-    _date_deleted IS NULL AND
-    dst_id IS NULL
-"""
-    _query_missing(relations_without_dst, "dangling relations")
+) AS src
+""" if is_many else src_table_name
 
     # Select all relations without bronwaarde
     #
     # ->> 'bronwaarde' IS NULL
     # is True for all json fields (including empty ones) that have no bronwaarde, or a null value for bronwaarde
     #
-    select = ["_id"]
-    if src_has_states:
-        select.extend(["volgnummer", "begin_geldigheid", "eind_geldigheid"])
-    select = ",\n    ".join(select)
     bronwaarden = f"""
 SELECT
-    {select}
+    {main_select}
 FROM
-    {src_table_name}
+    {src}
 WHERE
     _date_deleted IS NULL AND
     {src_field_name} ->> 'bronwaarde' IS NULL
+GROUP BY
+    {select}
 """
-    _query_missing(bronwaarden, "missing bronwaarden")
+    _query_missing(bronwaarden, f"{name} missing bronwaarden")
+
+    dangling = f"""
+SELECT
+    {main_select}
+FROM
+    {src}
+WHERE
+    _date_deleted IS NULL AND
+    {src_field_name} ->> 'bronwaarde' IS NOT NULL AND
+    {src_field_name} ->> 'id' IS NULL
+GROUP BY
+    {select}
+"""
+    _query_missing(dangling, f"{name} dangling destinations")
 
 
 def get_relations(src_catalog_name, src_collection_name, src_field_name):

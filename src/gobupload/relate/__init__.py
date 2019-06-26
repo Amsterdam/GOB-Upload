@@ -89,18 +89,28 @@ def check_relation(msg):
     :param msg:
     :return:
     """
-    catalog_name = msg['header']['src_catalogue']
-    collection_name = msg['header']['src_entity']
-    reference_name = msg['header']['src_reference_name']
+    catalog_name = msg['header']['catalog']
+    collection_names = msg['header']['collections']
 
-    display_name = f"{catalog_name}:{collection_name} {reference_name}"
+    model = GOBModel()
+
+    if collection_names is None:
+        collection_names = model.get_collection_names(catalog_name)
+    else:
+        collection_names = collection_names.split(" ")
 
     logger.configure(msg, "RELATE")
-    logger.info(f"Relate check '{display_name}' started")
+    logger.info(f"Relate check started")
 
-    check_relations(catalog_name, collection_name, reference_name)
+    for collection_name in collection_names:
+        collection = model.get_collection(catalog_name, collection_name)
+        assert collection is not None, f"Invalid collection name '{collection_name}'"
 
-    logger.info(f"Relate check '{display_name}' completed")
+        references = model._extract_references(collection['attributes'])
+        for reference_name, reference in references.items():
+            check_relations(catalog_name, collection_name, reference_name)
+
+    logger.info(f"Relate check completed")
 
     return {
         "header": msg["header"],
@@ -196,7 +206,6 @@ def build_relations(msg):
     :param msg: a message from the broker containing the catalog and collections (optional)
     :return: None
     """
-
     catalog_name = msg.get('catalogue')
     collection_names = msg.get('collections')
 
@@ -220,14 +229,14 @@ def build_relations(msg):
         "version": "0.1",
         "source": "GOB",
         "application": application,
-        "catalogue": "rel"
+        "catalog": msg.get('catalogue'),
+        "collections": msg.get('collections')
     }
 
     timestamp = datetime.datetime.utcnow().isoformat()
     process_id = f"{timestamp}.{application}.{catalog_name}"
 
     msg["header"].update({
-        "entity": f"{catalog_name}",
         "timestamp": timestamp,
         "process_id": process_id
     })

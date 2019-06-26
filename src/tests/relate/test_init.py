@@ -35,14 +35,14 @@ class TestInit(TestCase):
         result = _process_references({}, "catalog", "collection", {})
         self.assertEqual(result, [])
 
+    @patch('gobupload.relate.GOBModel', MagicMock())
     @patch('gobupload.relate.logger', MagicMock())
     @patch('gobupload.relate.check_relations', MagicMock())
     def test_check_relation(self):
         msg = {
             'header': {
-                'src_catalogue': 'any_src_catalogue',
-                'src_entity': 'any_src_entity',
-                'src_reference_name': 'any_src_reference_name'
+                'catalog': 'any catalog',
+                'collections': 'any collections'
             }
         }
         result = check_relation(msg)
