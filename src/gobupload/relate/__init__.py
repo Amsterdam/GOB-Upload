@@ -13,9 +13,9 @@ from gobcore.sources import GOBSources
 from gobcore.logging.logger import logger
 from gobcore.model.relations import get_relation_name
 
-from gobupload.storage.relate import get_last_change
+from gobupload.storage.relate import get_last_change, check_relations
 
-from gobupload.relate.relate import relate as get_relations
+from gobupload.relate.relate import relate as get_relations, relate_update
 from gobupload.relate.publish import publish_relations, publish_result
 from gobupload.relate.exceptions import RelateException
 
@@ -72,29 +72,54 @@ def _process_references(msg, catalog_name, collection_name, references):
     :param references:
     :return:
     """
-    logger.info(f"Relate {catalog_name} {collection_name} started")
+    logger.info(f"Start relate {catalog_name} {collection_name}")
 
-    relates = []
-    for reference_name, reference in references.items():
-        if not _relation_needs_update(catalog_name, collection_name, reference_name, reference):
-            logger.info(f"Relation {reference_name} is up-to-date")
-            continue
+    return [{
+        'catalogue': catalog_name,
+        'entity': collection_name,
+        'reference_name': reference_name,
+        'reference': reference
+    } for reference_name, reference in references.items()]
 
-        sources = GOBSources()
-        relation_specs = sources.get_field_relations(catalog_name, collection_name, reference_name)
-        if not relation_specs:
-            logger.warning(f"Relation {reference_name} is not defined")
-            continue
 
-        logger.info(f"Relation {reference_name} needs update")
-        relates.append({
-            'catalogue': catalog_name,
-            'entity': collection_name,
-            'reference': reference_name
-        })
+def check_relation(msg):
+    """
+    Check for any dangling relations
 
-    logger.info(f"Relate {catalog_name} {collection_name} completed")
-    return relates
+    :param msg:
+    :return:
+    """
+    catalog_name = msg['header']['catalog']
+    collection_names = msg['header']['collections']
+
+    model = GOBModel()
+
+    if collection_names is None:
+        collection_names = model.get_collection_names(catalog_name)
+    else:
+        collection_names = collection_names.split(" ")
+
+    logger.configure(msg, "RELATE")
+    logger.info(f"Relate check started")
+
+    for collection_name in collection_names:
+        collection = model.get_collection(catalog_name, collection_name)
+        assert collection is not None, f"Invalid collection name '{collection_name}'"
+
+        references = model._extract_references(collection['attributes'])
+        for reference_name, reference in references.items():
+            check_relations(catalog_name, collection_name, reference_name)
+
+    logger.info(f"Relate check completed")
+
+    return {
+        "header": msg["header"],
+        "summary": {
+            'warnings': logger.get_warnings(),
+            'errors': logger.get_errors()
+        },
+        "contents": None
+    }
 
 
 def relate_relation(msg):
@@ -106,7 +131,8 @@ def relate_relation(msg):
     """
     catalog_name = msg['contents']['catalogue']
     collection_name = msg['contents']['entity']
-    reference_name = msg['contents']['reference']
+    reference_name = msg['contents']['reference_name']
+    reference = msg['contents']['reference']
 
     model = GOBModel()
     relation_name = get_relation_name(model, catalog_name, collection_name, reference_name)
@@ -117,12 +143,40 @@ def relate_relation(msg):
     display_name = f"{catalog_name}:{collection_name} {reference_name}"
 
     msg["header"].update({
+        "src_catalogue": catalog_name,
+        "src_entity": collection_name,
+        "src_reference_name": reference_name,
         "entity": relation_name if relation_name else display_name,
         "process_id": process_id
     })
 
     logger.configure(msg, "RELATE")
     logger.info(f"Relate '{display_name}' started")
+
+    sources = GOBSources()
+    relation_specs = sources.get_field_relations(catalog_name, collection_name, reference_name)
+    if not relation_specs:
+        logger.error(f"Relation {reference_name} is not defined")
+        return {
+            "header": msg["header"],
+            "summary": {
+                "errors": logger.get_errors(),
+                "warnings": logger.get_warnings()
+            },
+            "contents": None
+        }
+
+    if not _relation_needs_update(catalog_name, collection_name, reference_name, reference):
+        logger.info(f"Relation {reference_name} is up-to-date")
+        return {
+            "header": msg["header"],
+            "summary": {
+                "errors": logger.get_errors(),
+                "warnings": logger.get_warnings(),
+                "up-to-date": True
+            },
+            "contents": None
+        }
 
     relations = []
     src_has_states = False
@@ -152,7 +206,6 @@ def build_relations(msg):
     :param msg: a message from the broker containing the catalog and collections (optional)
     :return: None
     """
-
     catalog_name = msg.get('catalogue')
     collection_names = msg.get('collections')
 
@@ -176,25 +229,28 @@ def build_relations(msg):
         "version": "0.1",
         "source": "GOB",
         "application": application,
-        "catalogue": "rel"
+        "catalog": msg.get('catalogue'),
+        "collections": msg.get('collections')
     }
 
     timestamp = datetime.datetime.utcnow().isoformat()
     process_id = f"{timestamp}.{application}.{catalog_name}"
 
     msg["header"].update({
-        "entity": f"{catalog_name}",
         "timestamp": timestamp,
         "process_id": process_id
     })
     logger.configure(msg, "RELATE")
 
-    relates = []
     for collection_name in collection_names:
         collection = model.get_collection(catalog_name, collection_name)
         assert collection is not None, f"Invalid collection name '{collection_name}'"
 
-        references = model._extract_references(collection['attributes'])
-        relates += _process_references(msg, catalog_name, collection_name, references)
+        logger.info(f"** Relate {collection_name}")
 
-    return publish_result(msg, relates)
+        references = model._extract_references(collection['attributes'])
+        for reference_name, reference in references.items():
+            logger.info(f"{reference_name}")
+            relate_update(catalog_name, collection_name, reference_name)
+
+    return publish_result(msg, [])
