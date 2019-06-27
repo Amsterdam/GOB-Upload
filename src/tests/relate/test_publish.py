@@ -1,8 +1,6 @@
 from unittest import TestCase, mock
 from unittest.mock import MagicMock, patch
 
-from gobcore.message_broker.config import RESULT_QUEUE
-
 from gobupload.relate.publish import publish_relations, publish_result
 
 @patch('gobupload.relate.publish.logger', MagicMock())
