@@ -230,7 +230,8 @@ def build_relations(msg):
         "source": "GOB",
         "application": application,
         "catalog": msg.get('catalogue'),
-        "collections": msg.get('collections')
+        "collections": msg.get('collections'),
+        "entity": catalog_name
     }
 
     timestamp = datetime.datetime.utcnow().isoformat()
