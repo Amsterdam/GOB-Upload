@@ -313,4 +313,4 @@ def relate_update(catalog_name, collection_name, reference_name):
         print(f"Relate Error: {str(e)}")
     else:
         duration = round(time.time() - start, 2)
-        logger.info(f"{reference_name} completed ({duration} secs, {count} rows updated) ")
+        logger.info(f"{reference_name} completed ({duration} secs, {count:,} rows updated) ")
