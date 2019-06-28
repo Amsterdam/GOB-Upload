@@ -31,12 +31,12 @@ LIES_IN = "lies_in"   # geometric comparison, eg src.geometrie lies_in dst_geome
 
 
 def _execute_multiple(queries):
-    engine = GOBStorageHandler.get_engine()
+    handler = GOBStorageHandler()
 
-    result = None
-    with engine.connect() as connection:
+    with handler.get_session() as session:
+        # Commit all queries as a whole on exit with
         for query in queries:
-            result = connection.execute(query)
+            result = session.execute(query)
 
     return result   # Return result of last execution
 
@@ -656,7 +656,11 @@ def update_relations(src_catalog_name, src_collection_name, src_field_name):
     if src_has_states and dst_has_states:
         join_on.extend([
             f"(dst.{FIELD.START_VALIDITY} <= src.{FIELD.END_VALIDITY} OR src.{FIELD.END_VALIDITY} IS NULL)",
-            f"(dst.{FIELD.END_VALIDITY} >= src.{FIELD.START_VALIDITY} OR dst.{FIELD.END_VALIDITY} IS NULL)"
+            f"(dst.{FIELD.END_VALIDITY} >= src.{FIELD.END_VALIDITY} OR dst.{FIELD.END_VALIDITY} IS NULL)"
+        ])
+    elif dst_has_states:
+        join_on.extend([
+            f"dst.{FIELD.END_VALIDITY} IS NULL"
         ])
 
     # Main order is on src id
@@ -676,16 +680,18 @@ def update_relations(src_catalog_name, src_collection_name, src_field_name):
     src_identification = "src__id, src_volgnummer" if src_has_states else "src__id"
     dst_identification = "dst__id, max(dst_volgnummer) dst_volgnummer" if dst_has_states else "dst__id"
 
-    select_many = f"""
+    select_many_start = f"""
     SELECT
         {src_identification},
-        array_to_json(array_agg({src_field_name}_updated_elm)) {src_field_name}_updated
+        to_jsonb(array_to_json(array_agg(src_matchcolumn))) src_matchcolumn,
+        to_jsonb(array_to_json(array_agg({src_field_name}_updated_elm))) {src_field_name}_updated
     FROM (
 """ if is_many else ""
 
-    group_many = f"""
+    select_many_end = f"""
     ) last_dsts
-    GROUP BY {src_identification}
+    GROUP BY
+        {src_identification}
 """ if is_many else ""
 
     join_many = f"""
@@ -699,46 +705,79 @@ JOIN jsonb_array_elements(src.{src_field_name}) AS {json_join_alias} ON TRUE
 jsonb_set(src_matchcolumn, '{{volgnummer}}', COALESCE(to_jsonb(max(dst_volgnummer)), 'null'::JSONB))
 """ if dst_has_states else 'src_matchcolumn'
 
-    query = f"""
-UPDATE
-    {src_table_name} src
-SET
-    {src_field_name} = new_vals.{src_field_name}_updated
-FROM (
-    {select_many}
-        SELECT
+    new_values = f"""
+    SELECT * FROM (
+    {select_many_start}
+        SELECT --update specs
             {src_identification},
-            src_matchcolumn,
             {dst_identification},
+            src_matchcolumn,
             jsonb_set({jsonb_set_arg}, '{{id}}', COALESCE(to_jsonb(dst__id::TEXT), 'null'::JSONB))
                 {src_field_name}_{updated}
-        FROM (
-SELECT
-    CASE
-    {space_join.join(methods)} END AS method,
-    CASE
-    {space_join.join(matches)} END AS match,
-    {src_value} AS src_matchcolumn,
-    {comma_join.join(select_from)}
-FROM {src_table_name} AS src
-{join_many}
-LEFT OUTER JOIN (
-SELECT
-    {comma_join.join(select_from_join)}
-FROM {dst_table_name}) AS dst
-ON
-    {and_join.join(join_on)}
-WHERE
-    {or_join.join(has_bronwaarde)} AND
-    {not_deleted}
-ORDER BY
-    {', '.join(order_by)}
-) relations
-GROUP BY {src_identification}, src_matchcolumn, dst__id
-{group_many}
-) new_vals
-WHERE
-    new_vals.src__id = src._id {'AND new_vals.src_volgnummer = src.volgnummer' if src_has_states else ''};
+        FROM ( --relations
+            SELECT
+                CASE {space_join.join(methods)} END AS method,
+                CASE {space_join.join(matches)} END AS match,
+                {src_value} AS src_matchcolumn,
+                {comma_join.join(select_from)}
+            FROM
+                {src_table_name} AS src
+            {join_many}
+            LEFT OUTER JOIN (
+                SELECT
+                    {comma_join.join(select_from_join)}
+                FROM
+                    {dst_table_name}) AS dst
+                ON
+                    {and_join.join(join_on)}
+                WHERE
+                    {or_join.join(has_bronwaarde)} AND {not_deleted}
+                ORDER BY
+                    {', '.join(order_by)}
+        ) relations
+        GROUP BY
+            {src_identification},
+            src_matchcolumn,
+            dst__id
+    {select_many_end}
+    ) _outer
+    WHERE --only select relations that have changed
+        src_matchcolumn != {src_field_name}_updated
 """
-    result = _execute(query)
-    return result.rowcount
+
+    CHUNK_SIZE = 100000
+    chunk = 0
+    updates = 0
+    while True:
+        logger.info(f"{src_field_name}, load {(chunk * CHUNK_SIZE):,} - {((chunk + 1) * CHUNK_SIZE):,}")
+        query = f"""
+            UPDATE
+                {src_table_name} src
+            SET
+                {src_field_name} = new_values.{src_field_name}_updated
+            FROM (
+                --Select from all changed relations
+                {new_values}
+                --Get changed relations in chunks
+                ORDER BY
+                    src__id
+                LIMIT
+                    {CHUNK_SIZE}
+                OFFSET
+                    {chunk * CHUNK_SIZE} 
+            ) new_values
+            WHERE
+                new_values.src__id = src._id
+                {'AND new_values.src_volgnummer = src.volgnummer' if src_has_states else ''}
+            """
+        result = _execute(query)
+        updates += result.rowcount
+        chunk += 1
+        if result.rowcount < CHUNK_SIZE:
+            break
+
+    # if updates > 0:
+    #     print("NEW VALUES", new_values)
+    #     print("QUERY", query)
+
+    return updates

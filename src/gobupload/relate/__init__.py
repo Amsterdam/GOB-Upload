@@ -252,6 +252,9 @@ def build_relations(msg):
         references = model._extract_references(collection['attributes'])
         for reference_name, reference in references.items():
             logger.info(f"{reference_name}")
-            relate_update(catalog_name, collection_name, reference_name)
+            try:
+                relate_update(catalog_name, collection_name, reference_name)
+            except Exception:
+                logger.error(f"{reference_name} FAILED")
 
     return publish_result(msg, [])
