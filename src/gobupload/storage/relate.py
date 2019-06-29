@@ -771,13 +771,24 @@ jsonb_set(src_matchcolumn, '{{volgnummer}}', COALESCE(to_jsonb(max(dst_volgnumme
                 {'AND new_values.src_volgnummer = src.volgnummer' if src_has_states else ''}
             """
         result = _execute(query)
-        updates += result.rowcount
+        n_updates = result.rowcount
         chunk += 1
-        if result.rowcount < CHUNK_SIZE:
+        updates += n_updates
+        if n_updates < CHUNK_SIZE:
             break
 
-    # if updates > 0:
-    #     print("NEW VALUES", new_values)
-    #     print("QUERY", query)
+    logger.info(f"{src_field_name}, processed {n_updates} updates")
+
+    control_query = f"""
+        SELECT
+            count(distinct({src_identification})) AS count
+        FROM (
+            {new_values}
+        ) new_values
+    """
+    control_data = _get_data(control_query)
+    error_count = next(control_data)['count']
+    if error_count > 0:
+        logger.error(f"{src_field_name}, {error_count} inconsistencies found")
 
     return updates
