@@ -134,11 +134,11 @@ def _get_data(query):
     :param query:
     :return:
     """
-    storage = GOBStorageHandler()
-    engine = storage.engine
-    data = engine.execute(query)
-    for row in data:
-        yield _convert_row(row)
+    handler = GOBStorageHandler()
+    with handler.get_session() as session:
+        data = session.execute(query)
+        for row in data:
+            yield _convert_row(row)
 
 
 def _get_fields(has_states):
