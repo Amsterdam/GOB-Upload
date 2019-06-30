@@ -406,6 +406,7 @@ ORDER BY
         self.assertEqual(s, spec)
         self.assertEqual(q, "any query type")
 
+    @patch('gobupload.storage.relate.logger', MagicMock())
     @patch('gobupload.storage.relate._check_relate_update', MagicMock())
     @patch('gobupload.storage.relate._execute')
     def test_update_relations(self, mock_execute):
