@@ -1,9 +1,10 @@
 from unittest import TestCase, mock
 from unittest.mock import MagicMock, patch
 
-from gobupload.relate import build_relations, check_relation, _relation_needs_update, _process_references
+from gobupload.relate import build_relations, check_relation, _relation_needs_update, _process_references, _log_exception
 
-@patch('gobupload.relate.logger', MagicMock())
+mock_logger = MagicMock()
+@patch('gobupload.relate.logger', mock_logger)
 class TestInit(TestCase):
 
     def setUp(self):
@@ -51,3 +52,11 @@ class TestInit(TestCase):
             'summary': mock.ANY,
             'contents': None
         })
+
+    def test_log_exception(self):
+        mock_logger.error = MagicMock()
+        mock_logger.error.assert_not_called()
+        _log_exception("any msg", "any err")
+        mock_logger.error.assert_called_with("any msg: any err")
+        _log_exception("any msg", "any err", 5)
+        mock_logger.error.assert_called_with("any m...")
