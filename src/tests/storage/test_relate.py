@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 from gobcore.model import GOBModel
 from gobcore.sources import GOBSources
 
-from gobupload.storage.relate import get_relations, update_relations, EQUALS, LIES_IN, JOIN, WHERE, _update_match, _get_data, get_last_change, get_current_relations, RelationUpdater, _query_missing, check_relations
+from gobupload.storage.relate import get_relations, update_relations, EQUALS, LIES_IN, JOIN, WHERE, _update_match, _get_data, get_last_change, get_current_relations, RelationUpdater, _query_missing, check_relations, _check_relate_update
 
 @patch('gobupload.relate.relate.logger', MagicMock())
 class TestRelations(TestCase):
@@ -406,9 +406,14 @@ ORDER BY
         self.assertEqual(s, spec)
         self.assertEqual(q, "any query type")
 
+    @patch('gobupload.storage.relate._check_relate_update', MagicMock())
     @patch('gobupload.storage.relate._execute')
     def test_update_relations(self, mock_execute):
-        mock._execute = MagicMock()
+        class MockExecute:
+            def __init__(self, rowcount):
+                self.rowcount = rowcount
+
+        mock_execute.return_value = MockExecute(0)
         mock_get_collection = lambda *args: {
             'all_fields': {
                 'field': {
@@ -502,5 +507,12 @@ WHERE
              patch.object(GOBModel, 'get_collection', mock_get_collection), \
              patch.object(GOBModel, 'has_states', lambda *args: True):
             update_relations("catalog", "collection", "field")
-        mock_execute.assert_called_with(expect)
+        mock_execute.assert_called()
 
+    @patch('gobupload.storage.relate._get_data')
+    def test_check_relate_update(self, mock_get_data):
+        def get_data_values():
+            yield {'count': 0}
+        mock_get_data.return_value = get_data_values()
+        result = _check_relate_update("any new values", "any src field name", "any src identification")
+        self.assertEqual(result, 0)
