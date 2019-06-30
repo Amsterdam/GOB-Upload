@@ -111,7 +111,7 @@ def check_relation(msg):
             try:
                 check_relations(catalog_name, collection_name, reference_name)
             except Exception as e:
-                logger.error(f"{reference_name} FAILED: {str(e)}")
+                _log_exception(f"{reference_name} check FAILED", e)
 
     logger.info(f"Relate check completed")
 
@@ -191,8 +191,7 @@ def relate_relation(msg):
             reference_name
         )
     except RelateException as e:
-        logger.error(f"Relate {catalog_name} - {collection_name}:{reference_name} FAILED: {str(e)}")
-        print(f"Relate Error: {str(e)}")
+        _log_exception(f"Relate {catalog_name} - {collection_name}:{reference_name} FAILED", e)
 
     logger.info(f"Relate {display_name} completed")
 
@@ -258,6 +257,25 @@ def build_relations(msg):
             try:
                 relate_update(catalog_name, collection_name, reference_name)
             except Exception as e:
-                logger.error(f"{reference_name} FAILED: {str(e)}")
+                _log_exception(f"{reference_name} update FAILED", e)
 
     return publish_result(msg, [])
+
+
+def _log_exception(msg, err, MAX_MSG_LENGTH=120):
+    """
+    Log an exception.
+
+    Use a capped message for the logger
+    print the full message on stdout
+
+    :param msg: What went wrong
+    :param err: Exception
+    :return: None
+    """
+    err = str(err)
+    msg = f"{msg}: {err}"
+    # Log a capped message
+    logger.error(msg if len(msg) <= MAX_MSG_LENGTH else f"{msg[:MAX_MSG_LENGTH]}...")
+    # Print the full message
+    print(msg)
