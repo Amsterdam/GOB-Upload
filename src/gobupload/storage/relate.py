@@ -630,47 +630,24 @@ def update_relations(src_catalog_name, src_collection_name, src_field_name):
     methods = [f"WHEN src._application = '{spec['source']}' THEN '{spec['method']}'"
                for spec in relation_specs]
 
-    # Define the join of source and destination, src:bronwaarde = dst:field:value
-    is_many = src_field['type'] == "GOB.ManyReference"
-    json_join_alias = 'json_arr_elm'
-
-    join_relation = json_join_alias if is_many else f"src.{src_field_name}"
-    join_on = ([f"(src.{FIELD.APPLICATION} = '{spec['source']}' AND " +
-                f"{_update_match(spec, join_relation, JOIN)})" for spec in relation_specs])
-
-    # Only get relations when bronwaarde is filled
-    has_bronwaarde = ([f"(src.{FIELD.APPLICATION} = '{spec['source']}' AND " +
-                       f"{_update_match(spec, join_relation, WHERE)})" for spec in relation_specs])
-
     # Build a properly formatted select statement
     space_join = ' \n    '
     comma_join = ',\n    '
     and_join = ' AND\n    '
     or_join = ' OR\n    '
 
-    # If more matches have been defined that catch any of the matches
-    if len(join_on) > 1:
-        join_on = [f"({or_join.join(join_on)})"]
+    # Define the join of source and destination, src:bronwaarde = dst:field:value
+    is_many = src_field['type'] == "GOB.ManyReference"
+    json_join_alias = 'json_arr_elm'
 
-    # If both collections have states then join with corresponding geldigheid intervals
-    if src_has_states and dst_has_states:
-        join_on.extend([
-            f"(dst.{FIELD.START_VALIDITY} <= src.{FIELD.END_VALIDITY} OR src.{FIELD.END_VALIDITY} IS NULL)",
-            f"(dst.{FIELD.END_VALIDITY} >= src.{FIELD.END_VALIDITY} OR dst.{FIELD.END_VALIDITY} IS NULL)"
-        ])
-    elif dst_has_states:
-        join_on.extend([
-            f"dst.{FIELD.END_VALIDITY} IS NULL"
-        ])
+    join_relation = json_join_alias if is_many else f"src.{src_field_name}"
+    # Only get relations when bronwaarde is filled
+    has_bronwaarde = ([f"(src.{FIELD.APPLICATION} = '{spec['source']}' AND " +
+                       f"{_update_match(spec, join_relation, WHERE)})" for spec in relation_specs])
 
-    # Main order is on src id
-    order_by = [f"src.{FIELD.SOURCE}", f"src.{FIELD.ID}"]
-    if src_has_states:
-        # then on source volgnummer and begin geldigheid
-        order_by.extend([f"src.{FIELD.SEQNR}::int", f"src.{FIELD.START_VALIDITY}"])
-    if dst_has_states:
-        # then on destination begin and eind geldigheid
-        order_by.extend([f"dst.{FIELD.START_VALIDITY}", f"dst.{FIELD.END_VALIDITY}"])
+    join_on = _relate_update_join_on(src_has_states, dst_has_states, relation_specs, join_relation)
+
+    order_by = _relate_update_order_by(src_has_states, dst_has_states)
 
     select_from = _get_select_from(dst_fields, dst_match_fields, src_fields, src_match_fields)
     select_from_join = _get_select_from_join(dst_fields, dst_match_fields)
@@ -745,6 +722,57 @@ jsonb_set(src_matchcolumn, '{{volgnummer}}', COALESCE(to_jsonb(max(dst_volgnumme
         src_matchcolumn != {src_field_name}_updated
 """
 
+    updates = _do_relate_update(new_values, src_field_name, src_has_states, src_table_name)
+
+    _check_relate_update(new_values, src_field_name, src_identification)
+
+    return updates
+
+
+def _relate_update_order_by(src_has_states, dst_has_states):
+    # Main order is on src id
+    order_by = [f"src.{FIELD.SOURCE}", f"src.{FIELD.ID}"]
+    if src_has_states:
+        # then on source volgnummer and begin geldigheid
+        order_by.extend([f"src.{FIELD.SEQNR}::int", f"src.{FIELD.START_VALIDITY}"])
+    if dst_has_states:
+        # then on destination begin and eind geldigheid
+        order_by.extend([f"dst.{FIELD.START_VALIDITY}", f"dst.{FIELD.END_VALIDITY}"])
+    return order_by
+
+
+def _relate_update_join_on(src_has_states, dst_has_states, relation_specs, join_relation):
+    or_join = ' OR\n    '
+
+    join_on = ([f"(src.{FIELD.APPLICATION} = '{spec['source']}' AND " +
+                f"{_update_match(spec, join_relation, JOIN)})" for spec in relation_specs])
+    # If more matches have been defined that catch any of the matches
+    if len(join_on) > 1:
+        join_on = [f"({or_join.join(join_on)})"]
+    # If both collections have states then join with corresponding geldigheid intervals
+    if src_has_states and dst_has_states:
+        join_on.extend([
+            f"(dst.{FIELD.START_VALIDITY} <= src.{FIELD.END_VALIDITY} OR src.{FIELD.END_VALIDITY} IS NULL)",
+            f"(dst.{FIELD.END_VALIDITY} >= src.{FIELD.END_VALIDITY} OR dst.{FIELD.END_VALIDITY} IS NULL)"
+        ])
+    elif dst_has_states:
+        # If only destination has states, get the destination that is valid until forever
+        join_on.extend([
+            f"dst.{FIELD.END_VALIDITY} IS NULL"
+        ])
+    return join_on
+
+
+def _do_relate_update(new_values, src_field_name, src_has_states, src_table_name):
+    """
+    Update relations in chunks of 100,000 relations
+
+    :param new_values: query to get any new updates
+    :param src_field_name: name of the source field
+    :param src_has_states: true if source has states (volgnummer)
+    :param src_table_name: name of the source table
+    :return: total number of updates executed
+    """
     CHUNK_SIZE = 100000
     chunk = 0
     updates = 0
@@ -764,7 +792,7 @@ jsonb_set(src_matchcolumn, '{{volgnummer}}', COALESCE(to_jsonb(max(dst_volgnumme
                 LIMIT
                     {CHUNK_SIZE}
                 OFFSET
-                    {chunk * CHUNK_SIZE} 
+                    {chunk * CHUNK_SIZE}
             ) new_values
             WHERE
                 new_values.src__id = src._id
@@ -775,10 +803,25 @@ jsonb_set(src_matchcolumn, '{{volgnummer}}', COALESCE(to_jsonb(max(dst_volgnumme
         chunk += 1
         updates += n_updates
         if n_updates < CHUNK_SIZE:
+            # Stop when no full chunk_size has been updated
             break
 
-    logger.info(f"{src_field_name}, processed {n_updates} updates")
+    logger.info(f"{src_field_name}, processed {updates} updates")
+    return updates
 
+
+def _check_relate_update(new_values, src_field_name, src_identification):
+    """
+    If relate update has finished, no new updates should exist anymore
+
+    If any new update still exist, this means that there are multiple values for the
+    same source id and volgnummer
+
+    :param new_values: query to get any new updates
+    :param src_field_name: name of the source field
+    :param src_identification: identification of the source, eg id + volgnummer
+    :return: total number of inconsistencies found
+    """
     control_query = f"""
         SELECT
             count(distinct({src_identification})) AS count
@@ -787,8 +830,9 @@ jsonb_set(src_matchcolumn, '{{volgnummer}}', COALESCE(to_jsonb(max(dst_volgnumme
         ) new_values
     """
     control_data = _get_data(control_query)
-    error_count = next(control_data)['count']
-    if error_count > 0:
-        logger.error(f"{src_field_name}, {error_count} inconsistencies found")
+    inconsistencies = next(control_data)['count']
 
-    return updates
+    if inconsistencies > 0:
+        logger.error(f"{src_field_name}, {inconsistencies} inconsistencies found")
+
+    return inconsistencies

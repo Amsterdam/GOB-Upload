@@ -1163,6 +1163,6 @@ class TestRelateDateTime(TestCase):
 
     @patch("gobupload.relate.relate.update_relations")
     def test_relate_update(self, mock_update_relations):
-        mock_update_relations.return_value = "anything"
+        mock_update_relations.return_value = 0
         relate_update("any catalog", "any collection", "any reference")
         mock_update_relations.assert_called()
