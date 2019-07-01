@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 from gobcore.model import GOBModel
 from gobcore.sources import GOBSources
 
-from gobupload.storage.relate import get_relations, update_relations, EQUALS, LIES_IN, JOIN, WHERE, _update_match, _get_data, get_last_change, get_current_relations, RelationUpdater, _query_missing, check_relations
+from gobupload.storage.relate import get_relations, update_relations, EQUALS, LIES_IN, JOIN, WHERE, _update_match, _get_data, get_last_change, get_current_relations, RelationUpdater, _query_missing, check_relations, _check_relate_update
 
 @patch('gobupload.relate.relate.logger', MagicMock())
 class TestRelations(TestCase):
@@ -406,9 +406,15 @@ ORDER BY
         self.assertEqual(s, spec)
         self.assertEqual(q, "any query type")
 
+    @patch('gobupload.storage.relate.logger', MagicMock())
+    @patch('gobupload.storage.relate._check_relate_update', MagicMock())
     @patch('gobupload.storage.relate._execute')
     def test_update_relations(self, mock_execute):
-        mock._execute = MagicMock()
+        class MockExecute:
+            def __init__(self, rowcount):
+                self.rowcount = rowcount
+
+        mock_execute.return_value = MockExecute(0)
         mock_get_collection = lambda *args: {
             'all_fields': {
                 'field': {
@@ -426,33 +432,35 @@ ORDER BY
             }
         ]
         expect = """
-UPDATE
-    catalog_collection src
-SET
-    field = new_vals.field_updated
-FROM (
+            UPDATE
+                catalog_collection src
+            SET
+                field = new_values.field_updated
+            FROM (
+                --Select from all changed relations
+                
+    SELECT * FROM (
     
     SELECT
         src__id, src_volgnummer,
-        array_to_json(array_agg(field_updated_elm)) field_updated
+        to_jsonb(array_to_json(array_agg(src_matchcolumn))) src_matchcolumn,
+        to_jsonb(array_to_json(array_agg(field_updated_elm))) field_updated
     FROM (
 
-        SELECT
+        SELECT --update specs
             src__id, src_volgnummer,
-            src_matchcolumn,
             dst__id, max(dst_volgnummer) dst_volgnummer,
+            src_matchcolumn,
             jsonb_set(
 jsonb_set(src_matchcolumn, '{volgnummer}', COALESCE(to_jsonb(max(dst_volgnummer)), 'null'::JSONB))
 , '{id}', COALESCE(to_jsonb(dst__id::TEXT), 'null'::JSONB))
                 field_updated_elm
-        FROM (
-SELECT
-    CASE
-    WHEN src._application = 'src_application' THEN 'equals' END AS method,
-    CASE
-    WHEN src._application = 'src_application' THEN dst.dst_attr END AS match,
-    json_arr_elm AS src_matchcolumn,
-    src._date_deleted AS src__date_deleted,
+        FROM ( --relations
+            SELECT
+                CASE WHEN src._application = 'src_application' THEN 'equals' END AS method,
+                CASE WHEN src._application = 'src_application' THEN dst.dst_attr END AS match,
+                json_arr_elm AS src_matchcolumn,
+                src._date_deleted AS src__date_deleted,
     src._source AS src__source,
     src._id AS src__id,
     src.volgnummer AS src_volgnummer,
@@ -465,42 +473,66 @@ SELECT
     dst.begin_geldigheid AS dst_begin_geldigheid,
     dst.eind_geldigheid AS dst_eind_geldigheid,
     dst.dst_attr AS dst_match_dst_attr
-FROM catalog_collection AS src
-
+            FROM
+                catalog_collection AS src
+            
 JOIN jsonb_array_elements(src.field) AS json_arr_elm ON TRUE
 
-LEFT OUTER JOIN (
-SELECT
-    _date_deleted,
+            LEFT OUTER JOIN (
+                SELECT
+                    _date_deleted,
     _source,
     _id,
     volgnummer,
     begin_geldigheid,
     eind_geldigheid,
     dst_attr
-FROM dst_catalogue_dst_collection) AS dst
-ON
-    (src._application = 'src_application' AND dst.dst_attr = json_arr_elm ->> 'bronwaarde') AND
+                FROM
+                    dst_catalogue_dst_collection) AS dst
+                ON
+                    (src._application = 'src_application' AND dst.dst_attr = json_arr_elm ->> 'bronwaarde') AND
     (dst.begin_geldigheid <= src.eind_geldigheid OR src.eind_geldigheid IS NULL) AND
-    (dst.eind_geldigheid >= src.begin_geldigheid OR dst.eind_geldigheid IS NULL)
-WHERE
-    (src._application = 'src_application' AND json_arr_elm IS NOT NULL AND json_arr_elm ->> 'bronwaarde' IS NOT NULL) AND
-    (src._date_deleted IS NULL AND dst._date_deleted IS NULL)
-ORDER BY
-    src._source, src._id, src.volgnummer::int, src.begin_geldigheid, dst.begin_geldigheid, dst.eind_geldigheid
-) relations
-GROUP BY src__id, src_volgnummer, src_matchcolumn, dst__id
-
+    (dst.eind_geldigheid >= src.eind_geldigheid OR dst.eind_geldigheid IS NULL)
+                WHERE
+                    (src._application = 'src_application' AND json_arr_elm IS NOT NULL AND json_arr_elm ->> 'bronwaarde' IS NOT NULL) AND (src._date_deleted IS NULL AND dst._date_deleted IS NULL)
+                ORDER BY
+                    src._source, src._id, src.volgnummer::int, src.begin_geldigheid, dst.begin_geldigheid, dst.eind_geldigheid
+        ) relations
+        GROUP BY
+            src__id, src_volgnummer,
+            src_matchcolumn,
+            dst__id
+    
     ) last_dsts
-    GROUP BY src__id, src_volgnummer
+    GROUP BY
+        src__id, src_volgnummer
 
-) new_vals
-WHERE
-    new_vals.src__id = src._id AND new_vals.src_volgnummer = src.volgnummer;
-"""
+    ) _outer
+    WHERE --only select relations that have changed
+        src_matchcolumn != field_updated
+
+                --Get changed relations in chunks
+                ORDER BY
+                    src__id
+                LIMIT
+                    100000
+                OFFSET
+                    0
+            ) new_values
+            WHERE
+                new_values.src__id = src._id
+                AND new_values.src_volgnummer = src.volgnummer
+            """
         with patch.object(GOBSources, 'get_field_relations', mock_get_field_relations), \
              patch.object(GOBModel, 'get_collection', mock_get_collection), \
              patch.object(GOBModel, 'has_states', lambda *args: True):
             update_relations("catalog", "collection", "field")
         mock_execute.assert_called_with(expect)
 
+    @patch('gobupload.storage.relate._get_data')
+    def test_check_relate_update(self, mock_get_data):
+        def get_data_values():
+            yield {'count': 0}
+        mock_get_data.return_value = get_data_values()
+        result = _check_relate_update("any new values", "any src field name", "any src identification")
+        self.assertEqual(result, 0)

@@ -5,7 +5,10 @@ It reads the storage to derive events from new uploads
 It writes the storage to apply events to the storage
 
 """
-from gobcore.message_broker.config import WORKFLOW_EXCHANGE, RESULT_QUEUE, REQUEST_QUEUE
+from gobcore.message_broker.config import WORKFLOW_EXCHANGE, FULLUPDATE_QUEUE, COMPARE_QUEUE, RELATE_QUEUE, \
+    RELATE_RELATION_QUEUE, CHECK_RELATION_QUEUE
+from gobcore.message_broker.config import COMPARE_RESULT_KEY, FULLUPDATE_RESULT_KEY, RELATE_RESULT_KEY, \
+    RELATE_RELATION_RESULT_KEY, CHECK_RELATION_RESULT_KEY
 from gobcore.message_broker.messagedriven_service import messagedriven_service
 
 from gobupload import compare
@@ -15,58 +18,43 @@ from gobupload.storage.handler import GOBStorageHandler
 
 SERVICEDEFINITION = {
     'compare': {
-        'exchange': WORKFLOW_EXCHANGE,
-        'queue': REQUEST_QUEUE,
-        'key': 'compare.start',
+        'queue': COMPARE_QUEUE,
         'handler': compare.compare,
         'report': {
             'exchange': WORKFLOW_EXCHANGE,
-            'queue': RESULT_QUEUE,
-            'key': 'compare.result'
+            'key': COMPARE_RESULT_KEY,
         }
     },
     'full_update': {
-        'exchange': WORKFLOW_EXCHANGE,
-        'queue': REQUEST_QUEUE,
-        'key': 'fullupdate.start',
+        'queue': FULLUPDATE_QUEUE,
         'handler': update.full_update,
         'report': {
             'exchange': WORKFLOW_EXCHANGE,
-            'queue': RESULT_QUEUE,
-            'key': 'fullupdate.result'
+            'key': FULLUPDATE_RESULT_KEY,
         }
     },
     'relate': {
-        'exchange': WORKFLOW_EXCHANGE,
-        'queue': REQUEST_QUEUE,
-        'key': 'relate.start',
+        'queue': RELATE_QUEUE,
         'handler': relate.build_relations,
         'report': {
             'exchange': WORKFLOW_EXCHANGE,
-            'queue': RESULT_QUEUE,
-            'key': 'relate.result'
+            'key': RELATE_RESULT_KEY,
         }
     },
     'relate_relation': {
-        'exchange': WORKFLOW_EXCHANGE,
-        'queue': REQUEST_QUEUE,
-        'key': 'relate_relation.start',
+        'queue': RELATE_RELATION_QUEUE,
         'handler': relate.relate_relation,
         'report': {
             'exchange': WORKFLOW_EXCHANGE,
-            'queue': RESULT_QUEUE,
-            'key': 'relate_relation.result'
+            'key': RELATE_RELATION_RESULT_KEY,
         }
     },
     'check_relation': {
-        'exchange': WORKFLOW_EXCHANGE,
-        'queue': REQUEST_QUEUE,
-        'key': 'check_relation.start',
+        'queue': CHECK_RELATION_QUEUE,
         'handler': relate.check_relation,
         'report': {
             'exchange': WORKFLOW_EXCHANGE,
-            'queue': RESULT_QUEUE,
-            'key': 'check_relation.result'
+            'key': CHECK_RELATION_RESULT_KEY,
         }
     },
 }

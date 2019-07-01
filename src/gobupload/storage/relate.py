@@ -31,12 +31,12 @@ LIES_IN = "lies_in"   # geometric comparison, eg src.geometrie lies_in dst_geome
 
 
 def _execute_multiple(queries):
-    engine = GOBStorageHandler.get_engine()
+    handler = GOBStorageHandler()
 
-    result = None
-    with engine.connect() as connection:
+    with handler.get_session() as session:
+        # Commit all queries as a whole on exit with
         for query in queries:
-            result = connection.execute(query)
+            result = session.execute(query)
 
     return result   # Return result of last execution
 
@@ -134,11 +134,11 @@ def _get_data(query):
     :param query:
     :return:
     """
-    storage = GOBStorageHandler()
-    engine = storage.engine
-    data = engine.execute(query)
-    for row in data:
-        yield _convert_row(row)
+    handler = GOBStorageHandler()
+    with handler.get_session() as session:
+        data = session.execute(query)
+        for row in data:
+            yield _convert_row(row)
 
 
 def _get_fields(has_states):
@@ -630,43 +630,24 @@ def update_relations(src_catalog_name, src_collection_name, src_field_name):
     methods = [f"WHEN src._application = '{spec['source']}' THEN '{spec['method']}'"
                for spec in relation_specs]
 
-    # Define the join of source and destination, src:bronwaarde = dst:field:value
-    is_many = src_field['type'] == "GOB.ManyReference"
-    json_join_alias = 'json_arr_elm'
-
-    join_relation = json_join_alias if is_many else f"src.{src_field_name}"
-    join_on = ([f"(src.{FIELD.APPLICATION} = '{spec['source']}' AND " +
-                f"{_update_match(spec, join_relation, JOIN)})" for spec in relation_specs])
-
-    # Only get relations when bronwaarde is filled
-    has_bronwaarde = ([f"(src.{FIELD.APPLICATION} = '{spec['source']}' AND " +
-                       f"{_update_match(spec, join_relation, WHERE)})" for spec in relation_specs])
-
     # Build a properly formatted select statement
     space_join = ' \n    '
     comma_join = ',\n    '
     and_join = ' AND\n    '
     or_join = ' OR\n    '
 
-    # If more matches have been defined that catch any of the matches
-    if len(join_on) > 1:
-        join_on = [f"({or_join.join(join_on)})"]
+    # Define the join of source and destination, src:bronwaarde = dst:field:value
+    is_many = src_field['type'] == "GOB.ManyReference"
+    json_join_alias = 'json_arr_elm'
 
-    # If both collections have states then join with corresponding geldigheid intervals
-    if src_has_states and dst_has_states:
-        join_on.extend([
-            f"(dst.{FIELD.START_VALIDITY} <= src.{FIELD.END_VALIDITY} OR src.{FIELD.END_VALIDITY} IS NULL)",
-            f"(dst.{FIELD.END_VALIDITY} >= src.{FIELD.START_VALIDITY} OR dst.{FIELD.END_VALIDITY} IS NULL)"
-        ])
+    join_relation = json_join_alias if is_many else f"src.{src_field_name}"
+    # Only get relations when bronwaarde is filled
+    has_bronwaarde = ([f"(src.{FIELD.APPLICATION} = '{spec['source']}' AND " +
+                       f"{_update_match(spec, join_relation, WHERE)})" for spec in relation_specs])
 
-    # Main order is on src id
-    order_by = [f"src.{FIELD.SOURCE}", f"src.{FIELD.ID}"]
-    if src_has_states:
-        # then on source volgnummer and begin geldigheid
-        order_by.extend([f"src.{FIELD.SEQNR}::int", f"src.{FIELD.START_VALIDITY}"])
-    if dst_has_states:
-        # then on destination begin and eind geldigheid
-        order_by.extend([f"dst.{FIELD.START_VALIDITY}", f"dst.{FIELD.END_VALIDITY}"])
+    join_on = _relate_update_join_on(src_has_states, dst_has_states, relation_specs, join_relation)
+
+    order_by = _relate_update_order_by(src_has_states, dst_has_states)
 
     select_from = _get_select_from(dst_fields, dst_match_fields, src_fields, src_match_fields)
     select_from_join = _get_select_from_join(dst_fields, dst_match_fields)
@@ -676,16 +657,18 @@ def update_relations(src_catalog_name, src_collection_name, src_field_name):
     src_identification = "src__id, src_volgnummer" if src_has_states else "src__id"
     dst_identification = "dst__id, max(dst_volgnummer) dst_volgnummer" if dst_has_states else "dst__id"
 
-    select_many = f"""
+    select_many_start = f"""
     SELECT
         {src_identification},
-        array_to_json(array_agg({src_field_name}_updated_elm)) {src_field_name}_updated
+        to_jsonb(array_to_json(array_agg(src_matchcolumn))) src_matchcolumn,
+        to_jsonb(array_to_json(array_agg({src_field_name}_updated_elm))) {src_field_name}_updated
     FROM (
 """ if is_many else ""
 
-    group_many = f"""
+    select_many_end = f"""
     ) last_dsts
-    GROUP BY {src_identification}
+    GROUP BY
+        {src_identification}
 """ if is_many else ""
 
     join_many = f"""
@@ -699,46 +682,157 @@ JOIN jsonb_array_elements(src.{src_field_name}) AS {json_join_alias} ON TRUE
 jsonb_set(src_matchcolumn, '{{volgnummer}}', COALESCE(to_jsonb(max(dst_volgnummer)), 'null'::JSONB))
 """ if dst_has_states else 'src_matchcolumn'
 
-    query = f"""
-UPDATE
-    {src_table_name} src
-SET
-    {src_field_name} = new_vals.{src_field_name}_updated
-FROM (
-    {select_many}
-        SELECT
+    new_values = f"""
+    SELECT * FROM (
+    {select_many_start}
+        SELECT --update specs
             {src_identification},
-            src_matchcolumn,
             {dst_identification},
+            src_matchcolumn,
             jsonb_set({jsonb_set_arg}, '{{id}}', COALESCE(to_jsonb(dst__id::TEXT), 'null'::JSONB))
                 {src_field_name}_{updated}
-        FROM (
-SELECT
-    CASE
-    {space_join.join(methods)} END AS method,
-    CASE
-    {space_join.join(matches)} END AS match,
-    {src_value} AS src_matchcolumn,
-    {comma_join.join(select_from)}
-FROM {src_table_name} AS src
-{join_many}
-LEFT OUTER JOIN (
-SELECT
-    {comma_join.join(select_from_join)}
-FROM {dst_table_name}) AS dst
-ON
-    {and_join.join(join_on)}
-WHERE
-    {or_join.join(has_bronwaarde)} AND
-    {not_deleted}
-ORDER BY
-    {', '.join(order_by)}
-) relations
-GROUP BY {src_identification}, src_matchcolumn, dst__id
-{group_many}
-) new_vals
-WHERE
-    new_vals.src__id = src._id {'AND new_vals.src_volgnummer = src.volgnummer' if src_has_states else ''};
+        FROM ( --relations
+            SELECT
+                CASE {space_join.join(methods)} END AS method,
+                CASE {space_join.join(matches)} END AS match,
+                {src_value} AS src_matchcolumn,
+                {comma_join.join(select_from)}
+            FROM
+                {src_table_name} AS src
+            {join_many}
+            LEFT OUTER JOIN (
+                SELECT
+                    {comma_join.join(select_from_join)}
+                FROM
+                    {dst_table_name}) AS dst
+                ON
+                    {and_join.join(join_on)}
+                WHERE
+                    {or_join.join(has_bronwaarde)} AND {not_deleted}
+                ORDER BY
+                    {', '.join(order_by)}
+        ) relations
+        GROUP BY
+            {src_identification},
+            src_matchcolumn,
+            dst__id
+    {select_many_end}
+    ) _outer
+    WHERE --only select relations that have changed
+        src_matchcolumn != {src_field_name}_updated
 """
-    result = _execute(query)
-    return result.rowcount
+
+    updates = _do_relate_update(new_values, src_field_name, src_has_states, src_table_name)
+
+    _check_relate_update(new_values, src_field_name, src_identification)
+
+    return updates
+
+
+def _relate_update_order_by(src_has_states, dst_has_states):
+    # Main order is on src id
+    order_by = [f"src.{FIELD.SOURCE}", f"src.{FIELD.ID}"]
+    if src_has_states:
+        # then on source volgnummer and begin geldigheid
+        order_by.extend([f"src.{FIELD.SEQNR}::int", f"src.{FIELD.START_VALIDITY}"])
+    if dst_has_states:
+        # then on destination begin and eind geldigheid
+        order_by.extend([f"dst.{FIELD.START_VALIDITY}", f"dst.{FIELD.END_VALIDITY}"])
+    return order_by
+
+
+def _relate_update_join_on(src_has_states, dst_has_states, relation_specs, join_relation):
+    or_join = ' OR\n    '
+
+    join_on = ([f"(src.{FIELD.APPLICATION} = '{spec['source']}' AND " +
+                f"{_update_match(spec, join_relation, JOIN)})" for spec in relation_specs])
+    # If more matches have been defined that catch any of the matches
+    if len(join_on) > 1:
+        join_on = [f"({or_join.join(join_on)})"]
+    # If both collections have states then join with corresponding geldigheid intervals
+    if src_has_states and dst_has_states:
+        join_on.extend([
+            f"(dst.{FIELD.START_VALIDITY} <= src.{FIELD.END_VALIDITY} OR src.{FIELD.END_VALIDITY} IS NULL)",
+            f"(dst.{FIELD.END_VALIDITY} >= src.{FIELD.END_VALIDITY} OR dst.{FIELD.END_VALIDITY} IS NULL)"
+        ])
+    elif dst_has_states:
+        # If only destination has states, get the destination that is valid until forever
+        join_on.extend([
+            f"dst.{FIELD.END_VALIDITY} IS NULL"
+        ])
+    return join_on
+
+
+def _do_relate_update(new_values, src_field_name, src_has_states, src_table_name):
+    """
+    Update relations in chunks of 100,000 relations
+
+    :param new_values: query to get any new updates
+    :param src_field_name: name of the source field
+    :param src_has_states: true if source has states (volgnummer)
+    :param src_table_name: name of the source table
+    :return: total number of updates executed
+    """
+    CHUNK_SIZE = 100000
+    chunk = 0
+    updates = 0
+    while True:
+        logger.info(f"{src_field_name}, load {(chunk * CHUNK_SIZE):,} - {((chunk + 1) * CHUNK_SIZE):,}")
+        query = f"""
+            UPDATE
+                {src_table_name} src
+            SET
+                {src_field_name} = new_values.{src_field_name}_updated
+            FROM (
+                --Select from all changed relations
+                {new_values}
+                --Get changed relations in chunks
+                ORDER BY
+                    src__id
+                LIMIT
+                    {CHUNK_SIZE}
+                OFFSET
+                    {chunk * CHUNK_SIZE}
+            ) new_values
+            WHERE
+                new_values.src__id = src._id
+                {'AND new_values.src_volgnummer = src.volgnummer' if src_has_states else ''}
+            """
+        result = _execute(query)
+        n_updates = result.rowcount
+        chunk += 1
+        updates += n_updates
+        if n_updates < CHUNK_SIZE:
+            # Stop when no full chunk_size has been updated
+            break
+
+    logger.info(f"{src_field_name}, processed {updates} updates")
+    return updates
+
+
+def _check_relate_update(new_values, src_field_name, src_identification):
+    """
+    If relate update has finished, no new updates should exist anymore
+
+    If any new update still exist, this means that there are multiple values for the
+    same source id and volgnummer
+
+    :param new_values: query to get any new updates
+    :param src_field_name: name of the source field
+    :param src_identification: identification of the source, eg id + volgnummer
+    :return: total number of inconsistencies found
+    """
+    control_query = f"""
+        SELECT
+            count(distinct({src_identification})) AS count
+        FROM (
+            {new_values}
+        ) new_values
+    """
+    control_data = _get_data(control_query)
+    inconsistencies = next(control_data)['count']
+
+    if inconsistencies > 0:
+        logger.error(f"{src_field_name}, {inconsistencies} inconsistencies found")
+
+    return inconsistencies
