@@ -802,8 +802,8 @@ def _do_relate_update(new_values, src_field_name, src_has_states, src_table_name
         n_updates = result.rowcount
         chunk += 1
         updates += n_updates
-        if n_updates < CHUNK_SIZE:
-            # Stop when no full chunk_size has been updated
+        if n_updates <= 0:
+            # Stop when no updates are left
             break
 
     logger.info(f"{src_field_name}, processed {updates} updates")
