@@ -409,7 +409,8 @@ ORDER BY
     @patch('gobupload.storage.relate.logger', MagicMock())
     @patch('gobupload.storage.relate._check_relate_update', MagicMock())
     @patch('gobupload.storage.relate._execute')
-    def test_update_relations(self, mock_execute):
+    @patch('gobupload.storage.relate._get_data')
+    def test_update_relations(self, mock_get_data, mock_execute):
         class MockExecute:
             def __init__(self, rowcount):
                 self.rowcount = rowcount
@@ -523,6 +524,9 @@ JOIN jsonb_array_elements(src.field) AS json_arr_elm ON TRUE
                 new_values.src__id = src._id
                 AND new_values.src_volgnummer = src.volgnummer
             """
+        def get_data_values():
+            yield {'count': 10}
+        mock_get_data.return_value = get_data_values()
         with patch.object(GOBSources, 'get_field_relations', mock_get_field_relations), \
              patch.object(GOBModel, 'get_collection', mock_get_collection), \
              patch.object(GOBModel, 'has_states', lambda *args: True):
