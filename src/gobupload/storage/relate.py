@@ -783,12 +783,14 @@ def _do_relate_update(new_values, src_field_name, src_has_states, src_table_name
     """
     count_data = _get_data(count_query)
     count = next(count_data)['count']
+    offset = 0
+    logger.info(f"{src_field_name}, max {count} entities to update")
 
     CHUNK_SIZE = 100000
     chunk = 0
     updates = 0
     while count > 0:
-        logger.info(f"{src_field_name}, load {(chunk * CHUNK_SIZE):,} - {((chunk + 1) * CHUNK_SIZE):,}")
+        logger.info(f"{src_field_name}, off {offset}, load {(chunk * CHUNK_SIZE):,} - {((chunk + 1) * CHUNK_SIZE):,}")
         query = f"""
             UPDATE
                 {src_table_name} src
@@ -803,7 +805,7 @@ def _do_relate_update(new_values, src_field_name, src_has_states, src_table_name
                 LIMIT
                     {CHUNK_SIZE}
                 OFFSET
-                    {chunk * CHUNK_SIZE}
+                    {offset}
             ) new_values
             WHERE
                 new_values.src__id = src._id
@@ -814,6 +816,7 @@ def _do_relate_update(new_values, src_field_name, src_has_states, src_table_name
         chunk += 1
         updates += n_updates
         count -= CHUNK_SIZE
+        offset += (CHUNK_SIZE - n_updates)
         if n_updates <= 0:
             # Stop when no updates are left
             break
