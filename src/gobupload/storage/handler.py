@@ -288,6 +288,7 @@ class GOBStorageHandler():
                 if exc_type is not None:
                     self.session.rollback()
                 else:
+                    self.session.flush()
                     self.session.commit()
                 self.session.close()
                 self.session = None

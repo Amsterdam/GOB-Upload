@@ -773,11 +773,24 @@ def _do_relate_update(new_values, src_field_name, src_has_states, src_table_name
     :param src_table_name: name of the source table
     :return: total number of updates executed
     """
+    # Deteremine max number of upates, stop when this number of updates has been done or when no updates are left
+    count_query = f"""
+        SELECT
+            count(*) AS count
+        FROM (
+            {new_values}
+        ) new_values
+    """
+    count_data = _get_data(count_query)
+    count = next(count_data)['count']
+    offset = 0
+    logger.info(f"{src_field_name}, max {count} entities to update")
+
     CHUNK_SIZE = 100000
     chunk = 0
     updates = 0
-    while True:
-        logger.info(f"{src_field_name}, load {(chunk * CHUNK_SIZE):,} - {((chunk + 1) * CHUNK_SIZE):,}")
+    while count > 0:
+        logger.info(f"{src_field_name}, off {offset}, load {(chunk * CHUNK_SIZE):,} - {((chunk + 1) * CHUNK_SIZE):,}")
         query = f"""
             UPDATE
                 {src_table_name} src
@@ -792,7 +805,7 @@ def _do_relate_update(new_values, src_field_name, src_has_states, src_table_name
                 LIMIT
                     {CHUNK_SIZE}
                 OFFSET
-                    {chunk * CHUNK_SIZE}
+                    {offset}
             ) new_values
             WHERE
                 new_values.src__id = src._id
@@ -802,8 +815,10 @@ def _do_relate_update(new_values, src_field_name, src_has_states, src_table_name
         n_updates = result.rowcount
         chunk += 1
         updates += n_updates
-        if n_updates < CHUNK_SIZE:
-            # Stop when no full chunk_size has been updated
+        count -= CHUNK_SIZE
+        offset += (CHUNK_SIZE - n_updates)
+        if n_updates <= 0:
+            # Stop when no updates are left
             break
 
     logger.info(f"{src_field_name}, processed {updates} updates")
