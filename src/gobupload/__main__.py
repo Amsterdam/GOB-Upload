@@ -9,7 +9,7 @@ from gobcore.message_broker.config import WORKFLOW_EXCHANGE, FULLUPDATE_QUEUE, C
     RELATE_RELATION_QUEUE, CHECK_RELATION_QUEUE
 from gobcore.message_broker.config import COMPARE_RESULT_KEY, FULLUPDATE_RESULT_KEY, RELATE_RESULT_KEY, \
     RELATE_RELATION_RESULT_KEY, CHECK_RELATION_RESULT_KEY
-from gobcore.message_broker.messagedriven_service import messagedriven_service
+from gobcore.message_broker.messagedriven_service import MessagedrivenService
 
 from gobupload import compare
 from gobupload import relate
@@ -63,4 +63,4 @@ SERVICEDEFINITION = {
 storage = GOBStorageHandler()
 storage.init_storage()
 
-messagedriven_service(SERVICEDEFINITION, "Upload", {"stream_contents": True})
+MessagedrivenService(SERVICEDEFINITION, "Upload", {"stream_contents": True, "thread_per_service": True}).start()
