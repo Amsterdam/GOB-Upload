@@ -786,7 +786,7 @@ def _do_relate_update(new_values, src_field_name, src_has_states, src_table_name
     offset = 0
     logger.info(f"{src_field_name}, max {count} entities to update")
 
-    CHUNK_SIZE = 100000
+    CHUNK_SIZE = 50000
     chunk = 0
     updates = 0
     while count > 0:

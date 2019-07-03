@@ -516,7 +516,7 @@ JOIN jsonb_array_elements(src.field) AS json_arr_elm ON TRUE
                 ORDER BY
                     src__id
                 LIMIT
-                    100000
+                    50000
                 OFFSET
                     0
             ) new_values
