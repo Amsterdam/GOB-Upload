@@ -89,7 +89,7 @@ def check_relation(msg):
     :param msg:
     :return:
     """
-    catalog_name = msg['header']['catalog']
+    catalog_name = msg['header']['catalogue']
     collection_names = msg['header']['collections']
 
     model = GOBModel()
@@ -208,8 +208,9 @@ def build_relations(msg):
     :param msg: a message from the broker containing the catalog and collections (optional)
     :return: None
     """
-    catalog_name = msg.get('catalogue')
-    collection_names = msg.get('collections')
+    header = msg.get('header', {})
+    catalog_name = header.get('catalogue')
+    collection_names = header.get('collections')
 
     assert catalog_name is not None, "A catalog name is required"
 
@@ -231,8 +232,6 @@ def build_relations(msg):
         "version": "0.1",
         "source": "GOB",
         "application": application,
-        "catalog": msg.get('catalogue'),
-        "collections": msg.get('collections'),
         "entity": catalog_name
     }
 
