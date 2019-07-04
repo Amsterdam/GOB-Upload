@@ -90,7 +90,7 @@ def check_relation(msg):
     :return:
     """
     catalog_name = msg['header']['catalogue']
-    collection_names = msg['header']['collections']
+    collection_names = msg['header'].get('collection')
 
     model = GOBModel()
 
