@@ -19,7 +19,7 @@ class TestInit(TestCase):
 
     @patch('gobupload.relate.GOBModel', MagicMock())
     def test_build_relations(self):
-        result = build_relations({'catalogue': 'any catalogue'})
+        result = build_relations({'header': {'catalogue': 'any catalogue'}})
         self.assertEqual(result, {
             'header': mock.ANY,
             'summary': {'warnings': mock.ANY, 'errors': []},
@@ -42,7 +42,7 @@ class TestInit(TestCase):
     def test_check_relation(self):
         msg = {
             'header': {
-                'catalog': 'any catalog',
+                'catalogue': 'any catalog',
                 'collections': 'any collections'
             }
         }
