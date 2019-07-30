@@ -10,6 +10,7 @@ from gobupload.storage.handler import GOBStorageHandler
 from gobcore.logging.logger import logger
 from gobcore.model import GOBModel
 from gobcore.model.metadata import FIELD
+from gobcore.model.relations import get_relation_name
 from gobcore.sources import GOBSources
 
 from gobupload.relate.exceptions import RelateException
@@ -348,7 +349,7 @@ def _get_select_from(dst_fields, dst_match_fields, src_fields, src_match_fields)
 
 def _query_missing(query, items_name, max_warnings=50):
     """
-    Query for anu missing attributes
+    Query for any missing attributes
 
     :param query: query to execute
     :param items_name: name of the missing attribute
@@ -381,7 +382,7 @@ def check_relations(src_catalog_name, src_collection_name, src_field_name):
     Check relations for any dangling relations
 
     Dangling can be because a relation exist without any bronwaarde
-    or the bronmwaarde cannot be matched with any referenced entity
+    or the bronwaarde cannot be matched with any referenced entity
 
     :param src_catalog_name:
     :param src_collection_name:
@@ -394,6 +395,7 @@ def check_relations(src_catalog_name, src_collection_name, src_field_name):
     src_table_name = model.get_table_name(src_catalog_name, src_collection_name)
     src_field = src_collection['all_fields'].get(src_field_name)
     src_has_states = model.has_states(src_catalog_name, src_collection_name)
+
     is_many = src_field['type'] == "GOB.ManyReference"
 
     main_select = ["_id as id", f"{src_field_name} ->> 'bronwaarde' as bronwaarde"]
@@ -447,6 +449,76 @@ WHERE
     {src_field_name} ->> 'id' IS NULL
 GROUP BY
     {select}
+"""
+    _query_missing(dangling, f"{name} dangling destinations")
+
+
+def check_very_many_relations(src_catalog_name, src_collection_name, src_field_name):
+    """
+    Check very many relations for any dangling relations
+
+    Dangling can be because a relation exist without any bronwaarde
+    or the bronwaarde cannot be matched with any referenced entity.
+    This can be checked in the relation table instead of the json
+    attribute itself.
+
+    :param src_catalog_name:
+    :param src_collection_name:
+    :param src_field_name:
+    :return: None
+    """
+    # Get the source catalog, collection and field for the given names
+    model = GOBModel()
+    src_table_name = model.get_table_name(src_catalog_name, src_collection_name)
+    src_has_states = model.has_states(src_catalog_name, src_collection_name)
+
+    relation_table_name = "rel_" + get_relation_name(model, src_catalog_name, src_collection_name, src_field_name)
+
+    select = ["src._id as id", "rel.bronwaarde as bronwaarde"]
+    group_by = ["src._id", "rel.bronwaarde"]
+    if src_has_states:
+        state_select = ["src.volgnummer", "src.begin_geldigheid", "src.eind_geldigheid"]
+        select.extend(state_select)
+    select = ",\n    ".join(select)
+    group_by = ",\n    ".join(group_by)
+
+    join_on = ['src._id = rel.src_id']
+    if src_has_states:
+        join_on.extend(['src._volgnummer = rel.src_volgnummer'])
+    join_on = ",\n    ".join(join_on)
+
+    name = f"{src_collection_name} {src_field_name}"
+
+    bronwaarden = f"""
+SELECT
+    {select}
+FROM
+    {src_table_name} src
+LEFT OUTER JOIN {relation_table_name} rel
+ON
+    {join_on}
+WHERE
+    src._date_deleted IS NULL AND
+    rel.bronwaarde IS NULL
+GROUP BY
+    {group_by}
+"""
+    _query_missing(bronwaarden, f"{name} missing bronwaarden")
+
+    dangling = f"""
+SELECT
+    {select}
+FROM
+    {src_table_name} src
+LEFT OUTER JOIN {relation_table_name} rel
+ON
+    {join_on}
+WHERE
+    src._date_deleted IS NULL AND
+    rel.bronwaarde IS NOT NULL AND
+    rel.dst_id IS NULL
+GROUP BY
+    {group_by}
 """
     _query_missing(dangling, f"{name} dangling destinations")
 
@@ -574,12 +646,15 @@ ORDER BY
     return _get_data(query), src_has_states, dst_has_states
 
 
-def _update_match(spec, field, query_type):
+def _update_match(spec, field, query_type, is_very_many=False):
     if spec['method'] == EQUALS:
         if query_type == JOIN:
-            return f"dst.{spec['destination_attribute']} = {field} ->> 'bronwaarde'"
+
+            return f"dst.{spec['destination_attribute']} = rel.bronwaarde" \
+                if is_very_many else f"dst.{spec['destination_attribute']} = {field} ->> 'bronwaarde'"
         else:
-            return f"{field} IS NOT NULL AND {field} ->> 'bronwaarde' IS NOT NULL"
+            return f"rel.bronwaarde IS NOT NULL" \
+                if is_very_many else f"{field} IS NOT NULL AND {field} ->> 'bronwaarde' IS NOT NULL"
     else:
         return _geo_resolve(spec, query_type)
 
@@ -598,6 +673,9 @@ def update_relations(src_catalog_name, src_collection_name, src_field_name):
     src_collection = model.get_collection(src_catalog_name, src_collection_name)
     src_field = src_collection['all_fields'].get(src_field_name)
     src_table_name = model.get_table_name(src_catalog_name, src_collection_name)
+
+    is_many = src_field['type'] == "GOB.ManyReference"
+    is_very_many = src_field['type'] == "GOB.VeryManyReference"
 
     # Get the relations for the given catalog, collection and field names
     sources = GOBSources()
@@ -637,15 +715,14 @@ def update_relations(src_catalog_name, src_collection_name, src_field_name):
     or_join = ' OR\n    '
 
     # Define the join of source and destination, src:bronwaarde = dst:field:value
-    is_many = src_field['type'] == "GOB.ManyReference"
     json_join_alias = 'json_arr_elm'
 
     join_relation = json_join_alias if is_many else f"src.{src_field_name}"
     # Only get relations when bronwaarde is filled
     has_bronwaarde = ([f"(src.{FIELD.APPLICATION} = '{spec['source']}' AND " +
-                       f"{_update_match(spec, join_relation, WHERE)})" for spec in relation_specs])
+                       f"{_update_match(spec, join_relation, WHERE, is_very_many)})" for spec in relation_specs])
 
-    join_on = _relate_update_join_on(src_has_states, dst_has_states, relation_specs, join_relation)
+    join_on = _relate_update_join_on(src_has_states, dst_has_states, relation_specs, join_relation, is_very_many)
 
     order_by = _relate_update_order_by(src_has_states, dst_has_states)
 
@@ -682,6 +759,45 @@ JOIN jsonb_array_elements(src.{src_field_name}) AS {json_join_alias} ON TRUE
 jsonb_set(src_matchcolumn, '{{volgnummer}}', COALESCE(to_jsonb(max(dst_volgnummer)), 'null'::JSONB))
 """ if dst_has_states else 'src_matchcolumn'
 
+    matchcolumn_value = "rel.bronwaarde" if is_very_many else f"{src_value}"
+    matchcolumn_value += " AS src_matchcolumn"
+
+    relation_columns = ['dst_id'] if is_very_many else []
+    if is_very_many and dst_has_states:
+        relation_columns.append('dst_volgnummer')
+
+    relation_select = f"{comma_join.join([f'rel_{field}' for field in relation_columns])}," if is_very_many else ""
+    relation_select_from = f"{comma_join.join([f'rel.{field} AS rel_{field}' for field in relation_columns])}," \
+                           if is_very_many else ""
+
+    updated_column = f"""
+{comma_join.join([f'{DST_MATCH_PREFIX}{field}' for field in dst_match_fields])}
+""" if is_very_many else f"""
+jsonb_set({jsonb_set_arg}, '{{id}}', COALESCE(to_jsonb(dst__id::TEXT), 'null'::JSONB))
+    {src_field_name}_{updated}
+"""
+
+    # For VeryManyReferences join the relation table
+    relation_join_on = _relate_update_relation_table_join_on(src_has_states)
+    relation_table = "rel_" + get_relation_name(model, src_catalog_name, src_collection_name, src_field_name)
+    relation_join = f"""
+LEFT JOIN
+    {relation_table} rel
+ON
+    {and_join.join(relation_join_on)}
+    """ if is_very_many else ""
+
+    relation_group_columns = [f'{DST_MATCH_PREFIX}{field}' for field in dst_match_fields] + \
+                             [f'rel_{field}' for field in relation_columns]
+    relation_group_by = f", {comma_join.join(relation_group_columns)}" \
+        if is_very_many else ""
+
+    # Use IS DISTINCT FROM because comparing null values will result in unkown in postgres
+    where_clause = f"""rel_dst_id IS DISTINCT FROM dst__id""" \
+                   if is_very_many else f"src_matchcolumn != {src_field_name}_updated"
+    where_clause += f""" AND rel_dst_volgnummer IS DISTINCT FROM dst_volgnummer""" \
+                    if is_very_many and dst_has_states else ""
+
     new_values = f"""
     SELECT * FROM (
     {select_many_start}
@@ -689,17 +805,19 @@ jsonb_set(src_matchcolumn, '{{volgnummer}}', COALESCE(to_jsonb(max(dst_volgnumme
             {src_identification},
             {dst_identification},
             src_matchcolumn,
-            jsonb_set({jsonb_set_arg}, '{{id}}', COALESCE(to_jsonb(dst__id::TEXT), 'null'::JSONB))
-                {src_field_name}_{updated}
+            {relation_select}
+            {updated_column}
         FROM ( --relations
             SELECT
                 CASE {space_join.join(methods)} END AS method,
                 CASE {space_join.join(matches)} END AS match,
-                {src_value} AS src_matchcolumn,
+                {matchcolumn_value},
+                {relation_select_from}
                 {comma_join.join(select_from)}
             FROM
                 {src_table_name} AS src
             {join_many}
+            {relation_join}
             LEFT OUTER JOIN (
                 SELECT
                     {comma_join.join(select_from_join)}
@@ -716,16 +834,17 @@ jsonb_set(src_matchcolumn, '{{volgnummer}}', COALESCE(to_jsonb(max(dst_volgnumme
             {src_identification},
             src_matchcolumn,
             dst__id
+            {relation_group_by}
     {select_many_end}
     ) _outer
     WHERE --only select relations that have changed
-        src_matchcolumn != {src_field_name}_updated
+        {where_clause}
 """
-
-    updates = _do_relate_update(new_values, src_field_name, src_has_states, src_table_name)
+    print(new_values)
+    update_table = relation_table if is_very_many else src_table_name
+    updates = _do_relate_update(new_values, src_field_name, src_has_states, dst_has_states, update_table, is_very_many)
 
     _check_relate_update(new_values, src_field_name, src_identification)
-
     return updates
 
 
@@ -741,11 +860,11 @@ def _relate_update_order_by(src_has_states, dst_has_states):
     return order_by
 
 
-def _relate_update_join_on(src_has_states, dst_has_states, relation_specs, join_relation):
+def _relate_update_join_on(src_has_states, dst_has_states, relation_specs, join_relation, is_very_many=False):
     or_join = ' OR\n    '
 
     join_on = ([f"(src.{FIELD.APPLICATION} = '{spec['source']}' AND " +
-                f"{_update_match(spec, join_relation, JOIN)})" for spec in relation_specs])
+                f"{_update_match(spec, join_relation, JOIN, is_very_many)})" for spec in relation_specs])
     # If more matches have been defined that catch any of the matches
     if len(join_on) > 1:
         join_on = [f"({or_join.join(join_on)})"]
@@ -763,7 +882,15 @@ def _relate_update_join_on(src_has_states, dst_has_states, relation_specs, join_
     return join_on
 
 
-def _do_relate_update(new_values, src_field_name, src_has_states, src_table_name):
+def _relate_update_relation_table_join_on(src_has_states):
+    join_on = [f"src.{FIELD.ID} = rel.src{FIELD.ID}"]
+    if src_has_states:
+        join_on.append(f"src.{FIELD.SEQNR} = rel.{FIELD.SEQNR}")
+    return join_on
+
+
+def _do_relate_update(new_values, src_field_name, src_has_states, dst_has_states,
+                      update_table_name, is_very_many=False):
     """
     Update relations in chunks of 100,000 relations
 
@@ -771,6 +898,7 @@ def _do_relate_update(new_values, src_field_name, src_has_states, src_table_name
     :param src_field_name: name of the source field
     :param src_has_states: true if source has states (volgnummer)
     :param src_table_name: name of the source table
+    :param is_very_many: boolean to see if it's a VeryManyReference
     :return: total number of updates executed
     """
     # Deteremine max number of upates, stop when this number of updates has been done or when no updates are left
@@ -791,26 +919,46 @@ def _do_relate_update(new_values, src_field_name, src_has_states, src_table_name
     updates = 0
     while count > 0:
         logger.info(f"{src_field_name}, off {offset}, load {(chunk * CHUNK_SIZE):,} - {((chunk + 1) * CHUNK_SIZE):,}")
-        query = f"""
+
+        if is_very_many:
+            query = f"""
             UPDATE
-                {src_table_name} src
+                {update_table_name} src
+            SET
+                dst{FIELD.ID} = new_values.dst_{FIELD.ID}
+                {', dst_volgnummer = new_values.dst_volgnummer' if dst_has_states else ''}
+            """
+
+            match_on = ['new_values.src__id = src.src_id', 'new_values.src_matchcolumn = src.bronwaarde']
+            if src_has_states:
+                match_on.append('new_values.src_volgnummer = src.src_volgnummer')
+        else:
+            query = f"""
+            UPDATE
+                {update_table_name} src
             SET
                 {src_field_name} = new_values.{src_field_name}_updated
-            FROM (
-                --Select from all changed relations
-                {new_values}
-                --Get changed relations in chunks
-                ORDER BY
-                    src__id
-                LIMIT
-                    {CHUNK_SIZE}
-                OFFSET
-                    {offset}
-            ) new_values
-            WHERE
-                new_values.src__id = src._id
-                {'AND new_values.src_volgnummer = src.volgnummer' if src_has_states else ''}
             """
+
+            match_on = ['new_values.src__id = src._id']
+            if src_has_states:
+                match_on.append('new_values.src_volgnummer = src.volgnummer')
+
+        query += f"""
+                FROM (
+                    --Select from all changed relations
+                    {new_values}
+                    --Get changed relations in chunks
+                    ORDER BY
+                        src__id
+                    LIMIT
+                        {CHUNK_SIZE}
+                    OFFSET
+                        {offset}
+                ) new_values
+                WHERE
+                    {' AND '.join(match_on)}
+        """
         result = _execute(query)
         n_updates = result.rowcount
         chunk += 1
