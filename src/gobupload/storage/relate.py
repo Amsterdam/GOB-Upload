@@ -840,7 +840,6 @@ ON
     WHERE --only select relations that have changed
         {where_clause}
 """
-    print(new_values)
     update_table = relation_table if is_very_many else src_table_name
     updates = _do_relate_update(new_values, src_field_name, src_has_states, dst_has_states, update_table, is_very_many)
 
