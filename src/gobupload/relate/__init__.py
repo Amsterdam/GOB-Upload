@@ -13,7 +13,7 @@ from gobcore.sources import GOBSources
 from gobcore.logging.logger import logger
 from gobcore.model.relations import get_relation_name
 
-from gobupload.storage.relate import get_last_change, check_relations
+from gobupload.storage.relate import get_last_change, check_relations, check_very_many_relations
 
 from gobupload.relate.relate import relate as get_relations, relate_update
 from gobupload.relate.publish import publish_relations, publish_result
@@ -109,7 +109,9 @@ def check_relation(msg):
         references = model._extract_references(collection['attributes'])
         for reference_name, reference in references.items():
             try:
-                check_relations(catalog_name, collection_name, reference_name)
+                is_very_many = reference['type'] == "GOB.VeryManyReference"
+                check_function = check_very_many_relations if is_very_many else check_relations
+                check_function(catalog_name, collection_name, reference_name)
             except Exception as e:
                 _log_exception(f"{reference_name} check FAILED", e)
 
