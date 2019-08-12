@@ -168,7 +168,7 @@ def _process_compare_results(storage, model, results, stats):
                 event = GOB.CONFIRM.create_event(source_id, source_id, data)
             elif row['type'] == 'MODIFY':
                 current_entity = storage.get_current_entity(entity)
-                modifications = get_modifications(current_entity, entity, model['fields'])
+                modifications = get_modifications(current_entity, entity, model['all_fields'])
                 event = get_event_for(current_entity, entity, modifications)
             elif row['type'] == 'DELETE':
                 source_id = row['_entity_source_id']

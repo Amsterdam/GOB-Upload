@@ -180,7 +180,7 @@ class TestCompare(TestCase):
         mock_model.get_collection.return_value = {
             "entity_id": "identificatie",
             "version": 1,
-            "fields": {
+            "all_fields": {
                 field_name: {
                     "type": "GOB.String"
                 }
