@@ -5,6 +5,8 @@ It reads the storage to derive events from new uploads
 It writes the storage to apply events to the storage
 
 """
+import argparse
+
 from gobcore.message_broker.config import WORKFLOW_EXCHANGE, FULLUPDATE_QUEUE, COMPARE_QUEUE, RELATE_QUEUE, \
     RELATE_RELATION_QUEUE, CHECK_RELATION_QUEUE
 from gobcore.message_broker.config import COMPARE_RESULT_KEY, FULLUPDATE_RESULT_KEY, RELATE_RESULT_KEY, \
@@ -59,8 +61,22 @@ SERVICEDEFINITION = {
     },
 }
 
+parser = argparse.ArgumentParser(
+    prog="python -m gobupload",
+    description="GOB Upload, Compare and Relate"
+)
+
+parser.add_argument('--migrate',
+                    action='store_true',
+                    default=False,
+                    help='migrate the database tables, views and indexes')
+args = parser.parse_args()
+
 # Initialize database tables
 storage = GOBStorageHandler()
-storage.init_storage()
+
+# Migrate on request only
+if args.migrate:
+    storage.init_storage()
 
 MessagedrivenService(SERVICEDEFINITION, "Upload", {"stream_contents": True, "thread_per_service": True}).start()
