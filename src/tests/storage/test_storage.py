@@ -45,8 +45,9 @@ class TestContextManager(unittest.TestCase):
         # restore in setUp patched code
         importlib.reload(handler)
 
-    @mock.patch("gobupload.storage.handler.Session")
-    def test_session_context(self, mock_session):
+    def test_session_context(self):
+        mock_session = mock.MagicMock()
+        handler.GOBStorageHandler.Session = mock_session
         storage = handler.GOBStorageHandler(fixtures.random_string())
 
         # assert starting situation
@@ -58,7 +59,7 @@ class TestContextManager(unittest.TestCase):
 
         # test session creation in context
         with storage.get_session():
-            mock_session.assert_called_with(storage.engine)
+            mock_session.assert_called_with()
             self.assertEqual(storage.session, mock_session_instance)
 
         # test session creation after leaving context:
