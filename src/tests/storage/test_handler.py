@@ -31,8 +31,15 @@ class TestStorageHandler(unittest.TestCase):
         message = ImportMessage(self.msg)
         metadata = message.metadata
 
+        GOBStorageHandler.base = MagicMock()
         self.storage = GOBStorageHandler(metadata)
         GOBStorageHandler.engine = MagicMock()
+
+    @patch("gobupload.storage.handler.automap_base", MagicMock())
+    def test_base(self):
+        GOBStorageHandler.base = None
+        GOBStorageHandler._set_base(update=True)
+        self.assertIsNotNone(GOBStorageHandler.base)
 
     @patch("gobupload.storage.handler.alembic")
     def test_init_storage(self, mock_alembic):
@@ -88,9 +95,6 @@ class TestStorageHandler(unittest.TestCase):
         expected_table = f'{self.msg["header"]["catalogue"]}_{self.msg["header"]["entity"]}_tmp'
 
         self.storage.create_temporary_table()
-
-        # Assert the test table has been made
-        self.assertIn(expected_table, self.storage.base.metadata.tables)
 
         for entity in self.msg["contents"]:
             self.storage.write_temporary_entity(entity)
