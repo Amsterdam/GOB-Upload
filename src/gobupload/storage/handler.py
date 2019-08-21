@@ -18,7 +18,7 @@ from sqlalchemy import create_engine, Table, update
 from sqlalchemy.engine.url import URL
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.exc import OperationalError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import sessionmaker
 
 from gobcore.exceptions import GOBException
 from gobcore.model import GOBModel
@@ -58,10 +58,20 @@ def with_session(func):
 
 class GOBStorageHandler():
     """Metadata aware Storage handler """
-    model = GOBModel()
+    gob_model = GOBModel()
+    engine = create_engine(URL(**GOB_DB))
+    Session = sessionmaker(engine)
+    base = None
+
+    @classmethod
+    def _set_base(cls, update=False):
+        if update or cls.base is None:
+            cls.base = automap_base()
+            cls.base.prepare(cls.engine, reflect=True)
+            cls.base.metadata.reflect(bind=cls.engine)
 
     EVENTS_TABLE = "events"
-    ALL_TABLES = [EVENTS_TABLE] + model.get_table_names()
+    ALL_TABLES = [EVENTS_TABLE] + gob_model.get_table_names()
 
     user_name = f"({GOB_DB['username']}@{GOB_DB['host']}:{GOB_DB['port']})"
 
@@ -71,22 +81,10 @@ class GOBStorageHandler():
         This will create abstractions to entities and events, and initialize storage if necessary
 
         """
+        GOBStorageHandler._set_base()
+
         self.metadata = gob_metadata
-        self.gob_model = GOBModel()
-
-        self.engine = self.__class__.get_engine()
-        self._get_reflected_base()
-
         self.session = None
-
-    def _get_reflected_base(self):
-        self.base = automap_base()
-        self.base.prepare(self.engine, reflect=True)
-        self.base.metadata.reflect(bind=self.engine)
-
-    @staticmethod
-    def get_engine():
-        return create_engine(URL(**GOB_DB))
 
     def init_storage(self):
         """Check if the necessary tables (for events, and for the entities in gobmodel) are present
@@ -105,7 +103,7 @@ class GOBStorageHandler():
         self._init_views()
 
         # refresh reflected base
-        self._get_reflected_base()
+        self._set_base(update=True)
 
         # Create necessary indexes
         self._init_indexes()
@@ -138,7 +136,7 @@ class GOBStorageHandler():
         """
         statements = [f"DROP VIEW IF EXISTS {name} CASCADE", f"CREATE VIEW {name} AS {definition}"]
         for statement in statements:
-            self.engine.execute(statement)
+            self.execute(statement)
 
     def _get_index_type(self, type: str) -> str:
         if type == "geo":
@@ -161,7 +159,7 @@ class GOBStorageHandler():
                 f"ON {definition['table_name']} USING {index_type}({columns})"
 
             try:
-                self.engine.execute(statement)
+                self.execute(statement)
             except OperationalError as e:
                 print(f"ERROR: Index {name} failed")
 
@@ -180,17 +178,13 @@ class GOBStorageHandler():
         self.fields = self.gob_model.get_functional_key_fields(self.metadata.catalogue, self.metadata.entity)
         self.fields.extend(['_source_id', '_hash'])
 
-        # Try if the temporary table is already present
-        try:
-            self.tmp_table = self.base.metadata.tables[tmp_table_name]
-        except KeyError:
-            columns = [get_column(c, self.collection['all_fields'][c]) for c in self.fields]
-            columns.append(get_gob_type("GOB.JSON").get_column_definition("_original_value"))
-            self.tmp_table = Table(tmp_table_name, self.base.metadata, *columns, extend_existing=True)
-            self.tmp_table.create(self.engine)
-        else:
-            # Truncate the table
-            self.engine.execute(f"TRUNCATE {tmp_table_name}")
+        # Drop any existing temporary table
+        self.drop_temporary_table(tmp_table_name)
+
+        columns = [get_column(c, self.collection['all_fields'][c]) for c in self.fields]
+        columns.append(get_gob_type("GOB.JSON").get_column_definition("_original_value"))
+        self.tmp_table = Table(tmp_table_name, self.base.metadata, *columns, extend_existing=True)
+        self.tmp_table.create(self.engine)
 
         self.temporary_rows = []
 
@@ -221,10 +215,11 @@ class GOBStorageHandler():
         :return:
         """
         if len(self.temporary_rows) >= write_per:
-            self.engine.execute(
+            result = self.engine.execute(
                 self.tmp_table.insert(),
                 self.temporary_rows
             )
+            result.close()
             self.temporary_rows = []
 
     def close_temporary_table(self):
@@ -254,8 +249,14 @@ class GOBStorageHandler():
         for row in result:
             yield dict(row)
 
+        result.close()
+
         # Drop the temporary table
-        self.engine.execute(f"DROP TABLE IF EXISTS {temporary}")
+        self.drop_temporary_table(temporary)
+
+    def drop_temporary_table(self, tmp_table_name):
+        # Drop the temporary table
+        self.execute(f"DROP TABLE IF EXISTS {tmp_table_name}")
 
     @property
     def DbEvent(self):
@@ -268,20 +269,20 @@ class GOBStorageHandler():
 
     def _drop_table(self, table):
         statement = f"DROP TABLE IF EXISTS {table} CASCADE"
-        self.engine.execute(statement)
+        self.execute(statement)
 
     def drop_tables(self):
         for table in self.ALL_TABLES:
             self._drop_table(table)
         # Update the reflected base
-        self._get_reflected_base()
+        self._set_base(update=True)
 
     def get_session(self):
         """ Exposes an underlying database session as managed context """
 
         class session_context:
             def __enter__(ctx):
-                self.session = Session(self.engine)
+                self.session = self.Session()
                 return self.session
 
             def __exit__(ctx, exc_type, exc_val, exc_tb):
@@ -308,7 +309,7 @@ class GOBStorageHandler():
               entity = '{self.metadata.entity}' AND
               action IN ('BULKCONFIRM', 'CONFIRM')
         """
-        self.engine.execute(statement)
+        self.execute(statement)
 
     @with_session
     def get_entity_max_eventid(self):
@@ -519,6 +520,7 @@ class GOBStorageHandler():
         table = self.DbEntity.__table__
         self.session.execute(table.insert(), rows)
 
+    @with_session
     def add_events(self, events):
         rows = [{
             'timestamp': self.metadata.timestamp,
@@ -576,7 +578,7 @@ class GOBStorageHandler():
         source_ids = [record['_source_id'] for record in event._data['confirms']]
         stmt = update(self.DbEntity).where(self.DbEntity._source_id.in_(source_ids)).\
             values({event.timestamp_field: event._metadata.timestamp})
-        self.engine.execute(stmt)
+        self.execute(stmt)
 
     def bulk_insert(self, table, insert_data):
         """ A generic bulk insert function
@@ -587,11 +589,13 @@ class GOBStorageHandler():
         :param insert_data: the data to insert
         :return:
         """
-        self.engine.execute(
+        result = self.engine.execute(
             table.insert(),
             insert_data
         )
+        result.close()
 
+    @with_session
     def get_entity_for_update(self, event, data):
         """Get an entity to work with. Changes to the entity will be persisted on leaving session context
 
@@ -618,7 +622,8 @@ class GOBStorageHandler():
         return entity
 
     def execute(self, statement):
-        return self.engine.execute(statement)
+        result = self.engine.execute(statement)
+        result.close()
 
     def get_query_value(self, query):
         """Execute a query and return the result value
@@ -628,4 +633,7 @@ class GOBStorageHandler():
         :param query: Query string
         :return: scalar value result
         """
-        return self.engine.execute(query).scalar()
+        result = self.engine.execute(query)
+        value = result.scalar()
+        result.close()
+        return value
