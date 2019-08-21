@@ -32,23 +32,24 @@ class TestStorageHandler(unittest.TestCase):
         metadata = message.metadata
 
         self.storage = GOBStorageHandler(metadata)
+        GOBStorageHandler.engine = MagicMock()
 
     @patch("gobupload.storage.handler.alembic")
     def test_init_storage(self, mock_alembic):
         self.storage._init_views = MagicMock()
         self.storage._get_reflected_base = MagicMock()
         self.storage._init_indexes = MagicMock()
+        self.storage._set_base = MagicMock()
 
         self.storage.init_storage()
         mock_alembic.config.main.assert_called_once()
 
         self.storage._init_views.assert_called_once()
-        self.storage._get_reflected_base.assert_called_once()
+        self.storage._set_base.assert_called_with(update=True)
         self.storage._init_indexes.assert_called_once()
 
 
     def test_init_indexes(self):
-        self.storage.engine = MagicMock()
         gobupload.storage.handler.indexes = {
             "indexname": {
                 "table_name": "sometable",
@@ -73,9 +74,13 @@ class TestStorageHandler(unittest.TestCase):
         self.storage._init_indexes()
         self.storage.engine.execute.assert_has_calls([
             call("CREATE INDEX IF NOT EXISTS \"indexname\" ON sometable USING BTREE(cola,colb)"),
+            call().close(),
             call("CREATE INDEX IF NOT EXISTS \"index2name\" ON someothertable USING BTREE(cola)"),
+            call().close(),
             call("CREATE INDEX IF NOT EXISTS \"geo_index\" ON table_with_geo USING GIST(geocol)"),
+            call().close(),
             call("CREATE INDEX IF NOT EXISTS \"json_index\" ON table_with_json USING GIN(somejsoncol)"),
+            call().close(),
         ])
 
 
@@ -102,8 +107,8 @@ class TestStorageHandler(unittest.TestCase):
         self.storage.base.metadata.tables = {expected_table: mock_table}
         self.storage.create_temporary_table()
 
-        # Assert the truncate function is called
-        self.storage.engine.execute.assert_any_call(f"TRUNCATE {expected_table}")
+        # Assert the drop function is called
+        self.storage.engine.execute.assert_any_call(f"DROP TABLE IF EXISTS {expected_table}")
 
         for entity in self.msg["contents"]:
             self.storage.write_temporary_entity(entity)
