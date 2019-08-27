@@ -4,16 +4,6 @@ Upload data to GOB
 
 Uploading data consists of a comparing and storing the new data.
 
-## Full Import: Create updates by comparing imported data with current data
-
-A **fullImport.request** message triggers the process that compares the imported data with the actual GOB data.
-When finished the process will publish the result as a **fullUpload.proposal** message
-
-## Full Upload: Process the updates (ADD, CHANGE, DELETE, CONFIRM)
-
-A **fullUpload.request** message triggers the process that registers the updates in the database and updates the models.
-When finished the process will publish its resuls as a **updatefinished.proposal** message
-
 # Infrastructure
 
 A running [GOB infrastructure](https://github.com/Amsterdam/GOB-Infra)
@@ -30,6 +20,12 @@ is required to run this component.
 
 ```bash
 docker-compose build
+
+export GOBOPTIONS=--migrate
+echo "Migrate database to latest version..."
+docker-compose up
+export GOBOPTIONS=
+
 docker-compose up &
 ```
 
@@ -68,6 +64,7 @@ Start the service:
 
 ```bash
 cd src
+python -m gobupload --migrate
 python -m gobupload
 ```
 

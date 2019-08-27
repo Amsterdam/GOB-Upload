@@ -10,6 +10,7 @@ services:
       DATABASE_PORT_OVERRIDE: 5432
       DATABASE_HOST_OVERRIDE: database
       GOB_SHARED_DIR: /app/shared
+      GOBOPTIONS: ${GOBOPTIONS}
     volumes:
       - gob-volume:/app/shared
 
