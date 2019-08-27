@@ -16,4 +16,5 @@ COPY gobupload gobupload
 COPY alembic alembic
 COPY alembic.ini alembic.ini
 
-CMD ["python3", "-m", "gobupload"]
+# Set GOBOPTIONS=--migrate to run migrations and then exit
+CMD python3 -m gobupload $GOBOPTIONS
