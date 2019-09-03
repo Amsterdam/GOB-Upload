@@ -79,6 +79,6 @@ storage = GOBStorageHandler()
 if args.migrate:
     print("Start migration")
     storage.init_storage()
-    print("End migratiion")
+    print("End migration")
 else:
     MessagedrivenService(SERVICEDEFINITION, "Upload", {"stream_contents": True, "thread_per_service": True}).start()
