@@ -309,7 +309,7 @@ def relate_update(catalog_name, collection_name, reference_name):
     try:
         count = update_relations(catalog_name, collection_name, reference_name)
     except RelateException as e:
-        logger.error(f"{reference_name} FAILED: {str(e)}")
+        logger.warning(f"{reference_name} FAILED: {str(e)}")
         print(f"Relate Error: {str(e)}")
     else:
         duration = round(time.time() - start, 2)
