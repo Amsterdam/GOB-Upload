@@ -341,7 +341,7 @@ class GOBStorageHandler():
 
         :return: The list of events
         """
-        return self.session.query(self.DbEvent) \
+        return self.session.query(self.DbEvent).yield_per(10000) \
             .filter_by(source=self.metadata.source, catalogue=self.metadata.catalogue, entity=self.metadata.entity) \
             .filter(self.DbEvent.eventid > eventid if eventid else True)
 
