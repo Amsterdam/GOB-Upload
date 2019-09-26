@@ -212,7 +212,7 @@ def build_relations(msg):
     """
     header = msg.get('header', {})
     catalog_name = header.get('catalogue')
-    collection_names = header.get('collections')
+    collection_name = header.get('collection')
 
     assert catalog_name is not None, "A catalog name is required"
 
@@ -221,10 +221,10 @@ def build_relations(msg):
 
     assert catalog is not None, f"Invalid catalog name '{catalog_name}'"
 
-    if collection_names is None:
+    if collection_name is None:
         collection_names = model.get_collection_names(catalog_name)
     else:
-        collection_names = collection_names.split(" ")
+        collection_names = [collection_name]
 
     assert collection_names, f"No collections specified or found for catalog {catalog_name}"
 
@@ -246,6 +246,12 @@ def build_relations(msg):
     })
     logger.configure(msg, "RELATE")
 
+    _build_relations_for_collections(catalog_name, collection_names, model)
+
+    return publish_result(msg, [])
+
+
+def _build_relations_for_collections(catalog_name, collection_names, model):
     for collection_name in collection_names:
         collection = model.get_collection(catalog_name, collection_name)
         assert collection is not None, f"Invalid collection name '{collection_name}'"
@@ -259,8 +265,6 @@ def build_relations(msg):
                 relate_update(catalog_name, collection_name, reference_name)
             except Exception as e:
                 _log_exception(f"{reference_name} update FAILED", e)
-
-    return publish_result(msg, [])
 
 
 def _log_exception(msg, err, MAX_MSG_LENGTH=120):
