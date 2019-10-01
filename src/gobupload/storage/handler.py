@@ -637,3 +637,11 @@ class GOBStorageHandler():
         value = result.scalar()
         result.close()
         return value
+
+    def get_source_catalogue_entity_combinations(self, **kwargs):
+        stmt = "SELECT DISTINCT source, catalogue, entity FROM events"
+        where = {k: v for k, v in kwargs.items() if v}
+        if where:
+            stmt += " WHERE " + "AND ".join([f"{k} = '{v}'" for k, v in where.items()])
+        with self.get_session() as session:
+            return session.execute(stmt)

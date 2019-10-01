@@ -8,7 +8,7 @@ from gobcore.events.import_events import ADD, DELETE, CONFIRM, MODIFY
 
 # from gobupload.update import full_update, UpdateStatistics, _get_gob_event, _get_event_ids, _store_events, _apply_events
 from gobupload.update import full_update
-from gobupload.update.main import full_update, UpdateStatistics, _get_event_ids, _store_events, _apply_events
+from gobupload.update.main import full_update, UpdateStatistics, get_event_ids, _store_events, apply_events
 from gobupload.update.event_applicator import _get_gob_event
 from gobupload.storage.handler import GOBStorageHandler
 from tests import fixtures
@@ -30,11 +30,11 @@ class TestUpdate(TestCase):
         mock_storage = MagicMock()
         mock_storage.get_entity_max_eventid = MagicMock(return_value="max")
         mock_storage.get_last_eventid = MagicMock(return_value="last")
-        max_id, last_id = _get_event_ids(mock_storage)
+        max_id, last_id = get_event_ids(mock_storage)
         self.assertEqual(max_id, "max")
         self.assertEqual(last_id, "last")
 
-    @patch('gobupload.update.main._get_event_ids')
+    @patch('gobupload.update.main.get_event_ids')
     def test_fullupdate_saves_event(self, mock_ids, mock):
         self.mock_storage.get_last_events.return_value = {}
         mock.return_value = self.mock_storage
@@ -46,7 +46,7 @@ class TestUpdate(TestCase):
         self.mock_storage.add_events.assert_called_with(message['contents'])
 
     @patch('gobupload.update.event_applicator.GobEvent')
-    @patch('gobupload.update.main._get_event_ids')
+    @patch('gobupload.update.main.get_event_ids')
     def test_fullupdate_creates_event_and_pops_ids(self, mock_ids, mock_event, mock):
         self.mock_storage.get_last_events.return_value = {}
         mock.return_value = self.mock_storage
@@ -66,7 +66,7 @@ class TestUpdate(TestCase):
         self.mock_storage.get_events_starting_after.assert_called()
 
     @patch('gobupload.update.event_applicator.GobEvent')
-    @patch('gobupload.update.main._get_event_ids')
+    @patch('gobupload.update.main.get_event_ids')
     def test_fullupdate_not_creates_event_and_pops_ids(self, mock_ids, mock_event, mock):
         mock.return_value = self.mock_storage
         mock_ids.return_value = 0, 1
@@ -85,7 +85,7 @@ class TestUpdate(TestCase):
         self.mock_storage.get_events_starting_after.assert_called()
 
     @patch('gobupload.update.event_applicator.GobEvent')
-    @patch('gobupload.update.main._get_event_ids')
+    @patch('gobupload.update.main.get_event_ids')
     def test_fullupdate_applies_events(self, mock_ids, mock_event, mock):
         self.mock_storage.get_last_events.return_value = {}
         mock.return_value = self.mock_storage
@@ -168,15 +168,3 @@ class TestUpdate(TestCase):
         stats = UpdateStatistics()
 
         _store_events(self.mock_storage, last_events, [event], stats)
-
-    @patch('gobupload.update.main.logger', MagicMock())
-    def test_apply_events(self, mock):
-        event = fixtures.get_event_fixure()
-        event.contents = '{"_entity_source_id": "{fixtures.random_string()}", "entity": {}}'
-        mock.return_value = self.mock_storage
-        self.mock_storage.get_events_starting_after.return_value = [event]
-        stats = MagicMock()
-
-        _apply_events(self.mock_storage, {}, 1, stats)
-
-        stats.add_applied.assert_called()

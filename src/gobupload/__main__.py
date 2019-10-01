@@ -16,6 +16,7 @@ from gobcore.message_broker.messagedriven_service import MessagedrivenService
 from gobupload import compare
 from gobupload import relate
 from gobupload import update
+# from gobupload import apply
 from gobupload.storage.handler import GOBStorageHandler
 
 SERVICEDEFINITION = {
@@ -35,6 +36,14 @@ SERVICEDEFINITION = {
             'key': FULLUPDATE_RESULT_KEY,
         }
     },
+    # 'update_model': {
+    #     'queue': UPDATEMODEL_QUEUE,
+    #     'handler': apply.apply,
+    #     'report': {
+    #         'exchange': WORKFLOW_EXCHANGE,
+    #         'key': UPDATEMODEL_RESULT_KEY,
+    #     }
+    # },
     'relate': {
         'queue': RELATE_QUEUE,
         'handler': relate.build_relations,
