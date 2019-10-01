@@ -207,3 +207,15 @@ class TestStorageHandler(unittest.TestCase):
         self.storage.get_query_value('SELECT * FROM test')
         # Assert the query is performed
         self.storage.engine.execute.assert_called_with('SELECT * FROM test')
+
+    def test_combinations_plain(self):
+        mock_session = MagicMock()
+        self.storage.get_session = mock_session
+        result = self.storage.get_source_catalogue_entity_combinations()
+        mock_session.return_value.__enter__().execute.assert_called_with('SELECT DISTINCT source, catalogue, entity FROM events')
+
+    def test_combinations_with_args(self):
+        mock_session = MagicMock()
+        self.storage.get_session = mock_session
+        result = self.storage.get_source_catalogue_entity_combinations(col="val")
+        mock_session.return_value.__enter__().execute.assert_called_with("SELECT DISTINCT source, catalogue, entity FROM events WHERE col = 'val'")
