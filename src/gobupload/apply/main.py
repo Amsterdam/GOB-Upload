@@ -34,12 +34,12 @@ def apply_events(storage, last_events, start_after, stats):
         storage.delete_confirms()
 
 
-def apply():
-    logger.configure({}, "COMPARE")
-    logger.info(f"Update model")
+def apply(msg):
+    catalogue = msg['header'].get('catalogue')
+    entity = msg['header'].get('collection')
 
-    catalogue = "gebieden"
-    entity = ""
+    logger.configure(msg, "APPLY")
+    logger.info(f"Update model")
 
     storage = GOBStorageHandler()
     combinations = storage.get_source_catalogue_entity_combinations(catalogue=catalogue, entity=entity)
@@ -53,7 +53,7 @@ def apply():
         elif entity_max_eventid == last_eventid:
             logger.info(f"Model {model} is up to date")
         else:
-            logger.warning(f"Model {model} is out of date, Start application of unhandled events")
+            logger.info(f"Start application of unhandled events")
             with storage.get_session():
                 last_events = storage.get_last_events()  # { source_id: last_event, ... }
 
@@ -62,4 +62,15 @@ def apply():
 
             apply_events(storage, last_events, entity_max_eventid, stats)
 
+            # Build result message
+            results = stats.results()
+
             stats.log()
+            logger.info(f"Apply completed", {'data': results})
+
+
+    msg['summary'] = {
+        'warnings': logger.get_warnings(),
+        'errors': logger.get_errors()
+    }
+    return msg
