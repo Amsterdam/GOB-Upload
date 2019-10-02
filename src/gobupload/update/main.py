@@ -9,7 +9,6 @@ from gobcore.utils import ProgressTicker
 from gobupload.storage.handler import GOBStorageHandler
 from gobupload.update.update_statistics import UpdateStatistics
 from gobupload.update.event_collector import EventCollector
-from gobupload.apply import apply_events
 from gobupload.utils import ActiveGarbageCollection, is_corrupted, get_event_ids
 
 
@@ -60,12 +59,8 @@ def _process_events(storage, events, stats):
         logger.info(f"Model is up to date")
         # Add new events
         _store_events(storage, last_events, events, stats)
-        # Apply the new events
-        apply_events(storage, last_events, entity_max_eventid, stats)
     else:
-        logger.warning(f"Model is out of date! Start application of unhandled events")
-        apply_events(storage, last_events, entity_max_eventid, stats)
-        logger.error(f"Further processing has stopped")
+        logger.warning(f"Model is out of date, Further processing has stopped")
 
 
 def full_update(msg):
