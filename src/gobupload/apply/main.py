@@ -35,11 +35,11 @@ def apply_events(storage, last_events, start_after, stats):
 
 
 def apply(msg):
-    catalogue = msg['header'].get('catalogue')
-    entity = msg['header'].get('collection')
+    catalogue = msg['header'].get('catalogue', "")
+    entity = msg['header'].get('entity', "")
 
-    logger.configure(msg, "APPLY")
-    logger.info(f"Update model")
+    logger.configure(msg, "UPDATE MODEL")
+    logger.info(f"Update model {catalogue} {entity}")
 
     storage = GOBStorageHandler()
     combinations = storage.get_source_catalogue_entity_combinations(catalogue=catalogue, entity=entity)
@@ -66,7 +66,7 @@ def apply(msg):
             results = stats.results()
 
             stats.log()
-            logger.info(f"Apply completed", {'data': results})
+            logger.info(f"Update model completed", {'data': results})
 
 
     msg['summary'] = {
