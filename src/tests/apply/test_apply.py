@@ -1,7 +1,7 @@
 import logging
 
 from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, ANY
 
 from gobupload.apply.main import apply_events, apply
 from gobupload.storage.handler import GOBStorageHandler
@@ -46,9 +46,9 @@ class TestApply(TestCase):
         mock.return_value = self.mock_storage
         self.mock_storage.get_source_catalogue_entity_combinations.return_value = []
 
-        result = apply()
+        result = apply({'header': {}})
 
-        self.assertEqual(result, None)
+        self.assertEqual(result, {'header': {}, 'summary': {'errors': ANY, 'warnings': ANY}})
         mock_apply.assert_not_called()
 
     @patch('gobupload.apply.main.logger', MagicMock())
@@ -59,9 +59,9 @@ class TestApply(TestCase):
         combination = MockCombination("any source", "any catalogue", "any entity")
         self.mock_storage.get_source_catalogue_entity_combinations.return_value = [combination]
 
-        result = apply()
+        result = apply({'header': {}})
 
-        self.assertEqual(result, None)
+        self.assertEqual(result, {'header': {}, 'summary': {'errors': ANY, 'warnings': ANY}})
         mock_apply.assert_called()
 
     @patch('gobupload.apply.main.logger', MagicMock())
@@ -72,9 +72,9 @@ class TestApply(TestCase):
         combination = MockCombination("any source", "any catalogue", "any entity")
         self.mock_storage.get_source_catalogue_entity_combinations.return_value = [combination]
 
-        result = apply()
+        result = apply({'header': {}})
 
-        self.assertEqual(result, None)
+        self.assertEqual(result, {'header': {}, 'summary': {'errors': ANY, 'warnings': ANY}})
         mock_apply.assert_not_called()
 
     @patch('gobupload.apply.main.logger', MagicMock())
@@ -85,7 +85,7 @@ class TestApply(TestCase):
         combination = MockCombination("any source", "any catalogue", "any entity")
         self.mock_storage.get_source_catalogue_entity_combinations.return_value = [combination]
 
-        result = apply()
+        result = apply({'header': {}})
 
-        self.assertEqual(result, None)
+        self.assertEqual(result, {'header': {}, 'summary': {'errors': ANY, 'warnings': ANY}})
         mock_apply.assert_not_called()

@@ -8,7 +8,8 @@ from gobcore.events.import_events import ADD, DELETE, CONFIRM, MODIFY
 
 # from gobupload.update import full_update, UpdateStatistics, _get_gob_event, _get_event_ids, _store_events, _apply_events
 from gobupload.update import full_update
-from gobupload.update.main import full_update, UpdateStatistics, get_event_ids, _store_events, apply_events
+from gobupload.update.main import full_update, UpdateStatistics, get_event_ids, _store_events
+from gobupload.apply.main import apply_events
 from gobupload.update.event_applicator import _get_gob_event
 from gobupload.storage.handler import GOBStorageHandler
 from tests import fixtures
@@ -63,7 +64,7 @@ class TestUpdate(TestCase):
         full_update(message)
 
         self.mock_storage.add_events.assert_called()
-        self.mock_storage.get_events_starting_after.assert_called()
+        self.mock_storage.get_events_starting_after.assert_not_called()
 
     @patch('gobupload.update.event_applicator.GobEvent')
     @patch('gobupload.update.main.get_event_ids')
@@ -82,7 +83,7 @@ class TestUpdate(TestCase):
         full_update(message)
 
         self.mock_storage.add_events.assert_not_called()
-        self.mock_storage.get_events_starting_after.assert_called()
+        self.mock_storage.get_events_starting_after.assert_not_called()
 
     @patch('gobupload.update.event_applicator.GobEvent')
     @patch('gobupload.update.main.get_event_ids')
@@ -104,7 +105,7 @@ class TestUpdate(TestCase):
             full_update(message)
 
             self.mock_storage.add_events.assert_called()
-            self.mock_storage.get_events_starting_after.assert_called()
+            self.mock_storage.get_events_starting_after.assert_not_called()
 
     def test_statistics(self, mock):
         stats = UpdateStatistics()

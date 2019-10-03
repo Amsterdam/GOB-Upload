@@ -14,8 +14,12 @@ class TestMain(TestCase):
         from gobupload import __main__
         importlib.reload(__main__)
 
-        mock_service.assert_called_with(__main__.SERVICEDEFINITION, "Upload", {"stream_contents": True,
-                                                                               "thread_per_service": True})
+        mock_service.assert_called_with(__main__.SERVICEDEFINITION, "Upload",
+                                        {
+                                            "stream_contents": True,
+                                            "thread_per_service": True,
+                                            'gob.workflow.apply.queue': {'load_message': False}
+                                        })
         mock_service.return_value.start.assert_called_with()
         mock_storage.return_value.init_storage.assert_not_called()
 

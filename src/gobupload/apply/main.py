@@ -68,7 +68,6 @@ def apply(msg):
             stats.log()
             logger.info(f"Update model completed", {'data': results})
 
-
     msg['summary'] = {
         'warnings': logger.get_warnings(),
         'errors': logger.get_errors()
