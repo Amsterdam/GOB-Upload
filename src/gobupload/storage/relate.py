@@ -14,6 +14,8 @@ from gobcore.model.relations import get_relation_name
 from gobcore.sources import GOBSources
 
 from gobupload.relate.exceptions import RelateException
+from gobupload.storage.update_table import RelationTableUpdater, RelationTableChecker
+from gobupload.storage.execute import _execute, _execute_multiple
 
 
 # Dates compare at start of day
@@ -29,21 +31,6 @@ WHERE = "where"
 # comparison types
 EQUALS = "equals"     # equality comparison, eg src.bronwaarde == dst.code
 LIES_IN = "lies_in"   # geometric comparison, eg src.geometrie lies_in dst_geometrie
-
-
-def _execute_multiple(queries):
-    handler = GOBStorageHandler()
-
-    with handler.get_session() as session:
-        # Commit all queries as a whole on exit with
-        for query in queries:
-            result = session.execute(query)
-
-    return result   # Return result of last execution
-
-
-def _execute(query):
-    return _execute_multiple([query])
 
 
 def _get_bronwaarde(field_name, field_type):
@@ -452,6 +439,24 @@ GROUP BY
 """
     _query_missing(dangling, f"{name} dangling destinations")
 
+    _check_relation_table(src_catalog_name, src_collection_name, src_field_name, f"{name} relations table out of sync")
+
+
+def _check_relation_table(src_catalog_name, src_collection_name, src_field_name, log_name, max_warnings=50):
+    checker = RelationTableChecker()
+    errors = checker.check_relation(src_catalog_name, src_collection_name, src_field_name)
+
+    for error in errors[:50]:
+        logger.warning(log_name, {
+            'id': log_name,
+            'data': {'src_id': error},
+        })
+
+    if errors:
+        reported_only = f"Reported only first {max_warnings} warnings." if len(errors) > max_warnings else ""
+        logger.warning(f"Have {len(errors)} objects where the relation table and the relations defined in the source "
+                       f"table don't match. {reported_only}")
+
 
 def check_very_many_relations(src_catalog_name, src_collection_name, src_field_name):
     """
@@ -659,6 +664,11 @@ def _update_match(spec, field, query_type, is_very_many=False):
         return _geo_resolve(spec, query_type)
 
 
+def _update_relations_rel_table(src_catalog_name, src_collection_name, src_field_name):
+    updater = RelationTableUpdater(src_catalog_name, src_collection_name, src_field_name)
+    return updater.update_relation()
+
+
 def update_relations(src_catalog_name, src_collection_name, src_field_name):
     """
     Compose a database query to get all relation data for the given catalog, collection and field
@@ -840,8 +850,13 @@ ON
     WHERE --only select relations that have changed
         {where_clause}
 """
-    update_table = relation_table if is_very_many else src_table_name
-    updates = _do_relate_update(new_values, src_field_name, src_has_states, dst_has_states, update_table, is_very_many)
+
+    # Update the relations table first
+    updates = _update_relations_rel_table(src_catalog_name, src_collection_name, src_field_name)
+
+    if not is_very_many:
+        # Update the source tabel
+        updates = _do_relate_update(new_values, src_field_name, src_has_states, dst_has_states, src_table_name, False)
 
     _check_relate_update(new_values, src_field_name, src_identification)
     return updates
