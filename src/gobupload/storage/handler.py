@@ -97,10 +97,10 @@ class GOBStorageHandler():
         :return: None
         """
         alembic_cfg = alembic.config.Config('alembic.ini')
-        script_ = alembic.script.ScriptDirectory.from_config(alembic_cfg)
+        script = alembic.script.ScriptDirectory.from_config(alembic_cfg)
         with self.engine.begin() as conn:
             context = migration.MigrationContext.configure(conn)
-            up_to_date = context.get_current_revision() == script_.get_current_head()
+            up_to_date = context.get_current_revision() == script.get_current_head()
 
         if up_to_date:
             print("Storage is up-to-date")
