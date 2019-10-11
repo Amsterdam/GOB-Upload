@@ -90,6 +90,7 @@ if args.migrate:
     storage.init_storage()
     print("End migration")
 else:
+    storage.wait_for_storage()  # Wait for any migrations
     params = {
         "stream_contents": True,
         "thread_per_service": True,
