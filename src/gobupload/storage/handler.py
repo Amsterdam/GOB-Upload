@@ -13,6 +13,7 @@ Use it like this:
 import copy
 import functools
 import json
+import time
 
 from sqlalchemy import create_engine, Table, update
 from sqlalchemy.engine.url import URL
@@ -31,7 +32,9 @@ from gobcore.utils import ProgressTicker
 from gobupload.config import GOB_DB
 from gobupload.storage import queries
 
+from alembic.runtime import migration
 import alembic.config
+import alembic.script
 
 
 TEMPORARY_TABLE_SUFFIX = '_tmp'
@@ -85,6 +88,26 @@ class GOBStorageHandler():
 
         self.metadata = gob_metadata
         self.session = None
+
+    def wait_for_storage(self):
+        """
+        Wait for storage to be up-to-date.
+        If any migrations need to be run wait for them to get done before continuing
+
+        :return: None
+        """
+        alembic_cfg = alembic.config.Config('alembic.ini')
+        script_ = alembic.script.ScriptDirectory.from_config(alembic_cfg)
+        with self.engine.begin() as conn:
+            context = migration.MigrationContext.configure(conn)
+            up_to_date = context.get_current_revision() == script_.get_current_head()
+
+        if up_to_date:
+            print("Storage is up-to-date")
+        else:
+            print('Storage is outdated, please update manually: python -m gobupload --migrate')
+            time.sleep(30)
+            self.wait_for_storage()
 
     def init_storage(self):
         """Check if the necessary tables (for events, and for the entities in gobmodel) are present
