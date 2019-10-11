@@ -82,11 +82,15 @@ class TestRelationTableEventExtractor(TestCase):
                     'src._application AS src__application', 'src._source_id AS src__source_id',
                     'src._version AS src__version', 'rel._gobid AS rel__gobid', 'rel.src_id AS rel_src_id',
                     'rel.src_volgnummer AS rel_src_volgnummer', 'rel.dst_id AS rel_dst_id',
-                    'rel.dst_volgnummer AS rel_dst_volgnummer', 'rel._expiration_date AS rel__expiration_date',
-                    'rel._id AS rel__id', 'src._source AS src_source', 'dst._id AS dst__id',
+                    'rel.dst_volgnummer AS rel_dst_volgnummer',
+                    'rel._expiration_date AS rel__expiration_date',
+                    'rel._id AS rel__id',
+                    'CASE WHEN rel._version IS NOT NULL THEN rel._version ELSE \'0.1\' END AS rel__version',
+                    'dst._id AS dst__id',
                     'dst._expiration_date AS dst__expiration_date',
                     'LEAST(src._expiration_date, dst._expiration_date) AS expected_expiration_date',
-                    "CASE\n        WHEN rel.src_id IS NULL THEN 'ADD'\n        WHEN src._id IS NULL THEN 'DELETE'\n"
+                    "\n    CASE\n        WHEN rel.src_id IS NULL THEN 'ADD'\n"
+                    "        WHEN src._id IS NULL THEN 'DELETE'\n"
                     "        WHEN dst._id IS DISTINCT FROM rel.dst_id\n            \n"
                     "             OR LEAST(src._expiration_date, dst._expiration_date)\n"
                     "             IS DISTINCT FROM rel._expiration_date\n"
@@ -104,11 +108,14 @@ class TestRelationTableEventExtractor(TestCase):
                     'src._version AS src__version', 'rel._gobid AS rel__gobid', 'rel.src_id AS rel_src_id',
                     'rel.src_volgnummer AS rel_src_volgnummer', 'rel.dst_id AS rel_dst_id',
                     'rel.dst_volgnummer AS rel_dst_volgnummer', 'rel._expiration_date AS rel__expiration_date',
-                    'rel._id AS rel__id', 'src._source AS src_source', 'dst._id AS dst__id',
+                    'rel._id AS rel__id',
+                    'CASE WHEN rel._version IS NOT NULL THEN rel._version ELSE \'0.1\' END AS rel__version',
+                    'dst._id AS dst__id',
                     'dst._expiration_date AS dst__expiration_date',
                     'LEAST(src._expiration_date, dst._expiration_date) AS expected_expiration_date',
                     'src.volgnummer AS src_volgnummer', 'dst.volgnummer AS dst_volgnummer',
-                    "CASE\n        WHEN rel.src_id IS NULL THEN 'ADD'\n        WHEN src._id IS NULL THEN 'DELETE'\n"
+                    "\n    CASE\n        WHEN rel.src_id IS NULL THEN 'ADD'\n"
+                    "        WHEN src._id IS NULL THEN 'DELETE'\n"
                     "        WHEN dst._id IS DISTINCT FROM rel.dst_id\n"
                     "            OR dst.volgnummer IS DISTINCT FROM rel.dst_volgnummer\n"
                     "             OR LEAST(src._expiration_date, dst._expiration_date)\n"
@@ -546,7 +553,7 @@ class TestRelationTableUpdater(TestCase):
             '_source': 'src__source',
             '_application': 'src__application',
             '_source_id': 'src__source_id',
-            '_version': 'src__version',
+            '_version': 'rel__version',
             'id': None,
             'src_source': 'src__source',
             'src_id': 'src__id',

@@ -446,16 +446,15 @@ def _check_relation_table(src_catalog_name, src_collection_name, src_field_name,
     checker = RelationTableChecker()
     errors = checker.check_relation(src_catalog_name, src_collection_name, src_field_name)
 
-    for error in errors[:50]:
+    for error in errors[:max_warnings]:
         logger.warning(log_name, {
             'id': log_name,
             'data': {'src_id': error},
         })
 
-    if errors:
-        reported_only = f"Reported only first {max_warnings} warnings." if len(errors) > max_warnings else ""
+    if len(errors) > max_warnings:
         logger.warning(f"Have {len(errors)} objects where the relation table and the relations defined in the source "
-                       f"table don't match. {reported_only}")
+                       f"table don't match. Reported only first {max_warnings}")
 
 
 def check_very_many_relations(src_catalog_name, src_collection_name, src_field_name):

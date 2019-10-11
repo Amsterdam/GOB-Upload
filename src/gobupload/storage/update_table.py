@@ -25,6 +25,7 @@ class RelationTableEventExtractor:
     Currently generates objects that resemble GOB events, but are not actually GOB events. In the future the extract()
     method should generate proper GOB events.
     """
+    TABLE_VERSION = '0.1'
 
     model = GOBModel()
     sources = GOBSources()
@@ -69,24 +70,25 @@ class RelationTableEventExtractor:
         :return:
         """
         select_expressions = [
-            f'src.{FIELD.ID} AS src__id',
-            f'src.{FIELD.EXPIRATION_DATE} AS src__expiration_date',
+            f"src.{FIELD.ID} AS src__id",
+            f"src.{FIELD.EXPIRATION_DATE} AS src__expiration_date",
             f"{self._source_value_ref()} AS src_bronwaarde",
             f"src.{FIELD.SOURCE} AS src__source",
             f"src.{FIELD.APPLICATION} AS src__application",
             f"src.{FIELD.SOURCE_ID} AS src__source_id",
             f"src.{FIELD.VERSION} AS src__version",
             f"rel.{FIELD.GOBID} AS rel__gobid",
-            f'rel.src_id AS rel_src_id',
-            f'rel.src_volgnummer AS rel_src_volgnummer',
-            f'rel.dst_id AS rel_dst_id',
-            f'rel.dst_volgnummer AS rel_dst_volgnummer',
-            f'rel.{FIELD.EXPIRATION_DATE} AS rel__expiration_date',
-            f'rel.{FIELD.ID} AS rel__id',
-            f'src.{FIELD.SOURCE} AS src_source',
-            f'dst.{FIELD.ID} AS dst__id',
-            f'dst.{FIELD.EXPIRATION_DATE} AS dst__expiration_date',
-            f'LEAST(src.{FIELD.EXPIRATION_DATE}, dst.{FIELD.EXPIRATION_DATE}) AS expected_expiration_date'
+            f"rel.src_id AS rel_src_id",
+            f"rel.src_volgnummer AS rel_src_volgnummer",
+            f"rel.dst_id AS rel_dst_id",
+            f"rel.dst_volgnummer AS rel_dst_volgnummer",
+            f"rel.{FIELD.EXPIRATION_DATE} AS rel__expiration_date",
+            f"rel.{FIELD.ID} AS rel__id",
+            f"CASE WHEN rel.{FIELD.VERSION} IS NOT NULL THEN rel.{FIELD.VERSION} ELSE '{self.TABLE_VERSION}' "
+            f"END AS rel__version",
+            f"dst.{FIELD.ID} AS dst__id",
+            f"dst.{FIELD.EXPIRATION_DATE} AS dst__expiration_date",
+            f"LEAST(src.{FIELD.EXPIRATION_DATE}, dst.{FIELD.EXPIRATION_DATE}) AS expected_expiration_date"
         ]
 
         if self.src_has_states:
@@ -100,7 +102,8 @@ class RelationTableEventExtractor:
 
         distinct_seqnr = f'OR dst.{FIELD.SEQNR} IS DISTINCT FROM rel.dst_volgnummer'
 
-        select_expressions.append(f"""CASE
+        select_expressions.append(f"""
+    CASE
         WHEN rel.src_id IS NULL THEN '{ADD.name}'
         WHEN src.{FIELD.ID} IS NULL THEN '{DELETE.name}'
         WHEN dst.{FIELD.ID} IS DISTINCT FROM rel.dst_id
@@ -119,8 +122,10 @@ class RelationTableEventExtractor:
         :return:
         """
 
-        return f"{self.json_join_alias}.item->>'{FIELD.SOURCE_VALUE}'" if self.is_many \
-            else f"src.{self.src_field_name}->>'{FIELD.SOURCE_VALUE}'"
+        if self.is_many:
+            return f"{self.json_join_alias}.item->>'{FIELD.SOURCE_VALUE}'"
+        else:
+            return f"src.{self.src_field_name}->>'{FIELD.SOURCE_VALUE}'"
 
     def _rel_table_join_on(self):
         """Returns the ON clause for the relation table join
@@ -131,10 +136,12 @@ class RelationTableEventExtractor:
         if self.src_has_states:
             join_on.append(f"src.{FIELD.SEQNR} = rel.src_{FIELD.SEQNR}")
 
-        join_on.append(f'rel.src_source = src.{FIELD.SOURCE}')
-        join_on.append(f'rel.{FIELD.DATE_DELETED} IS NULL')
-        join_on.append(f'rel.bronwaarde = {self._source_value_ref()}')
-        join_on.append(f'rel.{FIELD.APPLICATION} = src.{FIELD.APPLICATION}')
+        join_on += [
+            f'rel.src_source = src.{FIELD.SOURCE}',
+            f'rel.{FIELD.DATE_DELETED} IS NULL',
+            f'rel.bronwaarde = {self._source_value_ref()}',
+            f'rel.{FIELD.APPLICATION} = src.{FIELD.APPLICATION}',
+        ]
         return join_on
 
     def _geo_resolve(self, spec, src_ref='src'):
@@ -161,8 +168,8 @@ class RelationTableEventExtractor:
         :param src_ref:
         :return:
         """
-        join_on = ([f"({src_ref}.{FIELD.APPLICATION} = '{spec['source']}' AND " +
-                    f"{self._relate_match(spec, src_ref)})" for spec in self.relation_specs])
+        join_on = [f"({src_ref}.{FIELD.APPLICATION} = '{spec['source']}' AND " +
+                   f"{self._relate_match(spec, src_ref)})" for spec in self.relation_specs]
         # If more matches have been defined that catch any of the matches
         if len(join_on) > 1:
             join_on = [f"({self.or_join.join(join_on)})"]
@@ -234,8 +241,11 @@ class RelationTableEventExtractor:
         """
 
         return f"WHERE NOT (" \
-            f"src.{FIELD.ID} IS NOT NULL AND {self._source_value_ref()} IS NULL AND rel.{FIELD.ID} IS NULL) " \
-            f"AND rel.{FIELD.DATE_DELETED} IS NULL"
+            f"src.{FIELD.ID} IS NOT NULL AND " \
+            f"{self._source_value_ref()} IS NULL AND " \
+            f"rel.{FIELD.ID} IS NULL" \
+            f") AND " \
+            f"rel.{FIELD.DATE_DELETED} IS NULL"
 
     def _have_geo_specs(self):
         """Returns True if this relation includes a geo match.
@@ -372,12 +382,15 @@ class RelationTableUpdater:
             FIELD.SOURCE: 'src__source',
             FIELD.APPLICATION: 'src__application',
             FIELD.SOURCE_ID: 'src__source_id',
-            FIELD.VERSION: 'src__version',
+            FIELD.VERSION: 'rel__version',
             'id': None,
             'src_source': 'src__source',
             'src_id': 'src__id',
             'dst_source': 'dst__source',
             'dst_id': 'dst__id',
+
+            # Expected expiration date is the expiration date we expect for this relation: least(src exp, dst exp)
+            # If different from real expiration_date we should trigger an update on this relation
             FIELD.EXPIRATION_DATE: 'expected_expiration_date',
             FIELD.SOURCE_VALUE: 'src_bronwaarde',
         }
@@ -424,7 +437,7 @@ class RelationTableUpdater:
         :param queue:
         :return:
         """
-        if len(queue) == 0:
+        if not queue:
             return 0
 
         if queue[0]['event_type'] == ADD.name:
