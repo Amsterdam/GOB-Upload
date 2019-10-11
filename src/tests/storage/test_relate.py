@@ -408,7 +408,16 @@ ORDER BY
 
         _check_relation_table('src catalog', 'src collection', 'src field', 'log name')
         mock_logger.warning.assert_called()
-        self.assertEqual(3, mock_logger.warning.call_count)
+        self.assertEqual(2, mock_logger.warning.call_count)
+
+    @patch('gobupload.storage.relate.RelationTableChecker')
+    @patch('gobupload.storage.relate.logger')
+    def test_check_relation_table_with_many_errors(self, mock_logger, mock_checker):
+        mock_checker.return_value.check_relation.return_value = [1, 2]
+
+        _check_relation_table('src catalog', 'src collection', 'src field', 'log name', max_warnings=1)
+        mock_logger.warning.assert_called()
+        self.assertEqual(2, mock_logger.warning.call_count)
 
     @patch('gobupload.storage.relate.get_relation_name')
     @patch('gobupload.storage.relate._query_missing')
