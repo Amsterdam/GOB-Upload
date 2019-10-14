@@ -21,7 +21,7 @@ class TestMain(TestCase):
                                             'gob.workflow.apply.queue': {'load_message': False}
                                         })
         mock_service.return_value.start.assert_called_with()
-        mock_storage.return_value.init_storage.assert_not_called()
+        mock_storage.return_value.init_storage.assert_called_with()
 
         for key, definition in __main__.SERVICEDEFINITION.items():
             self.assertTrue('queue' in definition)
@@ -37,4 +37,4 @@ class TestMain(TestCase):
         importlib.reload(__main__)
 
         mock_service.return_value.start.assert_not_called()
-        mock_storage.return_value.init_storage.assert_called()
+        mock_storage.return_value.init_storage.assert_called_with(force_migrate=True)
