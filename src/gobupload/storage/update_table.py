@@ -283,7 +283,7 @@ class RelationTableEventExtractor:
             Also, instead of directly joining the dst table, we join with a subset of the dst table containing only
             rows that have valid geometries
             """
-            validgeo_src = f"" \
+            validgeo_src = \
                 f"JOIN (SELECT * FROM {self.src_table_name} WHERE ({self._valid_geo_src_check()})) valid_src " \
                 f"ON src.{FIELD.GOBID} = valid_src.{FIELD.GOBID}"
             dst = f"(SELECT * FROM {self.dst_table_name} WHERE ({self._valid_geo_dst_check()}))"
@@ -478,7 +478,7 @@ class RelationTableUpdater:
         set_values = ',\n'.join([f"{col_name} = v.{cast(col_name)}"
                                  for col_name in self.fields.keys() if col_name != FIELD.GOBID])
 
-        query = f"" \
+        query = \
             f"UPDATE {self.relation_table} AS rel\n" \
             f"SET {set_values}\n" \
             f"FROM (VALUES {values}) AS v({self._column_list(True)})\n" \
@@ -494,7 +494,7 @@ class RelationTableUpdater:
         """
         ids = ','.join([str(event['rel__gobid']) for event in events])
 
-        query = f"" \
+        query = \
             f"UPDATE {self.relation_table}\n" \
             f"SET {FIELD.DATE_DELETED} = NOW()\n" \
             f"WHERE {FIELD.GOBID} IN ({ids})"
