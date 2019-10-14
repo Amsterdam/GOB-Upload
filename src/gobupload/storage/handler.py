@@ -31,7 +31,9 @@ from gobcore.utils import ProgressTicker
 from gobupload.config import GOB_DB
 from gobupload.storage import queries
 
+from alembic.runtime import migration
 import alembic.config
+import alembic.script
 
 
 TEMPORARY_TABLE_SUFFIX = '_tmp'
@@ -86,24 +88,45 @@ class GOBStorageHandler():
         self.metadata = gob_metadata
         self.session = None
 
-    def init_storage(self):
+    def init_storage(self, force_migrate=False):
         """Check if the necessary tables (for events, and for the entities in gobmodel) are present
         If not, they are required
         """
+        MIGRATION_LOCK = 19935910  # Just some random number
 
-        # Database migrations are handled by alembic
-        # alembic upgrade head
-        alembicArgs = [
-            '--raiseerr',
-            'upgrade', 'head',
-        ]
-        alembic.config.main(argv=alembicArgs)
+        if not force_migrate:
+            # Don't force
+            # Nicely wait for any migrations to finish before continuing
+            self.engine.execute(f"SELECT pg_advisory_lock({MIGRATION_LOCK})")
+
+        try:
+            # Check if storage is up-to-date
+            alembic_cfg = alembic.config.Config('alembic.ini')
+            script = alembic.script.ScriptDirectory.from_config(alembic_cfg)
+            with self.engine.begin() as conn:
+                context = migration.MigrationContext.configure(conn)
+                up_to_date = context.get_current_revision() == script.get_current_head()
+
+            if not up_to_date:
+                print('Migrating storage')
+                alembicArgs = [
+                    '--raiseerr',
+                    'upgrade', 'head',
+                ]
+                alembic.config.main(argv=alembicArgs)
+
+            # refresh reflected base
+            self._set_base(update=True)
+        except Exception as e:
+            print(f'Storage migration failed: {str(e)}')
+        else:  # No exception
+            print('Storage is up-to-date')
+
+        # Always unlock
+        self.engine.execute(f"SELECT pg_advisory_unlock({MIGRATION_LOCK})")
 
         # Create model views
         self._init_views()
-
-        # refresh reflected base
-        self._set_base(update=True)
 
         # Create necessary indexes
         self._init_indexes()

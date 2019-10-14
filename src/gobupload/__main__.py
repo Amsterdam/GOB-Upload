@@ -86,10 +86,10 @@ storage = GOBStorageHandler()
 
 # Migrate on request only
 if args.migrate:
-    print("Start migration")
-    storage.init_storage()
-    print("End migration")
+    print("Storage migration forced")
+    storage.init_storage(force_migrate=True)
 else:
+    storage.init_storage()
     params = {
         "stream_contents": True,
         "thread_per_service": True,
