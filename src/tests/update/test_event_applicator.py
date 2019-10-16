@@ -134,6 +134,6 @@ class TestEventApplicator(TestCase):
 
         _get_gob_event(event, data)
 
-        mock_migrations().migrate_event_data.assert_called_with(data, event.catalogue, event.entity, target_version)
+        mock_migrations().migrate_event_data.assert_called_with(event, data, event.catalogue, event.entity, target_version)
 
         mock_gob_event.assert_called_with(expected_event_msg, expected_meta_data)
