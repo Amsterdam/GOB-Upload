@@ -151,20 +151,6 @@ class TestStorageHandler(unittest.TestCase):
         # And the engine has been called to fill the temporary table
         self.storage.engine.execute.assert_called()
 
-    def test_compare_temporary_data(self, mock_get_comparison):
-        current_table = f'{self.msg["header"]["catalogue"]}_{self.msg["header"]["entity"]}'
-        new_table = f'{self.msg["header"]["catalogue"]}_{self.msg["header"]["entity"]}_tmp'
-
-        diff = self.storage.compare_temporary_data()
-        results = [result for result in diff]
-
-        # Check if the get comparison function is called for confirms and changes
-        mock_get_comparison.assert_any_call(current_table, new_table)
-        mock_get_comparison.assert_any_call(current_table, new_table, False)
-
-        # Assert the temporary table is deleted
-        self.storage.engine.execute.assert_any_call(f"DROP TABLE {new_table}")
-
     def test_compare_temporary_data(self):
         current = f'{self.msg["header"]["catalogue"]}_{self.msg["header"]["entity"]}'
         temporary = f'{self.msg["header"]["catalogue"]}_{self.msg["header"]["entity"]}_tmp'

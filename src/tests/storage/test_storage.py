@@ -4,7 +4,7 @@ from unittest import mock
 
 from gobcore.exceptions import GOBException
 
-from gobupload.storage.handler import with_session
+from gobupload.storage.handler import with_session, GOBStorageHandler
 from gobupload.storage import handler
 from tests import fixtures
 
@@ -63,7 +63,6 @@ class TestContextManager(unittest.TestCase):
             self.assertEqual(storage.session, mock_session_instance)
 
         # test session creation after leaving context:
-        mock_session_instance.commit.assert_called()
         mock_session_instance.close.assert_called()
         self.assertIsNone(storage.session)
 
