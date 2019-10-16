@@ -62,7 +62,9 @@ class GOBStorageHandler():
     """Metadata aware Storage handler """
     gob_model = GOBModel()
     engine = create_engine(URL(**GOB_DB))
-    Session = sessionmaker(engine)
+    Session = sessionmaker(autocommit=True,
+                           autoflush=False,
+                           bind=engine)
     base = None
 
     @classmethod
@@ -313,7 +315,6 @@ class GOBStorageHandler():
                     self.session.rollback()
                 else:
                     self.session.flush()
-                    self.session.commit()
                 self.session.close()
                 self.session = None
 
