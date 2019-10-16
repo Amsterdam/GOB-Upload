@@ -9,6 +9,9 @@ import json
 from gobcore.events import GOB, GobEvent
 from gobcore.events.import_message import MessageMetaData
 
+from gobcore.model import GOBModel
+from gobcore.model.migrations import GOBMigrations
+
 from gobupload.utils import ActiveGarbageCollection
 
 
@@ -80,6 +83,13 @@ def _get_gob_event(event, data):
     :param data: the data that is associated with the event
     :return: a ADD, MODIFY, CONFIRM or DELETE event
     """
+
+    # Get the model version to check if the event should be migrated to the correct version
+    model_version = GOBModel().get_collection(event.catalogue, event.entity)['version']
+
+    if model_version != event.version:
+        # Event should be migrated to the correct GOBModel version
+        data = GOBMigrations().migrate_event_data(data, event.catalogue, event.entity, model_version)
 
     event_msg = {
         "event": event.action,
