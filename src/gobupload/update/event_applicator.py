@@ -62,6 +62,9 @@ class EventApplicator:
             # Initial add
             self.add_add_event(gob_event)
         else:
+            # If ADD events are waiting to be applied to the database, flush those first to make sure they exist
+            self.apply_add_events()
+
             # Get the entity to which the event should be applied, create if ADD event
             entity = self.storage.get_entity_for_update(event, data)
 
@@ -89,7 +92,7 @@ def _get_gob_event(event, data):
 
     if model_version != event.version:
         # Event should be migrated to the correct GOBModel version
-        data = GOBMigrations().migrate_event_data(data, event.catalogue, event.entity, model_version)
+        data = GOBMigrations().migrate_event_data(event, data, event.catalogue, event.entity, model_version)
 
     event_msg = {
         "event": event.action,

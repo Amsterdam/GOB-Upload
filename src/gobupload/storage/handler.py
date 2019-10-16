@@ -367,7 +367,8 @@ class GOBStorageHandler():
         """
         return self.session.query(self.DbEvent).yield_per(10000) \
             .filter_by(source=self.metadata.source, catalogue=self.metadata.catalogue, entity=self.metadata.entity) \
-            .filter(self.DbEvent.eventid > eventid if eventid else True)
+            .filter(self.DbEvent.eventid > eventid if eventid else True) \
+            .order_by(self.DbEvent.eventid)
 
     @with_session
     def has_any_event(self, filter):
