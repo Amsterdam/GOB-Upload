@@ -344,7 +344,7 @@ FROM (
         """
         query = self._get_query()
 
-        return _execute(query)
+        return _execute(query, stream=True)
 
 
 class RelationTableUpdater:
