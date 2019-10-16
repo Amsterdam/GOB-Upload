@@ -9,15 +9,13 @@ Publishes the relation as import messages
 import datetime
 
 from gobcore.model import GOBModel
-from gobcore.sources import GOBSources
 from gobcore.logging.logger import logger
 from gobcore.model.relations import get_relation_name
 
 from gobupload.storage.relate import get_last_change, check_relations, check_very_many_relations
 
-from gobupload.relate.relate import relate as get_relations, relate_update
-from gobupload.relate.publish import publish_relations, publish_result
-from gobupload.relate.exceptions import RelateException
+from gobupload.relate.relate import relate_update
+from gobupload.relate.publish import publish_result
 
 
 def _relation_needs_update(catalog_name, collection_name, reference_name, reference):
@@ -125,80 +123,6 @@ def check_relation(msg):
         },
         "contents": None
     }
-
-
-def relate_relation(msg):
-    """
-    Derive relations for a specific reference field
-
-    :param msg: Message holding the catalog, collection and reference name
-    :return: None
-    """
-    catalog_name = msg['contents']['catalogue']
-    collection_name = msg['contents']['entity']
-    reference_name = msg['contents']['reference_name']
-    reference = msg['contents']['reference']
-
-    model = GOBModel()
-    relation_name = get_relation_name(model, catalog_name, collection_name, reference_name)
-
-    timestamp = datetime.datetime.utcnow().isoformat()
-    process_id = f"{timestamp}.{catalog_name}.{collection_name}.{reference_name}"
-
-    display_name = f"{catalog_name}:{collection_name} {reference_name}"
-
-    msg["header"].update({
-        "src_catalogue": catalog_name,
-        "src_entity": collection_name,
-        "src_reference_name": reference_name,
-        "entity": relation_name if relation_name else display_name,
-        "process_id": process_id
-    })
-
-    logger.configure(msg, "RELATE")
-    logger.info(f"Relate '{display_name}' started")
-
-    sources = GOBSources()
-    relation_specs = sources.get_field_relations(catalog_name, collection_name, reference_name)
-    if not relation_specs:
-        logger.error(f"Relation {reference_name} is not defined")
-        return {
-            "header": msg["header"],
-            "summary": {
-                "errors": logger.get_errors(),
-                "warnings": logger.get_warnings()
-            },
-            "contents": None
-        }
-
-    if not _relation_needs_update(catalog_name, collection_name, reference_name, reference):
-        logger.info(f"Relation {reference_name} is up-to-date")
-        return {
-            "header": msg["header"],
-            "summary": {
-                "errors": logger.get_errors(),
-                "warnings": logger.get_warnings(),
-                "up-to-date": True
-            },
-            "contents": None
-        }
-
-    relations = []
-    src_has_states = False
-    dst_has_states = False
-    try:
-        relations, src_has_states, dst_has_states = get_relations(
-            catalog_name,
-            collection_name,
-            reference_name
-        )
-    except RelateException as e:
-        _log_exception(f"Relate {catalog_name} - {collection_name}:{reference_name} FAILED", e)
-
-    logger.info(f"Relate {display_name} completed")
-
-    # Publish results
-    return publish_relations(msg, relations, src_has_states, dst_has_states)
 
 
 def build_relations(msg):
