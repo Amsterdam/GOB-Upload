@@ -519,7 +519,7 @@ WHERE CLAUSE
         extractor._get_query = MagicMock()
         extractor.extract()
 
-        mock_execute.assert_called_with(extractor._get_query.return_value)
+        mock_execute.assert_called_with(extractor._get_query.return_value, stream=True)
 
 
 @patch("gobupload.storage.update_table.RelationTableEventExtractor")
