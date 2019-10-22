@@ -222,7 +222,6 @@ class TestRelationTableEventExtractor(TestCase):
 
         expected = [
             'dst._id = src_dst.dst_id',
-            'CASE WHEN rel._source_id IS NOT NULL THEN (rel.dst_id = dst._id ) ELSE TRUE END',
         ]
 
         self.assertEqual(expected, extractor._dst_table_outer_join_on())
@@ -231,8 +230,6 @@ class TestRelationTableEventExtractor(TestCase):
         expected = [
             'dst._id = src_dst.dst_id',
             'dst.volgnummer = src_dst.dst_volgnummer',
-            'CASE WHEN rel._source_id IS NOT NULL THEN (rel.dst_id = dst._id '
-            'AND rel.dst_volgnummer = dst.volgnummer) ELSE TRUE END',
         ]
 
         self.assertEqual(expected, extractor._dst_table_outer_join_on())
