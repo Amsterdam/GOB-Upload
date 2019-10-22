@@ -1,5 +1,7 @@
 import os
 
+FULL_UPLOAD = "full"
+
 GOB_DB = {
     'drivername': 'postgres',
     'username': os.getenv("DATABASE_USER", "gob"),
