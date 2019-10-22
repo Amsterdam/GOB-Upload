@@ -1,7 +1,7 @@
 from gobupload.config import FULL_UPLOAD
 
 
-def get_comparison_query(current, temporary, fields, mode):
+def get_comparison_query(current, temporary, fields, mode=FULL_UPLOAD):
     # The using part of the statements contains the fnctional identification for the entity:
     # functional source (source), functional id (_id) and a volgnummer if the entity has states
     using = ",".join(fields)
