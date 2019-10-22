@@ -20,6 +20,7 @@ from gobupload.compare.populate import Populator
 from gobupload.compare.entity_collector import EntityCollector
 from gobupload.compare.event_collector import EventCollector
 from gobupload.compare.compare_statistics import CompareStatistics
+from gobupload.config import FULL_UPLOAD
 
 
 def compare(msg):
@@ -30,7 +31,7 @@ def compare(msg):
     """
     logger.configure(msg, "COMPARE")
     header = msg.get('header', {})
-    mode = header.get('mode', 'full')
+    mode = header.get('mode', FULL_UPLOAD)
     logger.info(f"Compare (mode = {mode}) to GOB Database {GOBStorageHandler.user_name} started")
 
     # Parse the message header
