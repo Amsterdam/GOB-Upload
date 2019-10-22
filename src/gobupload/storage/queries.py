@@ -3,7 +3,7 @@ def get_comparison_query(current, temporary, fields, mode):
     # functional source (source), functional id (_id) and a volgnummer if the entity has states
     using = ",".join(fields)
 
-    action_on_missing = "SKIP" if mode == "partial" else "DELETE"
+    action_on_missing = "DELETE" if mode == "full" else "SKIP"
 
     # The techical source id is returned
     # _source_id for the new source id, _entity_source_id for the current source_id
