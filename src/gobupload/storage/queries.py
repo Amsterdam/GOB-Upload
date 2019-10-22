@@ -1,13 +1,17 @@
+from gobupload.config import FULL_UPLOAD
+
+
 def get_comparison_query(current, temporary, fields, mode):
     # The using part of the statements contains the fnctional identification for the entity:
     # functional source (source), functional id (_id) and a volgnummer if the entity has states
     using = ",".join(fields)
 
-    action_on_missing = "DELETE" if mode == "full" else "SKIP"
+    # On a full upload any missing items are deletions, for any other upload missing items are skipped
+    action_on_missing = "DELETE" if mode == FULL_UPLOAD else "SKIP"
 
     # The techical source id is returned
     # _source_id for the new source id, _entity_source_id for the current source_id
-    query = f"""
+    return f"""
 SELECT * FROM (
 SELECT
     {temporary}._source_id,
@@ -57,7 +61,3 @@ WHERE (
 WHERE type != 'SKIP'
 ORDER BY type
 """
-    print("QUERY")
-    print(query)
-    input("Press Enter to continue...")
-    return query
