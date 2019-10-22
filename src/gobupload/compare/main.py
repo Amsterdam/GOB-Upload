@@ -29,7 +29,9 @@ def compare(msg):
     :return: result message
     """
     logger.configure(msg, "COMPARE")
-    logger.info(f"Compare to GOB Database {GOBStorageHandler.user_name} started")
+    header = msg.get('header', {})
+    mode = header.get('mode', 'full')
+    logger.info(f"Compare (mode = {mode}) to GOB Database {GOBStorageHandler.user_name} started")
 
     # Parse the message header
     message = ImportMessage(msg)
@@ -89,7 +91,7 @@ def compare(msg):
     else:
         # Compare entities from temporary table
         with storage.get_session():
-            diff = storage.compare_temporary_data()
+            diff = storage.compare_temporary_data(mode)
             filename = _process_compare_results(storage, entity_model, diff, stats)
 
     # Build result message
