@@ -196,12 +196,6 @@ class RelationTableEventExtractor:
         if self.dst_has_states:
             join_on.append(f"dst.{FIELD.SEQNR} = src_dst.dst_volgnummer")
 
-        match_seqnr = f"AND rel.dst_volgnummer = dst.{FIELD.SEQNR}" if self.dst_has_states else ""
-
-        # If a relation is found, match the dst table with the relation. Otherwise include all matches on dst
-        join_on.append(f"CASE WHEN rel.{FIELD.SOURCE_ID} IS NOT NULL "
-                       f"THEN (rel.dst_id = dst.{FIELD.ID} {match_seqnr}) "
-                       f"ELSE TRUE END")
         return join_on
 
     def _src_dst_join_on(self):
