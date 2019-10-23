@@ -1,7 +1,13 @@
-def get_comparison_query(current, temporary, fields):
+from gobupload.config import FULL_UPLOAD
+
+
+def get_comparison_query(current, temporary, fields, mode=FULL_UPLOAD):
     # The using part of the statements contains the fnctional identification for the entity:
     # functional source (source), functional id (_id) and a volgnummer if the entity has states
     using = ",".join(fields)
+
+    # On a full upload any missing items are deletions, for any other upload missing items are skipped
+    action_on_missing = "DELETE" if mode == FULL_UPLOAD else "SKIP"
 
     # The techical source id is returned
     # _source_id for the new source id, _entity_source_id for the current source_id
@@ -34,7 +40,7 @@ SELECT
     {current}._last_event,
     COALESCE({temporary}._hash, {current}._hash),
     CASE
-        WHEN {temporary}._source_id IS NULL AND {current}._date_deleted IS NULL THEN 'DELETE'
+        WHEN {temporary}._source_id IS NULL AND {current}._date_deleted IS NULL THEN '{action_on_missing}'
         WHEN {temporary}._source_id IS NULL AND {current}._date_deleted IS NOT NULL THEN 'SKIP'
         WHEN (
             {current}._source_id IS NULL OR

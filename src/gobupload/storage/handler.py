@@ -28,7 +28,7 @@ from gobcore.typesystem.json import GobTypeJSONEncoder
 from gobcore.views import GOBViews
 from gobcore.utils import ProgressTicker
 
-from gobupload.config import GOB_DB
+from gobupload.config import GOB_DB, FULL_UPLOAD
 from gobupload.storage import queries
 
 from alembic.runtime import migration
@@ -254,7 +254,7 @@ class GOBStorageHandler():
         """
         self._write_temporary_entities()
 
-    def compare_temporary_data(self):
+    def compare_temporary_data(self, mode=FULL_UPLOAD):
         """ Compare the data in the temporay table to the current state
 
         The created query compares each model field and returns the source_id, last_event
@@ -269,7 +269,7 @@ class GOBStorageHandler():
         fields = self.gob_model.get_functional_key_fields(self.metadata.catalogue, self.metadata.entity)
 
         # Get the result of comparison where data is equal to the current state
-        result = self.engine.execute(queries.get_comparison_query(current, temporary, fields))
+        result = self.engine.execute(queries.get_comparison_query(current, temporary, fields, mode))
 
         for row in result:
             yield dict(row)

@@ -20,6 +20,7 @@ from gobupload.compare.populate import Populator
 from gobupload.compare.entity_collector import EntityCollector
 from gobupload.compare.event_collector import EventCollector
 from gobupload.compare.compare_statistics import CompareStatistics
+from gobupload.config import FULL_UPLOAD
 
 
 def compare(msg):
@@ -29,7 +30,9 @@ def compare(msg):
     :return: result message
     """
     logger.configure(msg, "COMPARE")
-    logger.info(f"Compare to GOB Database {GOBStorageHandler.user_name} started")
+    header = msg.get('header', {})
+    mode = header.get('mode', FULL_UPLOAD)
+    logger.info(f"Compare (mode = {mode}) to GOB Database {GOBStorageHandler.user_name} started")
 
     # Parse the message header
     message = ImportMessage(msg)
@@ -89,7 +92,7 @@ def compare(msg):
     else:
         # Compare entities from temporary table
         with storage.get_session():
-            diff = storage.compare_temporary_data()
+            diff = storage.compare_temporary_data(mode)
             filename = _process_compare_results(storage, entity_model, diff, stats)
 
     # Build result message
