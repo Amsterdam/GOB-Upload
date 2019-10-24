@@ -66,6 +66,7 @@ class GOBStorageHandler():
                            autoflush=False,
                            bind=engine)
     base = None
+    added_session_entity_cnt = 0
 
     @classmethod
     def _set_base(cls, update=False):
@@ -76,6 +77,7 @@ class GOBStorageHandler():
 
     EVENTS_TABLE = "events"
     ALL_TABLES = [EVENTS_TABLE] + gob_model.get_table_names()
+    FORCE_FLUSH_PER = 1000
 
     user_name = f"({GOB_DB['username']}@{GOB_DB['host']}:{GOB_DB['port']})"
 
@@ -629,6 +631,8 @@ class GOBStorageHandler():
         :param gob_event: the GOBEvent for which the instance will be used
         :return:
         """
+        # Flush entities first if necessary.
+        self._flush_entities()
 
         entity = self.get_entity_or_none(data["_entity_source_id"], with_deleted=True)
 
@@ -641,10 +645,18 @@ class GOBStorageHandler():
 
             self.session.add(entity)
 
+        self.added_session_entity_cnt += 1
+
         if entity._date_deleted is not None and event.action != "ADD":
             raise GOBException(f"Trying to '{event.action}' a deleted entity")
 
         return entity
+
+    @with_session
+    def _flush_entities(self):
+        if self.added_session_entity_cnt >= self.FORCE_FLUSH_PER:
+            self.session.flush()
+            self.added_session_entity_cnt = 0
 
     def execute(self, statement):
         result = self.engine.execute(statement)
