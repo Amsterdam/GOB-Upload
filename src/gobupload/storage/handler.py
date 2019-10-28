@@ -188,7 +188,7 @@ class GOBStorageHandler():
             try:
                 self.execute(statement)
             except OperationalError as e:
-                print(f"ERROR: Index {name} failed")
+                print(f"ERROR: Index {name} failed: {e}")
 
     def create_temporary_table(self):
         """ Create a new temporary table based on the current table for a collection
