@@ -173,11 +173,45 @@ class GOBStorageHandler():
         else:
             return "BTREE"
 
+    def _indexes_to_drop_query(self, tablenames: list, keep_indexes: list):
+        keep = ','.join([f"'{index}'" for index in keep_indexes])
+        relations = ','.join([f"'{tablename}'" for tablename in tablenames])
+
+        return f"""
+SELECT
+    s.indexrelname
+FROM pg_catalog.pg_stat_user_indexes s
+JOIN pg_catalog.pg_index i ON s.indexrelid = i.indexrelid
+WHERE
+    s.relname in ({relations})
+    AND s.indexrelname not in ({keep})
+    AND 0 <> ALL (i.indkey)    -- no index column is an expression
+    AND NOT i.indisunique  -- no unique indexes
+    AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint c WHERE c.conindid = s.indexrelid)
+"""
+
+    def _drop_indexes(self):
+        query = self._indexes_to_drop_query([index['table_name'] for index in indexes.values()], list(indexes.keys()))
+
+        try:
+            indexes_to_drop = self.engine.execute(query)
+        except OperationalError as e:
+            print(f"ERROR: Could not get indexes to drop: {e}")
+            return
+
+        for index in indexes_to_drop:
+            try:
+                statement = f'DROP INDEX IF EXISTS "{index[0]}"'
+                self.execute(statement)
+            except OperationalError as e:
+                print(f"ERROR: Could not drop index {index[0]}: {e}")
+
     def _init_indexes(self):
         """Create indexes
 
         :return:
         """
+        self._drop_indexes()
 
         for name, definition in indexes.items():
             columns = ','.join(definition['columns'])
