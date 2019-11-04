@@ -30,6 +30,7 @@ from gobcore.utils import ProgressTicker
 
 from gobupload.config import GOB_DB, FULL_UPLOAD
 from gobupload.storage import queries
+from gobupload.storage.materialized_views import MaterializedViews
 
 from alembic.runtime import migration
 import alembic.config
@@ -135,6 +136,9 @@ class GOBStorageHandler():
         # Create necessary indexes
         self._init_indexes()
 
+        # Initialise materialized views for relations
+        self._init_relation_materialized_views()
+
     def _init_views(self):
         """
         Initialize the views for the gobviews.
@@ -164,6 +168,10 @@ class GOBStorageHandler():
         statements = [f"DROP VIEW IF EXISTS {name} CASCADE", f"CREATE VIEW {name} AS {definition}"]
         for statement in statements:
             self.execute(statement)
+
+    def _init_relation_materialized_views(self):
+        mv = MaterializedViews()
+        mv.initialise(self)
 
     def _get_index_type(self, type: str) -> str:
         if type == "geo":

@@ -12,6 +12,8 @@ from gobcore.sources import GOBSources
 
 from gobupload.relate.exceptions import RelateException
 from gobupload.storage.execute import _execute
+from gobupload.storage.handler import GOBStorageHandler
+from gobupload.storage.materialized_views import MaterializedViews
 
 EQUALS = 'equals'
 LIES_IN = 'lies_in'
@@ -536,7 +538,17 @@ class RelationTableUpdater:
         self._write_events(modify_events)
         self._write_events(delete_events)
 
+        # Update materialized view
+        self._refresh_materialized_view()
+
         return self.update_cnt
+
+    def _refresh_materialized_view(self):
+        storage_handler = GOBStorageHandler()
+        materialized_views = MaterializedViews()
+        mv = materialized_views.get(self.src_catalog_name, self.src_collection_name, self.src_field_name)
+
+        mv.refresh(storage_handler)
 
 
 class RelationTableChecker:
