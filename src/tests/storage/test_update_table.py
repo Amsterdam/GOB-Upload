@@ -708,6 +708,7 @@ class TestRelationTableUpdater(TestCase):
     def test_update_relation(self, mock_event_extractor):
         updater = self._get_updater()
         updater._write_events = MagicMock()
+        updater._refresh_materialized_view = MagicMock()
         updater.update_cnt = 240
         updater.events_extractor.extract.return_value = [
             {'event_type': 'ADD'},
@@ -725,8 +726,23 @@ class TestRelationTableUpdater(TestCase):
             call([{'event_type': 'MODIFY'}, {'event_type': 'MODIFY'}, {'event_type': 'MODIFY'}]),
             call([{'event_type': 'DELETE'}, {'event_type': 'DELETE'}]),
         ])
+        updater._refresh_materialized_view.assert_called_once()
 
         self.assertEqual(240, result)
+
+    @patch("gobupload.storage.update_table.GOBStorageHandler")
+    @patch("gobupload.storage.update_table.MaterializedViews")
+    def test_refresh_materialized_view(self, mock_materialized_views, mock_storage_handler, mock_event_extractor):
+        mock_mv_instance = MagicMock()
+        mock_materialized_views.return_value.get.return_value = mock_mv_instance
+
+        updater = self._get_updater()
+        updater._refresh_materialized_view()
+
+        mock_materialized_views.return_value.get.assert_called_with(updater.src_catalog_name,
+                                                                    updater.src_collection_name,
+                                                                    updater.src_field_name)
+        mock_mv_instance.refresh.assert_called_with(mock_storage_handler.return_value)
 
 
 class CheckerMockModel:
