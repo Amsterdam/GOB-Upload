@@ -1,4 +1,3 @@
-import importlib
 import unittest
 from unittest.mock import call, MagicMock, patch, Mock
 
@@ -11,6 +10,8 @@ from gobupload.compare.populate import Populator
 from gobupload.storage import queries
 from gobupload.storage.handler import GOBStorageHandler
 from tests import fixtures
+
+from sqlalchemy.exc import OperationalError
 
 
 class MockedEngine:
@@ -78,6 +79,7 @@ class TestStorageHandler(unittest.TestCase):
         self.storage._get_reflected_base = MagicMock()
         self.storage._init_indexes = MagicMock()
         self.storage._set_base = MagicMock()
+        self.storage._init_relation_materialized_views = MagicMock()
 
         self.storage.init_storage()
         # mock_alembic.config.main.assert_called_once()
@@ -85,7 +87,81 @@ class TestStorageHandler(unittest.TestCase):
         self.storage._init_views.assert_called_once()
         # self.storage._set_base.assert_called_with(update=True)
         self.storage._init_indexes.assert_called_once()
+        self.storage._init_relation_materialized_views.assert_called_once()
 
+    @patch("gobupload.storage.handler.MaterializedViews")
+    def test_init_relation_materialized_view(self, mock_materialized_views):
+        self.storage._init_relation_materialized_views()
+
+        mock_materialized_views.assert_called_once()
+        mock_materialized_views.return_value.initialise.assert_called_with(self.storage)
+
+    def test_indexes_to_drop_query(self):
+        expected = """
+SELECT
+    s.indexrelname
+FROM pg_catalog.pg_stat_user_indexes s
+JOIN pg_catalog.pg_index i ON s.indexrelid = i.indexrelid
+WHERE
+    s.relname in ('sometable_1','sometable_2')
+    AND s.indexrelname not in ('index_a','index_b')
+    AND 0 <> ALL (i.indkey)    -- no index column is an expression
+    AND NOT i.indisunique  -- no unique indexes
+    AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint c WHERE c.conindid = s.indexrelid)
+"""
+        self.assertEqual(expected, self.storage._indexes_to_drop_query(
+            ['sometable_1', 'sometable_2'],
+            ['index_a', 'index_b']
+        ))
+
+    def test_drop_indexes(self):
+        gobupload.storage.handler.indexes = {
+            "index_a": {
+                "table_name": "sometable_1",
+                "columns": ["col_a", "col_b"],
+            },
+            "index_b": {
+                "table_name": "sometable_2",
+                "columns": ["col_a", "col_b"],
+            },
+        }
+
+        self.storage.engine = MagicMock()
+        self.storage._indexes_to_drop_query = MagicMock()
+        self.storage.engine.execute.return_value = [("index_c",), ("index_d",)]
+        self.storage.execute = MagicMock()
+
+        self.storage._drop_indexes()
+
+        self.storage.execute.assert_has_calls([
+            call('DROP INDEX IF EXISTS "index_c"'),
+            call('DROP INDEX IF EXISTS "index_d"'),
+        ])
+
+        self.storage._indexes_to_drop_query.assert_called_with(
+            ['sometable_1', 'sometable_2'],
+            ['index_a', 'index_b'],
+        )
+        self.storage.engine.execute.assert_called_with(self.storage._indexes_to_drop_query.return_value)
+
+    @patch("builtins.print")
+    def test_drop_indexes_exception_get(self, mock_print):
+        e = OperationalError('stmt', 'params', 'orig')
+        self.storage.engine.execute = MagicMock(side_effect=e)
+        self.storage._indexes_to_drop_query = MagicMock()
+        self.storage._drop_indexes()
+
+        mock_print.assert_called_with(f"ERROR: Could not get indexes to drop: {str(e)}")
+
+    @patch("builtins.print")
+    def test_drop_indexes_exception_drop(self, mock_print):
+        e = OperationalError('stmt', 'params', 'orig')
+        self.storage.engine.execute = MagicMock(return_value=[('a',)])
+        self.storage._indexes_to_drop_query = MagicMock()
+        self.storage.execute = MagicMock(side_effect=e)
+        self.storage._drop_indexes()
+
+        mock_print.assert_called_with(f"ERROR: Could not drop index a: {str(e)}")
 
     def test_init_indexes(self):
         gobupload.storage.handler.indexes = {
@@ -109,6 +185,7 @@ class TestStorageHandler(unittest.TestCase):
             },
         }
 
+        self.storage._drop_indexes = MagicMock()
         self.storage._init_indexes()
         self.storage.engine.execute.assert_has_calls([
             call("CREATE INDEX IF NOT EXISTS \"indexname\" ON sometable USING BTREE(cola,colb)"),
@@ -120,7 +197,7 @@ class TestStorageHandler(unittest.TestCase):
             call("CREATE INDEX IF NOT EXISTS \"json_index\" ON table_with_json USING GIN(somejsoncol)"),
             call().close(),
         ])
-
+        self.storage._drop_indexes.assert_called_once()
 
     def test_create_temporary_table(self):
         expected_table = f'{self.msg["header"]["catalogue"]}_{self.msg["header"]["entity"]}_tmp'
