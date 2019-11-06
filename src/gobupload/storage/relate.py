@@ -563,6 +563,9 @@ def update_relations(src_catalog_name, src_collection_name, src_field_name):
     is_many = src_field['type'] == "GOB.ManyReference"
     is_very_many = src_field['type'] == "GOB.VeryManyReference"
 
+    if is_very_many:
+        return 0
+
     # Get the relations for the given catalog, collection and field names
     sources = GOBSources()
     relation_specs = sources.get_field_relations(src_catalog_name, src_collection_name, src_field_name)
@@ -728,11 +731,10 @@ ON
 """
 
     # Update the relations table first
-    updates = _update_relations_rel_table(src_catalog_name, src_collection_name, src_field_name)
+    _update_relations_rel_table(src_catalog_name, src_collection_name, src_field_name)
 
-    if not is_very_many:
-        # Update the source tabel
-        updates = _do_relate_update(new_values, src_field_name, src_has_states, dst_has_states, src_table_name, False)
+    # Update the source tabel
+    updates = _do_relate_update(new_values, src_field_name, src_has_states, dst_has_states, src_table_name, False)
 
     _check_relate_update(new_values, src_field_name, src_identification)
     return updates
