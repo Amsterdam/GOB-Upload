@@ -347,6 +347,18 @@ JOIN jsonb_array_elements(src.field) AS json_arr_elm ON TRUE
         mock_execute.assert_called_with(expect)
         mock_update_relations_rel_table.assert_called_with('catalog', 'collection', 'field')
 
+    @patch("gobupload.storage.relate.GOBModel")
+    @patch("gobupload.storage.relate.GOBSources")
+    def test_update_relations_verymany(self, mock_sources, mock_model):
+        model_inst = mock_model.return_value
+        mock_src_collection = {'all_fields': MagicMock()}
+        model_inst.get_collection.return_value = mock_src_collection
+        mock_src_collection['all_fields'].get.return_value = {'type': 'GOB.VeryManyReference'}
+
+        self.assertEqual(0, update_relations('catalog', 'collection', 'fiel'))
+
+        mock_sources.assert_not_called()
+
     @patch('gobupload.storage.relate._get_data')
     def test_check_relate_update(self, mock_get_data):
         def get_data_values():
