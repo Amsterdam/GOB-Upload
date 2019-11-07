@@ -359,10 +359,17 @@ JOIN jsonb_array_elements(src.field) AS json_arr_elm ON TRUE
 
         mock_sources.assert_not_called()
 
+    @patch('gobupload.storage.relate.logger', MagicMock())
     @patch('gobupload.storage.relate._get_data')
     def test_check_relate_update(self, mock_get_data):
         def get_data_values():
-            yield {'count': 0}
+            return iter([])
         mock_get_data.return_value = get_data_values()
         result = _check_relate_update("any new values", "any src field name", "any src identification")
         self.assertEqual(result, 0)
+
+        def get_data_values():
+            return iter([{}, {}])
+        mock_get_data.return_value = get_data_values()
+        result = _check_relate_update("any new values", "any src field name", "any src identification")
+        self.assertEqual(result, 2)
