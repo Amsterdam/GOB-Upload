@@ -359,6 +359,7 @@ JOIN jsonb_array_elements(src.field) AS json_arr_elm ON TRUE
 
         mock_sources.assert_not_called()
 
+    @patch('gobupload.storage.relate.logger', MagicMock())
     @patch('gobupload.storage.relate._get_data')
     def test_check_relate_update(self, mock_get_data):
         def get_data_values():
