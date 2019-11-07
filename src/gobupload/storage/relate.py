@@ -32,6 +32,9 @@ WHERE = "where"
 EQUALS = "equals"     # equality comparison, eg src.bronwaarde == dst.code
 LIES_IN = "lies_in"   # geometric comparison, eg src.geometrie lies_in dst_geometrie
 
+# Maximum number of error messages to report
+_MAX_RELATION_CONFLICTS = 25
+
 
 def _get_bronwaarde(field_name, field_type):
     """
@@ -879,15 +882,25 @@ def _check_relate_update(new_values, src_field_name, src_identification):
     """
     control_query = f"""
         SELECT
-            count(distinct({src_identification})) AS count
+            {src_identification},
+            {src_field_name}_updated AS relation,
+            src_matchcolumn          AS conflits_with
         FROM (
             {new_values}
         ) new_values
     """
-    control_data = _get_data(control_query)
-    inconsistencies = next(control_data)['count']
 
-    if inconsistencies > 0:
-        logger.error(f"{src_field_name}, {inconsistencies} inconsistencies found")
+    errors = 0
+    error_msg = f"Conflicting {src_field_name} relations"
+    for data in _get_data(control_query):
+        if errors < _MAX_RELATION_CONFLICTS:
+            logger.error(error_msg, {
+                'id': error_msg,
+                'data': data
+            })
+        errors += 1
 
-    return inconsistencies
+    if errors > 0:
+        logger.warning(f"{error_msg}: {errors} found, {min(errors, _MAX_RELATION_CONFLICTS)} reported")
+
+    return errors
