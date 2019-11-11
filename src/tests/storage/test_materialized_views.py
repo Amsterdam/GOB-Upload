@@ -76,11 +76,15 @@ class TestMaterializedView(TestCase):
 
     def test_create_indexes(self):
         storage_handler = MagicMock()
+        self.mv.dst_has_states = True
+        self.mv.src_has_states = True
         self.mv._create_indexes(storage_handler)
 
         storage_handler.execute.assert_has_calls([
             call(f"CREATE INDEX IF NOT EXISTS src_id_{self.mv.name} ON {self.mv.name}(src_id)"),
             call(f"CREATE INDEX IF NOT EXISTS dst_id_{self.mv.name} ON {self.mv.name}(dst_id)"),
+            call(f"CREATE INDEX IF NOT EXISTS src_dst_wide_{self.mv.name} ON "
+                 f"{self.mv.name}(src_id,src_volgnummer,dst_id,dst_volgnummer)")
         ])
 
 
