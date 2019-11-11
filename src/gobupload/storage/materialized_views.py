@@ -80,6 +80,14 @@ class MaterializedView:
             f"dst_id_{self.name}": [f"dst{FIELD.ID}"],
         }
 
+        wide_index = {
+            f"src{FIELD.ID}": True,
+            f"src_{FIELD.SEQNR}": self.src_has_states,
+            f"dst{FIELD.ID}": True,
+            f"dst_{FIELD.SEQNR}": self.dst_has_states,
+        }
+        indexes[f"src_dst_wide_{self.name}"] = [field for field, include in wide_index.items() if include]
+
         for index_name, columns in indexes.items():
             query = f"CREATE INDEX IF NOT EXISTS {index_name} ON {self.name}({','.join(columns)})"
             storage_handler.execute(query)
