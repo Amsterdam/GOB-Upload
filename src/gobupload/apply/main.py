@@ -53,7 +53,7 @@ def apply(msg):
         elif entity_max_eventid == last_eventid:
             logger.info(f"Model {model} is up to date")
         else:
-            logger.info(f"Start application of unhandled events")
+            logger.info(f"Start application of unhandled {model} events")
             with storage.get_session():
                 last_events = storage.get_last_events()  # { source_id: last_event, ... }
 
@@ -66,7 +66,7 @@ def apply(msg):
             results = stats.results()
 
             stats.log()
-            logger.info(f"Update model completed", {'data': results})
+            logger.info(f"Update model {model} completed", {'data': results})
 
     msg['summary'] = {
         'warnings': logger.get_warnings(),
