@@ -52,6 +52,10 @@ def apply(msg):
             logger.error(f"Model {model} is inconsistent! data is more recent than events")
         elif entity_max_eventid == last_eventid:
             logger.info(f"Model {model} is up to date")
+            # # Apply confirms
+            # print("APPLY", msg)
+            # # for entity in msg.get("contents", []):
+            # #     print(entity)
         else:
             logger.info(f"Start application of unhandled {model} events")
             with storage.get_session():
@@ -65,8 +69,22 @@ def apply(msg):
             # Build result message
             results = stats.results()
 
+            # # Apply confirms
+            # print("APPLY", msg.get("contents"))
+            # # for entity in msg.get("contents", []):
+            # #     print(entity)
+
             stats.log()
             logger.info(f"Update model {model} completed", {'data': results})
+
+    # return {
+    #     'header': msg['header'],
+    #     'summary': {
+    #         'warnings': logger.get_warnings(),
+    #         'errors': logger.get_errors()
+    #     },
+    #     'contents': []
+    # }
 
     msg['summary'] = {
         'warnings': logger.get_warnings(),
