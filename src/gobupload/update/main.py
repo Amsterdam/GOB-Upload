@@ -36,19 +36,16 @@ def _store_events(storage, last_events, events, stats):
             for event in events:
                 progress.tick()
 
-                # print("EVENT", event['event'])
-                #
-                # if event['event'] in ['CONFIRM', 'BULKCONFIRM']:
-                #     print("Skip confirm")
-                #     writer.write(event)
-                #     continue
+                if event['event'] in ['CONFIRM', 'BULKCONFIRM']:
+                    writer.write(event)
+                    continue
 
                 if event_collector.collect(event):
                     stats.store_event(event)
                 else:
                     stats.skip_event(event)
 
-        # return filename
+        return filename
 
 
 def _process_events(storage, events, stats):
@@ -113,12 +110,9 @@ def full_update(msg):
     # Return the result message, with no log, no contents
     message = {
         "header": msg["header"],
-        "summary": results
+        "summary": results,
+        "contents": None
     }
     if filename:
-        print("WRITE CONTENTS", filename)
-        message['contents_ref'] = filename
-    else:
-        print("NO CONTENTS")
-        message['contents'] = None
+        message['confirms'] = filename
     return message

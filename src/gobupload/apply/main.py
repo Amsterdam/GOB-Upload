@@ -1,5 +1,6 @@
 from gobcore.logging.logger import logger
 from gobcore.utils import ProgressTicker
+from gobcore.message_broker.offline_contents import ContentsReader
 
 from gobupload.storage.handler import GOBStorageHandler
 from gobupload.update.update_statistics import UpdateStatistics
@@ -27,11 +28,19 @@ def apply_events(storage, last_events, start_after, stats):
                 action, count = event_applicator.apply(event)
                 stats.add_applied(action, count)
 
-    with ActiveGarbageCollection("Delete any confirm events"), storage.get_session():
-        logger.info(f"Post-process any CONFIRM events")
 
-        # Confirms are deleted once they have been applied
-        storage.delete_confirms()
+def apply_confirm_events(storage, stats, msg):
+    confirms = msg.get('confirms')
+    if confirms:
+        reader = ContentsReader(confirms)
+        with ProgressTicker("Apply CONFIRM events", 10000) as progress:
+            for event in reader.items():
+                progress.tick()
+                action = event['event']
+                confirms = event['data'].get('confirms', [event['data']])
+                storage.apply_confirms(confirms, msg['header']['timestamp'])
+                stats.add_applied(action, len(confirms))
+        reader.close()
 
 
 def apply(msg):
@@ -45,6 +54,8 @@ def apply(msg):
     combinations = storage.get_source_catalogue_entity_combinations(catalogue=catalogue, entity=entity)
 
     for result in combinations:
+        # Gather statistics of update process
+        stats = UpdateStatistics()
         model = f"{result.source} {result.catalogue} {result.entity}"
         storage = GOBStorageHandler(result)
         entity_max_eventid, last_eventid = get_event_ids(storage)
@@ -52,39 +63,20 @@ def apply(msg):
             logger.error(f"Model {model} is inconsistent! data is more recent than events")
         elif entity_max_eventid == last_eventid:
             logger.info(f"Model {model} is up to date")
-            # # Apply confirms
-            # print("APPLY", msg)
-            # # for entity in msg.get("contents", []):
-            # #     print(entity)
+            apply_confirm_events(storage, stats, msg)
         else:
             logger.info(f"Start application of unhandled {model} events")
             with storage.get_session():
                 last_events = storage.get_last_events()  # { source_id: last_event, ... }
 
-            # Gather statistics of update process
-            stats = UpdateStatistics()
-
             apply_events(storage, last_events, entity_max_eventid, stats)
+            apply_confirm_events(storage, stats, msg)
 
-            # Build result message
-            results = stats.results()
+        # Build result message
+        results = stats.results()
 
-            # # Apply confirms
-            # print("APPLY", msg.get("contents"))
-            # # for entity in msg.get("contents", []):
-            # #     print(entity)
-
-            stats.log()
-            logger.info(f"Update model {model} completed", {'data': results})
-
-    # return {
-    #     'header': msg['header'],
-    #     'summary': {
-    #         'warnings': logger.get_warnings(),
-    #         'errors': logger.get_errors()
-    #     },
-    #     'contents': []
-    # }
+        stats.log()
+        logger.info(f"Update model {model} completed", {'data': results})
 
     msg['summary'] = {
         'warnings': logger.get_warnings(),
