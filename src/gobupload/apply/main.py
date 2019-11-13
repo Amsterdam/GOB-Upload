@@ -1,3 +1,5 @@
+import os
+
 from gobcore.logging.logger import logger
 from gobcore.utils import ProgressTicker
 from gobcore.message_broker.offline_contents import ContentsReader
@@ -30,6 +32,17 @@ def apply_events(storage, last_events, start_after, stats):
 
 
 def apply_confirm_events(storage, stats, msg):
+    """
+    Apply confirm events (if present)
+
+    (BULK)CONFIRM events can be passed in a file.
+    The name of the file is mag['confirms'].
+
+    :param storage:
+    :param stats:
+    :param msg:
+    :return:
+    """
     confirms = msg.get('confirms')
     if confirms:
         reader = ContentsReader(confirms)
@@ -37,10 +50,13 @@ def apply_confirm_events(storage, stats, msg):
             for event in reader.items():
                 progress.tick()
                 action = event['event']
+                # get confirm data: BULKCONFIRM => data.confirms, CONFIRM => [data]
                 confirms = event['data'].get('confirms', [event['data']])
                 storage.apply_confirms(confirms, msg['header']['timestamp'])
                 stats.add_applied(action, len(confirms))
         reader.close()
+        # Remove file after it has been handled
+        os.remove(confirms)
 
 
 def apply(msg):
