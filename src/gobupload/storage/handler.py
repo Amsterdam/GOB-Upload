@@ -28,6 +28,7 @@ from gobcore.typesystem.json import GobTypeJSONEncoder
 from gobcore.views import GOBViews
 from gobcore.utils import ProgressTicker
 from sqlalchemy.orm.exc import MultipleResultsFound
+from gobcore.events.import_events import CONFIRM
 
 from gobupload.config import GOB_DB, FULL_UPLOAD
 from gobupload.storage import queries
@@ -653,6 +654,12 @@ WHERE
         source_ids = [record['_source_id'] for record in event._data['confirms']]
         stmt = update(self.DbEntity).where(self.DbEntity._source_id.in_(source_ids)).\
             values({event.timestamp_field: event._metadata.timestamp})
+        self.execute(stmt)
+
+    def apply_confirms(self, confirms, timestamp):
+        source_ids = [record['_source_id'] for record in confirms]
+        stmt = update(self.DbEntity).where(self.DbEntity._source_id.in_(source_ids)). \
+            values({CONFIRM.timestamp_field: timestamp})
         self.execute(stmt)
 
     def bulk_insert(self, table, insert_data):
