@@ -651,12 +651,16 @@ WHERE
         :param eventid: the id of the event to store as _last_event
         :return:
         """
-        source_ids = [record['_source_id'] for record in event._data['confirms']]
-        stmt = update(self.DbEntity).where(self.DbEntity._source_id.in_(source_ids)).\
-            values({event.timestamp_field: event._metadata.timestamp})
-        self.execute(stmt)
+        self.apply_confirms(event._data['confirms'], event._metadata.timestamp)
 
     def apply_confirms(self, confirms, timestamp):
+        """
+        Apply a (BULK)CONFIRM event
+
+        :param confirms: list of confirm data
+        :param timestamp: Time to set as last_confirmed
+        :return:
+        """
         source_ids = [record['_source_id'] for record in confirms]
         stmt = update(self.DbEntity).where(self.DbEntity._source_id.in_(source_ids)). \
             values({CONFIRM.timestamp_field: timestamp})
