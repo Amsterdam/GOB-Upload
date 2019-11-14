@@ -44,13 +44,14 @@ class TestApply(TestCase):
     @patch('gobupload.apply.main.apply_events')
     def test_apply_none(self, mock_apply, mock):
         mock.return_value = self.mock_storage
-        self.mock_storage.get_source_catalogue_entity_combinations.return_value = []
+        # self.mock_storage.get_source_catalogue_entity_combinations.return_value = []
 
         result = apply({'header': {}})
 
         self.assertEqual(result, {'header': {}, 'summary': {'errors': ANY, 'warnings': ANY}})
         mock_apply.assert_not_called()
 
+    @patch('gobupload.apply.main.ContentsReader', MagicMock())
     @patch('gobupload.apply.main.logger', MagicMock())
     @patch('gobupload.apply.main.get_event_ids', lambda s: (1, 2))
     @patch('gobupload.apply.main.apply_events')
@@ -77,6 +78,7 @@ class TestApply(TestCase):
         self.assertEqual(result, {'header': {}, 'summary': {'errors': ANY, 'warnings': ANY}})
         mock_apply.assert_not_called()
 
+    @patch('gobupload.apply.main.ContentsReader', MagicMock())
     @patch('gobupload.apply.main.logger', MagicMock())
     @patch('gobupload.apply.main.get_event_ids', lambda s: (1, 1))
     @patch('gobupload.apply.main.apply_events')

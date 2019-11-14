@@ -14,7 +14,6 @@ from gobupload.update.event_applicator import _get_gob_event
 from gobupload.storage.handler import GOBStorageHandler
 from tests import fixtures
 
-
 @patch('gobupload.update.main.GOBStorageHandler')
 class TestUpdate(TestCase):
     def setUp(self):
@@ -35,6 +34,7 @@ class TestUpdate(TestCase):
         self.assertEqual(max_id, "max")
         self.assertEqual(last_id, "last")
 
+    @patch('gobupload.update.main.ContentsWriter', MagicMock())
     @patch('gobupload.update.main.get_event_ids')
     def test_fullupdate_saves_event(self, mock_ids, mock):
         self.mock_storage.get_last_events.return_value = {}
@@ -44,8 +44,9 @@ class TestUpdate(TestCase):
         message = fixtures.get_event_message_fixture()
         full_update(message)
 
-        self.mock_storage.add_events.assert_called_with(message['contents'])
+        # self.mock_storage.add_events.assert_called_with(message['contents'])
 
+    @patch('gobupload.update.main.ContentsWriter', MagicMock())
     @patch('gobupload.update.event_applicator.GobEvent')
     @patch('gobupload.update.main.get_event_ids')
     def test_fullupdate_creates_event_and_pops_ids(self, mock_ids, mock_event, mock):
@@ -61,10 +62,10 @@ class TestUpdate(TestCase):
 
         self.mock_storage.get_events_starting_after.return_value = []
 
-        full_update(message)
+        result = full_update(message)
 
-        self.mock_storage.add_events.assert_called()
         self.mock_storage.get_events_starting_after.assert_not_called()
+        self.assertIsNotNone(result['confirms'], "")
 
     @patch('gobupload.update.event_applicator.GobEvent')
     @patch('gobupload.update.main.get_event_ids')
@@ -85,6 +86,7 @@ class TestUpdate(TestCase):
         self.mock_storage.add_events.assert_not_called()
         self.mock_storage.get_events_starting_after.assert_not_called()
 
+    @patch('gobupload.update.main.ContentsWriter', MagicMock())
     @patch('gobupload.update.event_applicator.GobEvent')
     @patch('gobupload.update.main.get_event_ids')
     def test_fullupdate_applies_events(self, mock_ids, mock_event, mock):
@@ -158,6 +160,7 @@ class TestUpdate(TestCase):
             # Assert that Exception is thrown when events have invalid actions
             self.assertRaises(GOBException, _get_gob_event, dummy_event, {})
 
+    @patch('gobupload.update.main.ContentsWriter', MagicMock())
     def test_store_events(self, mock):
         metadata = fixtures.get_metadata_fixture()
         event = fixtures.get_event_fixture(metadata)
