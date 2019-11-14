@@ -56,8 +56,9 @@ class MaterializedView:
         query = f"REFRESH MATERIALIZED VIEW {self.name}"
         storage_handler.execute(query)
 
-    def create(self, storage_handler):
+    def create(self, storage_handler, force_recreate=False):
         include_columns = {
+            FIELD.GOBID: True,
             f"src{FIELD.ID}": True,
             f"src_{FIELD.SEQNR}": self.src_has_states,
             f"dst{FIELD.ID}": True,
@@ -67,17 +68,21 @@ class MaterializedView:
 
         fields = ','.join([field for field, include in include_columns.items() if include])
 
+        if force_recreate:
+            storage_handler.execute(f"DROP MATERIALIZED VIEW IF EXISTS {self.name}")
+
         query = \
             f"CREATE MATERIALIZED VIEW IF NOT EXISTS {self.name} AS SELECT {fields} " \
             f"FROM {self.relation_table_name} WHERE {FIELD.DATE_DELETED} IS NULL"
         storage_handler.execute(query)
 
-        self._create_indexes(storage_handler)
+        self._create_indexes(storage_handler, force_recreate)
 
-    def _create_indexes(self, storage_handler):
+    def _create_indexes(self, storage_handler, force_recreate=False):
         indexes = {
             f"src_id_{self.name}": [f"src{FIELD.ID}"],
             f"dst_id_{self.name}": [f"dst{FIELD.ID}"],
+            f"gobid_{self.name}": [FIELD.GOBID],
         }
 
         wide_index = {
@@ -89,6 +94,9 @@ class MaterializedView:
         indexes[f"src_dst_wide_{self.name}"] = [field for field, include in wide_index.items() if include]
 
         for index_name, columns in indexes.items():
+            if force_recreate:
+                storage_handler.execute(f"DROP INDEX IF EXISTS {index_name}")
+
             query = f"CREATE INDEX IF NOT EXISTS {index_name} ON {self.name}({','.join(columns)})"
             storage_handler.execute(query)
 
@@ -96,7 +104,7 @@ class MaterializedView:
 class MaterializedViews:
     model = GOBModel()
 
-    def initialise(self, storage_handler):
+    def initialise(self, storage_handler, force_recreate=False):
         """This method creates the materialized view along with its indexes
 
         :return:
@@ -104,7 +112,7 @@ class MaterializedViews:
         materialized_views = self.get_all()
 
         for materialized_view in materialized_views:
-            materialized_view.create(storage_handler)
+            materialized_view.create(storage_handler, force_recreate)
 
     def get_all(self):
         """Returns definitions of materialized views

@@ -93,7 +93,7 @@ class GOBStorageHandler():
         self.metadata = gob_metadata
         self.session = None
 
-    def init_storage(self, force_migrate=False):
+    def init_storage(self, force_migrate=False, recreate_materialized_views=False):
         """Check if the necessary tables (for events, and for the entities in gobmodel) are present
         If not, they are required
         """
@@ -137,7 +137,7 @@ class GOBStorageHandler():
         self._init_indexes()
 
         # Initialise materialized views for relations
-        self._init_relation_materialized_views()
+        self._init_relation_materialized_views(recreate_materialized_views)
 
     def _init_views(self):
         """
@@ -169,9 +169,9 @@ class GOBStorageHandler():
         for statement in statements:
             self.execute(statement)
 
-    def _init_relation_materialized_views(self):
+    def _init_relation_materialized_views(self, recreate=False):
         mv = MaterializedViews()
-        mv.initialise(self)
+        mv.initialise(self, recreate)
 
     def _get_index_type(self, type: str) -> str:
         if type == "geo":
