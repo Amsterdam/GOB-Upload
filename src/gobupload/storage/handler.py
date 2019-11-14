@@ -27,6 +27,7 @@ from gobcore.typesystem import get_gob_type
 from gobcore.typesystem.json import GobTypeJSONEncoder
 from gobcore.views import GOBViews
 from gobcore.utils import ProgressTicker
+from sqlalchemy.orm.exc import MultipleResultsFound
 
 from gobupload.config import GOB_DB, FULL_UPLOAD
 from gobupload.storage import queries
@@ -524,6 +525,7 @@ WHERE
         on the basis of its functional id (_id)
 
         :param entity: the new version of the entity
+        :raises GOBException:
         :return: the stored version of the entity, or None if it doesn't exist
         """
         fields = self.gob_model.get_functional_key_fields(self.metadata.catalogue, self.metadata.entity)
@@ -537,7 +539,11 @@ WHERE
         if not with_deleted:
             entity_query = entity_query.filter_by(_date_deleted=None)
 
-        return entity_query.one_or_none()
+        try:
+            return entity_query.one_or_none()
+        except MultipleResultsFound as e:
+            filter_str = ','.join([f"{k}={v}" for k, v in filter.items()])
+            raise GOBException(f"Found multiple rows with filter: {filter_str}")
 
     @with_session
     def get_entity_or_none(self, source_id, with_deleted=False):
