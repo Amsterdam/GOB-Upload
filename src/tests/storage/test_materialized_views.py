@@ -81,7 +81,7 @@ class TestMaterializedView(TestCase):
 
         self.mv.create(storage_handler, True)
         storage_handler.execute.assert_has_calls([
-            call(f"DROP MATERIALIZED VIEW IF EXISTS {self.mv.name}"),
+            call(f"DROP MATERIALIZED VIEW IF EXISTS {self.mv.name} CASCADE"),
             call(f"CREATE MATERIALIZED VIEW IF NOT EXISTS {self.mv.name} AS "
                 f"SELECT _gobid,src_id,src_volgnummer,dst_id,bronwaarde "
                 f"FROM {self.mv.relation_table_name} WHERE _date_deleted IS NULL"),

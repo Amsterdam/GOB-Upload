@@ -69,7 +69,7 @@ class MaterializedView:
         fields = ','.join([field for field, include in include_columns.items() if include])
 
         if force_recreate:
-            storage_handler.execute(f"DROP MATERIALIZED VIEW IF EXISTS {self.name}")
+            storage_handler.execute(f"DROP MATERIALIZED VIEW IF EXISTS {self.name} CASCADE")
 
         query = \
             f"CREATE MATERIALIZED VIEW IF NOT EXISTS {self.name} AS SELECT {fields} " \
