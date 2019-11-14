@@ -131,14 +131,14 @@ class GOBStorageHandler():
         # Always unlock
         self.engine.execute(f"SELECT pg_advisory_unlock({MIGRATION_LOCK})")
 
-        # Create model views
-        self._init_views()
-
         # Create necessary indexes
         self._init_indexes()
 
         # Initialise materialized views for relations
         self._init_relation_materialized_views(recreate_materialized_views)
+
+        # Create model views. Should happen after initialisation of materialized views because views may depend on mvs
+        self._init_views()
 
     def _init_views(self):
         """
