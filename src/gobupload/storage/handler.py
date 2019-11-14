@@ -662,7 +662,7 @@ WHERE
         :return:
         """
         source_ids = [record['_source_id'] for record in confirms]
-        stmt = update(self.DbEntity).where(self.DbEntity._source_id.in_(source_ids)). \
+        stmt = update(self.DbEntity).where(self.DbEntity._source_id.in_(source_ids)).\
             values({CONFIRM.timestamp_field: timestamp})
         self.execute(stmt)
 

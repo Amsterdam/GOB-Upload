@@ -14,6 +14,7 @@ from gobupload.update.event_applicator import _get_gob_event
 from gobupload.storage.handler import GOBStorageHandler
 from tests import fixtures
 
+
 @patch('gobupload.update.main.GOBStorageHandler')
 class TestUpdate(TestCase):
     def setUp(self):
@@ -44,7 +45,7 @@ class TestUpdate(TestCase):
         message = fixtures.get_event_message_fixture()
         full_update(message)
 
-        # self.mock_storage.add_events.assert_called_with(message['contents'])
+        self.mock_storage.add_events.assert_called_with(message['contents'])
 
     @patch('gobupload.update.main.ContentsWriter', MagicMock())
     @patch('gobupload.update.event_applicator.GobEvent')
