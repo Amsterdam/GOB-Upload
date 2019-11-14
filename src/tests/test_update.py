@@ -172,3 +172,38 @@ class TestUpdate(TestCase):
         stats = UpdateStatistics()
 
         _store_events(self.mock_storage, last_events, [event], stats)
+
+    @patch('gobupload.update.main.EventCollector')
+    @patch('gobupload.update.main.ContentsWriter')
+    def test_store_events_with_confirms(self, mock_contents_writer, mock_event_collector, mock):
+        mock_with_writer = MagicMock()
+        mock_writer = MagicMock()
+        mock_writer.filename = 'any filename'
+        mock_with_writer = MagicMock()
+        mock_with_writer.__enter__.return_value = mock_writer
+        mock_contents_writer.return_value = mock_with_writer
+
+        mock_collector = MagicMock()
+        mock_with_collector = MagicMock()
+        mock_with_collector.__enter__.return_value = mock_collector
+        mock_event_collector.return_value = mock_with_collector
+
+        events = [
+            {
+                'event': 'CONFIRM'
+            },
+            {
+                'event': 'BULKCONFIRM'
+            },
+            {
+                'event': 'some other event'
+            }
+        ]
+
+        result = _store_events(self.mock_storage, 'some last events', events, MagicMock())
+        self.assertEqual(result, 'any filename')
+
+        self.assertEqual(mock_writer.write.call_count, 2)
+        mock_writer.write.assert_called_with({'event': 'BULKCONFIRM'})
+        self.assertEqual(mock_collector.collect.call_count, 1)
+        mock_collector.collect.assert_called_with({'event': 'some other event'})
