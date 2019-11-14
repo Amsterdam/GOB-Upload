@@ -3,7 +3,7 @@ import logging
 from unittest import TestCase
 from unittest.mock import MagicMock, patch, ANY
 
-from gobupload.apply.main import apply_events, apply
+from gobupload.apply.main import apply_events, apply_confirm_events, apply
 from gobupload.storage.handler import GOBStorageHandler
 from tests import fixtures
 
@@ -51,6 +51,7 @@ class TestApply(TestCase):
         self.assertEqual(result, {'header': {}, 'summary': {'errors': ANY, 'warnings': ANY}})
         mock_apply.assert_not_called()
 
+    @patch('gobupload.apply.main.ContentsReader', MagicMock())
     @patch('gobupload.apply.main.logger', MagicMock())
     @patch('gobupload.apply.main.get_event_ids', lambda s: (1, 2))
     @patch('gobupload.apply.main.apply_events')
@@ -63,6 +64,69 @@ class TestApply(TestCase):
 
         self.assertEqual(result, {'header': {}, 'summary': {'errors': ANY, 'warnings': ANY}})
         mock_apply.assert_called()
+
+    @patch('gobupload.apply.main.os')
+    @patch('gobupload.apply.main.ContentsReader')
+    def test_apply_confirm_events(self, mock_contents_reader, mock_os, mock):
+        mock_stats = MagicMock()
+        mock_reader = MagicMock()
+        mock_contents_reader.return_value = mock_reader
+
+        msg = {
+            'header': {
+                'timestamp': 'any timestamp'
+            },
+            'confirms': 'any filename'
+        }
+
+        # Bulkconfirm
+        items = [
+            {
+                'event': 'BULKCONFIRM',
+                'data': {
+                    'confirms': 'any confirms'
+                }
+            }
+        ]
+
+        mock_reader.items.return_value = items
+        apply_confirm_events(self.mock_storage, mock_stats, msg)
+
+        self.mock_storage.apply_confirms.assert_called_with('any confirms', 'any timestamp')
+        mock_os.remove.assert_called_with('any filename')
+
+        # put CONFIRM data in a list
+        items = [
+            {
+                'event': 'CONFIRM',
+                'data': {'some key': 'any data'}
+            }
+        ]
+
+        mock_reader.items.return_value = items
+        apply_confirm_events(self.mock_storage, mock_stats, msg)
+
+        self.mock_storage.apply_confirms.assert_called_with([{'some key': 'any data'}], 'any timestamp')
+
+        # Assert that only (BULK)CONFIRMS are handled
+        items = [
+            {
+                'event': 'some other event'
+            }
+        ]
+        mock_reader.items.return_value = items
+        with self.assertRaises(AssertionError):
+            apply_confirm_events(self.mock_storage, mock_stats, msg)
+
+        # Only execute if msg has confirms
+        mock_os.remove.reset_mock()
+        msg = {
+        }
+        apply_confirm_events(self.mock_storage, mock_stats, msg)
+        mock_os.remove.assert_not_called()
+
+
+
 
     @patch('gobupload.apply.main.logger', MagicMock())
     @patch('gobupload.apply.main.get_event_ids', lambda s: (2, 1))
@@ -77,6 +141,7 @@ class TestApply(TestCase):
         self.assertEqual(result, {'header': {}, 'summary': {'errors': ANY, 'warnings': ANY}})
         mock_apply.assert_not_called()
 
+    @patch('gobupload.apply.main.ContentsReader', MagicMock())
     @patch('gobupload.apply.main.logger', MagicMock())
     @patch('gobupload.apply.main.get_event_ids', lambda s: (1, 1))
     @patch('gobupload.apply.main.apply_events')

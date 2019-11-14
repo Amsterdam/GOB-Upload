@@ -27,6 +27,8 @@ from gobcore.typesystem import get_gob_type
 from gobcore.typesystem.json import GobTypeJSONEncoder
 from gobcore.views import GOBViews
 from gobcore.utils import ProgressTicker
+from sqlalchemy.orm.exc import MultipleResultsFound
+from gobcore.events.import_events import CONFIRM
 
 from gobupload.config import GOB_DB, FULL_UPLOAD
 from gobupload.storage import queries
@@ -93,7 +95,7 @@ class GOBStorageHandler():
         self.metadata = gob_metadata
         self.session = None
 
-    def init_storage(self, force_migrate=False):
+    def init_storage(self, force_migrate=False, recreate_materialized_views=False):
         """Check if the necessary tables (for events, and for the entities in gobmodel) are present
         If not, they are required
         """
@@ -130,14 +132,14 @@ class GOBStorageHandler():
         # Always unlock
         self.engine.execute(f"SELECT pg_advisory_unlock({MIGRATION_LOCK})")
 
-        # Create model views
-        self._init_views()
-
         # Create necessary indexes
         self._init_indexes()
 
         # Initialise materialized views for relations
-        self._init_relation_materialized_views()
+        self._init_relation_materialized_views(recreate_materialized_views)
+
+        # Create model views. Should happen after initialisation of materialized views because views may depend on mvs
+        self._init_views()
 
     def _init_views(self):
         """
@@ -169,9 +171,9 @@ class GOBStorageHandler():
         for statement in statements:
             self.execute(statement)
 
-    def _init_relation_materialized_views(self):
+    def _init_relation_materialized_views(self, recreate=False):
         mv = MaterializedViews()
-        mv.initialise(self)
+        mv.initialise(self, recreate)
 
     def _get_index_type(self, type: str) -> str:
         if type == "geo":
@@ -524,6 +526,7 @@ WHERE
         on the basis of its functional id (_id)
 
         :param entity: the new version of the entity
+        :raises GOBException:
         :return: the stored version of the entity, or None if it doesn't exist
         """
         fields = self.gob_model.get_functional_key_fields(self.metadata.catalogue, self.metadata.entity)
@@ -537,7 +540,11 @@ WHERE
         if not with_deleted:
             entity_query = entity_query.filter_by(_date_deleted=None)
 
-        return entity_query.one_or_none()
+        try:
+            return entity_query.one_or_none()
+        except MultipleResultsFound as e:
+            filter_str = ','.join([f"{k}={v}" for k, v in filter.items()])
+            raise GOBException(f"Found multiple rows with filter: {filter_str}")
 
     @with_session
     def get_entity_or_none(self, source_id, with_deleted=False):
@@ -644,9 +651,19 @@ WHERE
         :param eventid: the id of the event to store as _last_event
         :return:
         """
-        source_ids = [record['_source_id'] for record in event._data['confirms']]
+        self.apply_confirms(event._data['confirms'], event._metadata.timestamp)
+
+    def apply_confirms(self, confirms, timestamp):
+        """
+        Apply a (BULK)CONFIRM event
+
+        :param confirms: list of confirm data
+        :param timestamp: Time to set as last_confirmed
+        :return:
+        """
+        source_ids = [record['_source_id'] for record in confirms]
         stmt = update(self.DbEntity).where(self.DbEntity._source_id.in_(source_ids)).\
-            values({event.timestamp_field: event._metadata.timestamp})
+            values({CONFIRM.timestamp_field: timestamp})
         self.execute(stmt)
 
     def bulk_insert(self, table, insert_data):

@@ -71,6 +71,10 @@ parser.add_argument('--migrate',
                     action='store_true',
                     default=False,
                     help='migrate the database tables, views and indexes')
+parser.add_argument('--materialized_views',
+                    action='store_true',
+                    default=False,
+                    help='force recreation of materialized views')
 args = parser.parse_args()
 
 # Initialize database tables
@@ -79,7 +83,7 @@ storage = GOBStorageHandler()
 # Migrate on request only
 if args.migrate:
     print("Storage migration forced")
-    storage.init_storage(force_migrate=True)
+    storage.init_storage(force_migrate=True, recreate_materialized_views=args.materialized_views)
 else:
     storage.init_storage()
     params = {
