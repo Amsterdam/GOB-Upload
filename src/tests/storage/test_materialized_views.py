@@ -48,18 +48,19 @@ class TestMaterializedView(TestCase):
         self.mv._create_indexes = MagicMock()
         storage_handler = MagicMock()
 
-        self.mv.create(storage_handler)
+        self.mv.create(storage_handler, False)
         storage_handler.execute.assert_called_with(
-            f"CREATE MATERIALIZED VIEW IF NOT EXISTS {self.mv.name} AS SELECT src_id,src_volgnummer,dst_id,bronwaarde "
+            f"CREATE MATERIALIZED VIEW IF NOT EXISTS {self.mv.name} AS "
+            f"SELECT _gobid,src_id,src_volgnummer,dst_id,bronwaarde "
             f"FROM {self.mv.relation_table_name} WHERE _date_deleted IS NULL")
 
-        self.mv._create_indexes.assert_called_with(storage_handler)
+        self.mv._create_indexes.assert_called_with(storage_handler, False)
 
         combinations = [
-            (True, True, 'src_id,src_volgnummer,dst_id,dst_volgnummer,bronwaarde'),
-            (True, False, 'src_id,src_volgnummer,dst_id,bronwaarde'),
-            (False, True, 'src_id,dst_id,dst_volgnummer,bronwaarde'),
-            (False, False, 'src_id,dst_id,bronwaarde'),
+            (True, True, '_gobid,src_id,src_volgnummer,dst_id,dst_volgnummer,bronwaarde'),
+            (True, False, '_gobid,src_id,src_volgnummer,dst_id,bronwaarde'),
+            (False, True, '_gobid,src_id,dst_id,dst_volgnummer,bronwaarde'),
+            (False, False, '_gobid,src_id,dst_id,bronwaarde'),
         ]
 
         pattern = re.compile(r'AS SELECT ([a-z_,]+) FROM')
@@ -74,6 +75,20 @@ class TestMaterializedView(TestCase):
             # Assert the correct columns are included in the materialized view
             self.assertEqual(columns, matches[1])
 
+    def test_create_force_recreate(self):
+        self.mv._create_indexes = MagicMock()
+        storage_handler = MagicMock()
+
+        self.mv.create(storage_handler, True)
+        storage_handler.execute.assert_has_calls([
+            call(f"DROP MATERIALIZED VIEW IF EXISTS {self.mv.name}"),
+            call(f"CREATE MATERIALIZED VIEW IF NOT EXISTS {self.mv.name} AS "
+                f"SELECT _gobid,src_id,src_volgnummer,dst_id,bronwaarde "
+                f"FROM {self.mv.relation_table_name} WHERE _date_deleted IS NULL"),
+        ])
+
+        self.mv._create_indexes.assert_called_with(storage_handler, True)
+
     def test_create_indexes(self):
         storage_handler = MagicMock()
         self.mv.dst_has_states = True
@@ -83,6 +98,7 @@ class TestMaterializedView(TestCase):
         storage_handler.execute.assert_has_calls([
             call(f"CREATE INDEX IF NOT EXISTS src_id_{self.mv.name} ON {self.mv.name}(src_id)"),
             call(f"CREATE INDEX IF NOT EXISTS dst_id_{self.mv.name} ON {self.mv.name}(dst_id)"),
+            call(f"CREATE INDEX IF NOT EXISTS gobid_{self.mv.name} ON {self.mv.name}(_gobid)"),
             call(f"CREATE INDEX IF NOT EXISTS src_dst_wide_{self.mv.name} ON "
                  f"{self.mv.name}(src_id,src_volgnummer,dst_id,dst_volgnummer)")
         ])
@@ -98,7 +114,10 @@ class TestMaterializedViews(TestCase):
 
         mv.get_all = MagicMock(return_value=[mocked_view])
         mv.initialise(storage_handler)
-        mocked_view.create.assert_called_with(storage_handler)
+        mocked_view.create.assert_called_with(storage_handler, False)
+
+        mv.initialise(storage_handler, True)
+        mocked_view.create.assert_called_with(storage_handler, True)
 
     @patch("gobupload.storage.materialized_views.model_relations.get_relations")
     @patch("gobupload.storage.materialized_views.MaterializedView")

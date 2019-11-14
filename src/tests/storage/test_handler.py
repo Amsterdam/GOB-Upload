@@ -81,20 +81,26 @@ class TestStorageHandler(unittest.TestCase):
         self.storage._set_base = MagicMock()
         self.storage._init_relation_materialized_views = MagicMock()
 
-        self.storage.init_storage()
+        self.storage.init_storage(recreate_materialized_views='booleanValue')
         # mock_alembic.config.main.assert_called_once()
 
         self.storage._init_views.assert_called_once()
         # self.storage._set_base.assert_called_with(update=True)
         self.storage._init_indexes.assert_called_once()
-        self.storage._init_relation_materialized_views.assert_called_once()
+        self.storage._init_relation_materialized_views.assert_called_with('booleanValue')
 
     @patch("gobupload.storage.handler.MaterializedViews")
     def test_init_relation_materialized_view(self, mock_materialized_views):
         self.storage._init_relation_materialized_views()
 
         mock_materialized_views.assert_called_once()
-        mock_materialized_views.return_value.initialise.assert_called_with(self.storage)
+        mock_materialized_views.return_value.initialise.assert_called_with(self.storage, False)
+
+        mock_materialized_views.reset_mock()
+        self.storage._init_relation_materialized_views(True)
+
+        mock_materialized_views.assert_called_once()
+        mock_materialized_views.return_value.initialise.assert_called_with(self.storage, True)
 
     def test_indexes_to_drop_query(self):
         expected = """
