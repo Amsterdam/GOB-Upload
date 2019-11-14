@@ -98,7 +98,8 @@ class MaterializedView:
                 storage_handler.execute(f"DROP INDEX IF EXISTS {index_name}")
 
             query = f"CREATE INDEX IF NOT EXISTS {index_name} ON {self.name}({','.join(columns)})"
-            storage_handler.execute(query)
+            # Temporary disable
+            # storage_handler.execute(query)
 
 
 class MaterializedViews:
