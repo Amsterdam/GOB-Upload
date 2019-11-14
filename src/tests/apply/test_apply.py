@@ -44,7 +44,7 @@ class TestApply(TestCase):
     @patch('gobupload.apply.main.apply_events')
     def test_apply_none(self, mock_apply, mock):
         mock.return_value = self.mock_storage
-        # self.mock_storage.get_source_catalogue_entity_combinations.return_value = []
+        self.mock_storage.get_source_catalogue_entity_combinations.return_value = []
 
         result = apply({'header': {}})
 
