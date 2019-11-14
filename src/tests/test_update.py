@@ -42,7 +42,7 @@ class TestUpdate(TestCase):
         mock.return_value = self.mock_storage
         mock_ids.return_value = 0, 0
 
-        message = fixtures.get_event_message_fixture()
+        message = fixtures.get_event_message_fixture('ADD')
         full_update(message)
 
         self.mock_storage.add_events.assert_called_with(message['contents'])
@@ -59,7 +59,7 @@ class TestUpdate(TestCase):
         gob_event.pop_ids.return_value = '1', '2'
         mock_event.return_value = gob_event
 
-        message = fixtures.get_event_message_fixture()
+        message = fixtures.get_event_message_fixture('ADD')
 
         self.mock_storage.get_events_starting_after.return_value = []
 
