@@ -168,3 +168,4 @@ class TestUpdate(TestCase):
         stats = UpdateStatistics()
 
         _store_events(self.mock_storage, last_events, [event], stats)
+
