@@ -5,7 +5,6 @@ Process events and apply the event on the current state of the entity
 from gobcore.events.import_message import ImportMessage
 from gobcore.logging.logger import logger
 from gobcore.utils import ProgressTicker
-from gobcore.message_broker.offline_contents import ContentsWriter
 
 from gobupload.storage.handler import GOBStorageHandler
 from gobupload.update.update_statistics import UpdateStatistics
@@ -29,23 +28,15 @@ def _store_events(storage, last_events, events, stats):
         logger.info(f"Store events")
 
         with ProgressTicker("Store events", 10000) as progress, \
-                ContentsWriter() as writer, \
                 EventCollector(storage, last_events) as event_collector:
 
-            filename = writer.filename
             for event in events:
                 progress.tick()
-
-                if event['event'] in ['CONFIRM', 'BULKCONFIRM']:
-                    writer.write(event)
-                    continue
 
                 if event_collector.collect(event):
                     stats.store_event(event)
                 else:
                     stats.skip_event(event)
-
-        return filename
 
 
 def _process_events(storage, events, stats):
@@ -94,7 +85,7 @@ def full_update(msg):
     # Gather statistics of update process
     stats = UpdateStatistics()
 
-    filename = _process_events(storage, events, stats)
+    _process_events(storage, events, stats)
 
     # Build result message
     results = stats.results()
@@ -107,12 +98,11 @@ def full_update(msg):
         'errors': logger.get_errors()
     })
 
-    # Return the result message, with no log, no contents
+    # Return the result message, with no log, no contents but pass-through any confirms
     message = {
         "header": msg["header"],
         "summary": results,
-        "contents": None
+        "contents": None,
+        "confirms": msg.get('confirms')
     }
-    if filename:
-        message['confirms'] = filename
     return message
