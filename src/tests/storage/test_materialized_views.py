@@ -95,13 +95,13 @@ class TestMaterializedView(TestCase):
         self.mv.src_has_states = True
         self.mv._create_indexes(storage_handler)
 
-        # storage_handler.execute.assert_has_calls([
-        #     call(f"CREATE INDEX IF NOT EXISTS src_id_{self.mv.name} ON {self.mv.name}(src_id)"),
-        #     call(f"CREATE INDEX IF NOT EXISTS dst_id_{self.mv.name} ON {self.mv.name}(dst_id)"),
-        #     call(f"CREATE INDEX IF NOT EXISTS gobid_{self.mv.name} ON {self.mv.name}(_gobid)"),
-        #     call(f"CREATE INDEX IF NOT EXISTS src_dst_wide_{self.mv.name} ON "
-        #          f"{self.mv.name}(src_id,src_volgnummer,dst_id,dst_volgnummer)")
-        # ])
+        storage_handler.execute.assert_has_calls([
+            call(f"CREATE INDEX IF NOT EXISTS src_id_{self.mv.name} ON {self.mv.name}(src_id)"),
+            call(f"CREATE INDEX IF NOT EXISTS dst_id_{self.mv.name} ON {self.mv.name}(dst_id)"),
+            call(f"CREATE INDEX IF NOT EXISTS gobid_{self.mv.name} ON {self.mv.name}(_gobid)"),
+            call(f"CREATE INDEX IF NOT EXISTS src_dst_wide_{self.mv.name} ON "
+                 f"{self.mv.name}(src_id,src_volgnummer,dst_id,dst_volgnummer)")
+        ])
 
 
 @patch("gobupload.storage.materialized_views.GOBModel", MagicMock())
