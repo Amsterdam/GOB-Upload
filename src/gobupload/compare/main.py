@@ -88,12 +88,13 @@ def compare(msg):
 
     if initial_add:
         filename = contents_writer.filename
+        confirms = None
         contents_writer.close()
     else:
         # Compare entities from temporary table
         with storage.get_session():
             diff = storage.compare_temporary_data(mode)
-            filename = _process_compare_results(storage, entity_model, diff, stats)
+            filename, confirms = _process_compare_results(storage, entity_model, diff, stats)
 
     # Build result message
     results = stats.results()
@@ -108,7 +109,8 @@ def compare(msg):
     message = {
         "header": msg["header"],
         "summary": results,
-        "contents_ref": filename
+        "contents_ref": filename,
+        "confirms": confirms
     }
 
     return message
@@ -143,11 +145,14 @@ def _process_compare_results(storage, model, results, stats):
     :param data_by_source_id: a mapping of import data by source_id
     :return: list of events, list of remaining records
     """
+    # Take two files: one for confirms and one for other events
     with ProgressTicker("Process compare result", 10000) as progress, \
             ContentsWriter() as contents_writer, \
-            EventCollector(contents_writer) as event_collector:
+            ContentsWriter() as confirms_writer, \
+            EventCollector(contents_writer, confirms_writer) as event_collector:
 
         filename = contents_writer.filename
+        confirms = confirms_writer.filename
 
         for row in results:
             progress.tick()
@@ -182,4 +187,4 @@ def _process_compare_results(storage, model, results, stats):
 
             event_collector.collect(event)
 
-    return filename
+    return filename, confirms
