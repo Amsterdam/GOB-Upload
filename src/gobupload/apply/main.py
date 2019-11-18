@@ -54,7 +54,7 @@ def apply_confirm_events(storage, stats, msg):
                 # get confirm data: BULKCONFIRM => data.confirms, CONFIRM => [data]
                 confirm_data = event['data'].get('confirms', [event['data']])
                 storage.apply_confirms(confirm_data, msg['header']['timestamp'])
-                stats.add_applied(action, len(confirms))
+                stats.add_applied('CONFIRM', len(confirm_data))
         reader.close()
         # Remove file after it has been handled
         os.remove(confirms)
