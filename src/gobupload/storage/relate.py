@@ -766,7 +766,7 @@ def _relate_update_join_on(src_has_states, dst_has_states, relation_specs, join_
     # If both collections have states then join with corresponding geldigheid intervals
     if src_has_states and dst_has_states:
         join_on.extend([
-            f"(dst.{FIELD.START_VALIDITY} <= src.{FIELD.END_VALIDITY} OR src.{FIELD.END_VALIDITY} IS NULL)",
+            f"(dst.{FIELD.START_VALIDITY} < src.{FIELD.END_VALIDITY} OR src.{FIELD.END_VALIDITY} IS NULL)",
             f"(dst.{FIELD.END_VALIDITY} >= src.{FIELD.END_VALIDITY} OR dst.{FIELD.END_VALIDITY} IS NULL)"
         ])
     elif dst_has_states:

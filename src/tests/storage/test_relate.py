@@ -305,7 +305,7 @@ JOIN jsonb_array_elements(src.field) AS json_arr_elm ON TRUE
                     dst_catalogue_dst_collection) AS dst
                 ON
                     (src._application = 'src_application' AND dst.dst_attr = json_arr_elm ->> 'bronwaarde') AND
-    (dst.begin_geldigheid <= src.eind_geldigheid OR src.eind_geldigheid IS NULL) AND
+    (dst.begin_geldigheid < src.eind_geldigheid OR src.eind_geldigheid IS NULL) AND
     (dst.eind_geldigheid >= src.eind_geldigheid OR dst.eind_geldigheid IS NULL)
                 WHERE
                     (src._application = 'src_application' AND json_arr_elm IS NOT NULL AND json_arr_elm ->> 'bronwaarde' IS NOT NULL) AND (src._date_deleted IS NULL AND dst._date_deleted IS NULL)
