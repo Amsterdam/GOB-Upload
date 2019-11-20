@@ -70,7 +70,8 @@ def compare(msg):
                 # Write ADD events directly, without using a temporary table
                 contents_writer = ContentsWriter()
                 contents_writer.open()
-                collector = EventCollector(contents_writer)
+                # Pass a None confirms_writer because only ADD events are written
+                collector = EventCollector(contents_writer, confirms_writer=None)
                 collect = collector.collect_initial_add
             else:
                 # Collect entities in a temporary table

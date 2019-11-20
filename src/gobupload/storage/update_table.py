@@ -178,7 +178,7 @@ class RelationTableEventExtractor:
         # If both collections have states then join with corresponding geldigheid intervals
         if self.src_has_states and self.dst_has_states:
             join_on.extend([
-                f"(dst.{FIELD.START_VALIDITY} <= {src_ref}.{FIELD.END_VALIDITY} "
+                f"(dst.{FIELD.START_VALIDITY} < {src_ref}.{FIELD.END_VALIDITY} "
                 f"OR {src_ref}.{FIELD.END_VALIDITY} IS NULL)",
                 f"(dst.{FIELD.END_VALIDITY} >= {src_ref}.{FIELD.END_VALIDITY} "
                 f"OR dst.{FIELD.END_VALIDITY} IS NULL)"
