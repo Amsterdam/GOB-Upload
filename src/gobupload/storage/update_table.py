@@ -549,7 +549,13 @@ class RelationTableChecker:
 
     def check_relation(self, catalog_name, collection_name, field_name):
         src_table_name = self.model.get_table_name(catalog_name, collection_name)
-        relation_table = "rel_" + get_relation_name(self.model, catalog_name, collection_name, field_name)
+        relation_name = get_relation_name(self.model, catalog_name, collection_name, field_name)
+
+        if not relation_name:
+            # Destination of relation is not defined
+            return []
+
+        relation_table = "rel_" + relation_name
         src_has_states = self.model.has_states(catalog_name, collection_name)
         collection = self.model.get_collection(catalog_name, collection_name)
 
@@ -560,7 +566,7 @@ class RelationTableChecker:
         elif src_field['type'] == "GOB.Reference":
             query = self._singleref_query(src_table_name, relation_table, field_name, src_has_states)
         else:
-            return
+            return []
 
         result = _execute(query)
         src_ids = [row['src_id'] for row in result]
