@@ -827,7 +827,7 @@ class TestRelationTableChecker(TestCase):
 
     def test_check_relation_nonref(self):
         checker = RelationTableChecker()
-        self.assertIsNone(checker.check_relation('the catalog', 'collection_a', 'string_field'))
+        self.assertEquals([], checker.check_relation('the catalog', 'collection_a', 'string_field'))
 
     def test_singleref_query(self):
         checker = RelationTableChecker()
