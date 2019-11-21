@@ -151,7 +151,8 @@ class RelationTableEventExtractor:
         dst_geo = f"dst.{spec['destination_attribute']}"
 
         resolvers = {
-            LIES_IN: f"ST_Contains({dst_geo}::geometry, ST_PointOnSurface({src_geo}::geometry))"
+            LIES_IN: f"ST_IsValid({dst_geo}) "
+                     f"AND ST_Contains({dst_geo}::geometry, ST_PointOnSurface({src_geo}::geometry))"
         }
         return resolvers.get(spec["method"])
 
@@ -259,15 +260,6 @@ class RelationTableEventExtractor:
             f"({FIELD.APPLICATION} = '{spec['source']}' AND ST_IsValid({spec['source_attribute']}))"
             for spec in self.relation_specs])
 
-    def _valid_geo_dst_check(self):
-        """Returns the proper ST_IsValid checks for the dst geo fields
-
-        :return:
-        """
-        return self.or_join.join([
-            f"({FIELD.APPLICATION} = '{spec['source']}' AND ST_IsValid({spec['destination_attribute']}))"
-            for spec in self.relation_specs])
-
     def _join_array_elements(self):
         return f"JOIN jsonb_array_elements(src.{self.src_field_name}) {self.json_join_alias}(item) ON TRUE"
 
@@ -282,10 +274,8 @@ class RelationTableEventExtractor:
             validgeo_src = \
                 f"JOIN (SELECT * FROM {self.src_table_name} WHERE ({self._valid_geo_src_check()})) valid_src " \
                 f"ON src.{FIELD.GOBID} = valid_src.{FIELD.GOBID}"
-            dst = f"(SELECT * FROM {self.dst_table_name} WHERE ({self._valid_geo_dst_check()}))"
         else:
             # Nothing special here
-            dst = self.dst_table_name
             validgeo_src = ""
 
         return f"""
@@ -297,7 +287,7 @@ LEFT JOIN (
     ) src
     {validgeo_src}
     {self._join_array_elements() if self.is_many else ""}
-    LEFT JOIN {dst} dst ON {self.and_join.join(self._dst_table_inner_join_on())}
+    LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(self._dst_table_inner_join_on())}
     GROUP BY {self.comma_join.join(self._src_dst_group_by())}
 ) src_dst ON {self.and_join.join(self._src_dst_join_on())}
 """
@@ -559,7 +549,13 @@ class RelationTableChecker:
 
     def check_relation(self, catalog_name, collection_name, field_name):
         src_table_name = self.model.get_table_name(catalog_name, collection_name)
-        relation_table = "rel_" + get_relation_name(self.model, catalog_name, collection_name, field_name)
+        relation_name = get_relation_name(self.model, catalog_name, collection_name, field_name)
+
+        if not relation_name:
+            # Destination of relation is not defined
+            return []
+
+        relation_table = "rel_" + relation_name
         src_has_states = self.model.has_states(catalog_name, collection_name)
         collection = self.model.get_collection(catalog_name, collection_name)
 
@@ -570,7 +566,7 @@ class RelationTableChecker:
         elif src_field['type'] == "GOB.Reference":
             query = self._singleref_query(src_table_name, relation_table, field_name, src_has_states)
         else:
-            return
+            return []
 
         result = _execute(query)
         src_ids = [row['src_id'] for row in result]
