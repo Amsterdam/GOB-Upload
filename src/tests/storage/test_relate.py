@@ -4,10 +4,11 @@ from unittest.mock import MagicMock, patch
 from gobcore.model import GOBModel
 from gobcore.sources import GOBSources
 
+from gobupload.relate.exceptions import RelateException
 from gobupload.storage.relate import update_relations, EQUALS, LIES_IN, JOIN, WHERE, _update_match, \
     _get_data, get_last_change, get_current_relations, RelationUpdater, _query_missing, check_relations, \
     check_very_many_relations, _check_relate_update, _check_relation_table, \
-    _update_relations_rel_table
+    _update_relations_rel_table, _get_updated_row_count
 
 @patch('gobupload.relate.relate.logger', MagicMock())
 class TestRelations(TestCase):
@@ -373,3 +374,11 @@ JOIN jsonb_array_elements(src.field) AS json_arr_elm ON TRUE
         mock_get_data.return_value = get_data_values()
         result = _check_relate_update("any new values", "any src field name", "any src identification")
         self.assertEqual(result, 2)
+
+    def test_get_updated_row_count(self):
+        self.assertEqual(_get_updated_row_count(0, 2), 0)
+        self.assertEqual(_get_updated_row_count(1, 2), 1)
+        self.assertEqual(_get_updated_row_count(2, 2), 2)
+
+        with self.assertRaises(RelateException):
+            _get_updated_row_count(3, 2)
