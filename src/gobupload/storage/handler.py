@@ -150,13 +150,7 @@ class GOBStorageHandler():
         for catalog in views.get_catalogs():
             for entity in views.get_entities(catalog):
                 for view_name, view in views.get_views(catalog, entity).items():
-                    if view['version'] != "0.1":
-                        # No migrations defined yet...
-                        raise ValueError(
-                            "Unexpected version, please write a generic migration here or migrate the view"
-                        )
-
-                    self._create_view(f"{catalog}_{entity}_{view_name}", "\n".join(view['query']))
+                    self._create_view(view['name'], view['query'])
 
     def _create_view(self, name, definition):
         """Create view
