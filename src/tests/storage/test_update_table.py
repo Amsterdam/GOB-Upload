@@ -150,7 +150,8 @@ class TestRelationTableEventExtractor(TestCase):
         self.assertEqual(set(expected), set(extractor._rel_table_join_on()))
 
     def test_geo_resolve(self):
-        expected = "ST_Contains(dst.dst_attribute::geometry, ST_PointOnSurface(src_ref.src_attribute::geometry))"
+        expected = "ST_IsValid(dst.dst_attribute) AND " \
+                   "ST_Contains(dst.dst_attribute::geometry, ST_PointOnSurface(src_ref.src_attribute::geometry))"
 
         extractor = self._get_extractor()
 
@@ -315,16 +316,6 @@ class TestRelationTableEventExtractor(TestCase):
                    "(_application = 'sourceB' AND ST_IsValid(attrB))"
         self.assertEqual(expected, extractor._valid_geo_src_check())
 
-    def test_valid_geo_dst_check(self):
-        extractor = self._get_extractor()
-        extractor.relation_specs = [
-            {'source': 'sourceA', 'destination_attribute': 'attrA'},
-            {'source': 'sourceB', 'destination_attribute': 'attrB'},
-        ]
-        expected = "(_application = 'sourceA' AND ST_IsValid(attrA)) OR\n    " \
-                   "(_application = 'sourceB' AND ST_IsValid(attrB))"
-        self.assertEqual(expected, extractor._valid_geo_dst_check())
-
     def test_array_elements(self):
         extractor = self._get_extractor()
         expected = "JOIN jsonb_array_elements(src.src_field_name) json_arr_elm(item) ON TRUE"
@@ -332,11 +323,10 @@ class TestRelationTableEventExtractor(TestCase):
 
     def _get_src_dst_join_mocked_extractor(self):
         extractor = self._get_extractor()
-        extractor._valid_geo_dst_check = lambda: 'CHECK_VALID_GEO_DST'
         extractor._valid_geo_src_check = lambda: 'CHECK_VALID_GEO_SRC'
         extractor._src_dst_select_expressions = lambda: ['SRC_DST SELECT EXPRESSION1', 'SRC_DST SELECT EXPRESSION2']
         extractor._join_array_elements = lambda: 'ARRAY_ELEMENTS'
-        extractor._dst_table_inner_join_on = lambda: ['DST_TABLE_INNER_JOIN_ON1', 'DST_TABLE_INNTER_JOIN_ON1']
+        extractor._dst_table_inner_join_on = lambda: ['DST_TABLE_INNER_JOIN_ON1', 'DST_TABLE_INNER_JOIN_ON2']
         extractor._src_dst_group_by = lambda: ['SRC_DST_GROUP_BY1', 'SRC_DST_GROUP_BY2']
         extractor._src_dst_join_on = lambda: ['SRC_DST_JOIN_ON1', 'SRC_DST_JOIN_ON2']
 
@@ -358,7 +348,7 @@ LEFT JOIN (
     
     
     LEFT JOIN dst_catalog_name_dst_collection_name_table dst ON DST_TABLE_INNER_JOIN_ON1 AND
-    DST_TABLE_INNTER_JOIN_ON1
+    DST_TABLE_INNER_JOIN_ON2
     GROUP BY SRC_DST_GROUP_BY1,
     SRC_DST_GROUP_BY2
 ) src_dst ON SRC_DST_JOIN_ON1 AND
@@ -384,7 +374,7 @@ LEFT JOIN (
     
     ARRAY_ELEMENTS
     LEFT JOIN dst_catalog_name_dst_collection_name_table dst ON DST_TABLE_INNER_JOIN_ON1 AND
-    DST_TABLE_INNTER_JOIN_ON1
+    DST_TABLE_INNER_JOIN_ON2
     GROUP BY SRC_DST_GROUP_BY1,
     SRC_DST_GROUP_BY2
 ) src_dst ON SRC_DST_JOIN_ON1 AND
@@ -409,8 +399,8 @@ LEFT JOIN (
     ) src
     JOIN (SELECT * FROM src_catalog_name_src_collection_name_table WHERE (CHECK_VALID_GEO_SRC)) valid_src ON src._gobid = valid_src._gobid
     
-    LEFT JOIN (SELECT * FROM dst_catalog_name_dst_collection_name_table WHERE (CHECK_VALID_GEO_DST)) dst ON DST_TABLE_INNER_JOIN_ON1 AND
-    DST_TABLE_INNTER_JOIN_ON1
+    LEFT JOIN dst_catalog_name_dst_collection_name_table dst ON DST_TABLE_INNER_JOIN_ON1 AND
+    DST_TABLE_INNER_JOIN_ON2
     GROUP BY SRC_DST_GROUP_BY1,
     SRC_DST_GROUP_BY2
 ) src_dst ON SRC_DST_JOIN_ON1 AND
@@ -435,8 +425,8 @@ LEFT JOIN (
     ) src
     JOIN (SELECT * FROM src_catalog_name_src_collection_name_table WHERE (CHECK_VALID_GEO_SRC)) valid_src ON src._gobid = valid_src._gobid
     ARRAY_ELEMENTS
-    LEFT JOIN (SELECT * FROM dst_catalog_name_dst_collection_name_table WHERE (CHECK_VALID_GEO_DST)) dst ON DST_TABLE_INNER_JOIN_ON1 AND
-    DST_TABLE_INNTER_JOIN_ON1
+    LEFT JOIN dst_catalog_name_dst_collection_name_table dst ON DST_TABLE_INNER_JOIN_ON1 AND
+    DST_TABLE_INNER_JOIN_ON2
     GROUP BY SRC_DST_GROUP_BY1,
     SRC_DST_GROUP_BY2
 ) src_dst ON SRC_DST_JOIN_ON1 AND
