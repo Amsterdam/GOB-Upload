@@ -11,8 +11,6 @@ services:
       DATABASE_HOST_OVERRIDE: database
       GOB_SHARED_DIR: /app/shared
       GOBOPTIONS: ${GOBOPTIONS}
-      SECURE_SALT: insecure
-      SECURE_PASSWORD: insecure
     volumes:
       - gob-volume:/app/shared
 
