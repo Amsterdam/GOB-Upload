@@ -503,10 +503,10 @@ WHERE CLAUSE
     @patch("gobupload.storage.update_table._execute")
     def test_extract(self, mock_execute):
         extractor = self._get_extractor()
-        extractor._get_query = MagicMock()
+        extractor._get_query = MagicMock(return_value='THE QUERY')
         extractor.extract()
 
-        mock_execute.assert_called_with(extractor._get_query.return_value, stream=True)
+        mock_execute.assert_called_with(f"SELECT * FROM (THE QUERY) q WHERE event_type <> 'CONFIRM'", stream=True)
 
 
 @patch("gobupload.storage.update_table.RelationTableEventExtractor")
