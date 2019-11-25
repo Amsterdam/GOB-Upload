@@ -223,7 +223,7 @@ ORDER BY _source, _id, volgnummer, begin_geldigheid
 
         mock_get_relation_name.return_value = 'cat_col_cat2_col2_field'
 
-        mock_execute.return_value = MockExecute(0)
+        mock_execute.return_value = MockExecute(1)
         mock_get_collection = lambda *args: {
             'all_fields': {
                 'field': {

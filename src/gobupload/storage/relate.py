@@ -733,11 +733,13 @@ ON
         {where_clause}
 """
 
-    # Update the relations table first
-    _update_relations_rel_table(src_catalog_name, src_collection_name, src_field_name)
-
     # Update the source tabel
     updates = _do_relate_update(new_values, src_field_name, src_has_states, dst_has_states, src_table_name, False)
+
+    if updates:
+        # Update relations table only if updates are found during the update of the relations table, as updating the
+        # relation table is an expensive operation
+        _update_relations_rel_table(src_catalog_name, src_collection_name, src_field_name)
 
     _check_relate_update(new_values, src_field_name, src_identification)
     return updates
