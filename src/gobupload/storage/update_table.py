@@ -330,6 +330,9 @@ FROM (
         """
         query = self._get_query()
 
+        # For now (until real events are implemented in relation tables), ignore CONFIRM events
+        query = f"SELECT * FROM ({query}) q WHERE event_type <> 'CONFIRM'"
+
         return _execute(query, stream=True)
 
 

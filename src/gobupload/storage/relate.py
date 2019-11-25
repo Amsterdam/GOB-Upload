@@ -855,7 +855,7 @@ def _do_relate_update(new_values, src_field_name, src_has_states, dst_has_states
                     {' AND '.join(match_on)}
         """
         result = _execute(query)
-        n_updates = result.rowcount
+        n_updates = _get_updated_row_count(result.rowcount, CHUNK_SIZE)
         chunk += 1
         updates += n_updates
         count -= CHUNK_SIZE
@@ -866,6 +866,14 @@ def _do_relate_update(new_values, src_field_name, src_has_states, dst_has_states
 
     logger.info(f"{src_field_name}, processed {updates} updates")
     return updates
+
+
+def _get_updated_row_count(row_count, chunk_size):
+    # Raise an expection if row count is greater than CHUNK_SIZE
+    # to prevent "OFFSET must not be negative" SQL error.
+    if row_count > chunk_size:
+        raise RelateException(f"Updated row count {row_count} is greater than CHUNK_SIZE {chunk_size}")
+    return row_count
 
 
 def _check_relate_update(new_values, src_field_name, src_identification):
