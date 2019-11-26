@@ -395,7 +395,7 @@ WHERE
         """
         result = self.session.query(self.DbEvent) \
             .filter_by(source=self.metadata.source, catalogue=self.metadata.catalogue, entity=self.metadata.entity) \
-            .order_by(self.DbEvent.eventid.desc()) \
+            .order_by(self.DbEvent.eventid.desc(), self.DbEvent.timestamp.desc())\
             .first()
         return None if result is None else result.eventid
 
