@@ -772,7 +772,7 @@ def _relate_update_join_on(src_has_states, dst_has_states, relation_specs, join_
     elif dst_has_states:
         # If only destination has states, get the destination that is valid until forever
         join_on.extend([
-            f"dst.{FIELD.END_VALIDITY} IS NULL"
+            f"(dst.{FIELD.END_VALIDITY} IS NULL OR dst.{FIELD.END_VALIDITY} > NOW())"
         ])
     return join_on
 
