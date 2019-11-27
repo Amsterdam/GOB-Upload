@@ -187,7 +187,7 @@ class RelationTableEventExtractor:
         elif self.dst_has_states:
             # If only destination has states, get the destination that is valid until forever
             join_on.extend([
-                f"dst.{FIELD.END_VALIDITY} IS NULL"
+                f"(dst.{FIELD.END_VALIDITY} IS NULL OR dst.{FIELD.END_VALIDITY} > NOW())"
             ])
 
         join_on.append(f'dst.{FIELD.DATE_DELETED} IS NULL')

@@ -204,7 +204,7 @@ class TestRelationTableEventExtractor(TestCase):
         expected = [
             "((src_ref._application = 'source1' AND relate_match(source1)) OR\n"
             "    (src_ref._application = 'source2' AND relate_match(source2)))",
-            'dst.eind_geldigheid IS NULL',
+            '(dst.eind_geldigheid IS NULL OR dst.eind_geldigheid > NOW())',
             'dst._date_deleted IS NULL']
         self.assertEqual(set(expected), set(extractor._dst_table_inner_join_on('src_ref')))
 
