@@ -7,7 +7,7 @@ from gobcore.sources import GOBSources
 from gobupload.relate.exceptions import RelateException
 from gobupload.storage.relate import update_relations, EQUALS, LIES_IN, JOIN, WHERE, _update_match, \
     _get_data, get_last_change, get_current_relations, RelationUpdater, _query_missing, check_relations, \
-    check_very_many_relations, _check_relate_update, _check_relation_table, \
+    check_very_many_relations, _check_relate_update, \
     _update_relations_rel_table, _get_updated_row_count
 
 @patch('gobupload.relate.relate.logger', MagicMock())
@@ -111,8 +111,7 @@ ORDER BY _source, _id, volgnummer, begin_geldigheid
 
     # @patch('gobupload.storage.relate.GOBModel')
     @patch('gobupload.storage.relate._query_missing')
-    @patch('gobupload.storage.relate._check_relation_table')
-    def test_check_relations(self, mock_check_relation_table, mock_missing):
+    def test_check_relations(self, mock_missing):
         mock_collection = {
             'all_fields': {
                 'any_field_name': {
@@ -125,39 +124,7 @@ ORDER BY _source, _id, volgnummer, begin_geldigheid
              patch.object(GOBModel, 'has_states', lambda s, a, b: True):
             check_relations("any_catalog", "any_collection", "any_field_name")
         mock_missing.assert_called()
-        mock_check_relation_table.assert_called_with(
-            'any_catalog',
-            'any_collection',
-            'any_field_name',
-            'any_collection any_field_name relations table out of sync'
-        )
         self.assertEqual(mock_missing.call_count, 2)
-
-    @patch('gobupload.storage.relate.RelationTableChecker')
-    @patch('gobupload.storage.relate.logger')
-    def test_check_relation_table_no_errors(self, mock_logger, mock_checker):
-        mock_checker.return_value.check_relation.return_value = []
-        _check_relation_table('src catalog', 'src collection', 'src field', 'log name')
-        mock_checker.return_value.check_relation.assert_called_with('src catalog', 'src collection', 'src field')
-        mock_logger.assert_not_called()
-
-    @patch('gobupload.storage.relate.RelationTableChecker')
-    @patch('gobupload.storage.relate.logger')
-    def test_check_relation_table_with_errors(self, mock_logger, mock_checker):
-        mock_checker.return_value.check_relation.return_value = [1, 2]
-
-        _check_relation_table('src catalog', 'src collection', 'src field', 'log name')
-        mock_logger.warning.assert_called()
-        self.assertEqual(2, mock_logger.warning.call_count)
-
-    @patch('gobupload.storage.relate.RelationTableChecker')
-    @patch('gobupload.storage.relate.logger')
-    def test_check_relation_table_with_many_errors(self, mock_logger, mock_checker):
-        mock_checker.return_value.check_relation.return_value = [1, 2]
-
-        _check_relation_table('src catalog', 'src collection', 'src field', 'log name', max_warnings=1)
-        mock_logger.warning.assert_called()
-        self.assertEqual(2, mock_logger.warning.call_count)
 
     @patch('gobupload.storage.relate.get_relation_name')
     @patch('gobupload.storage.relate._query_missing')
