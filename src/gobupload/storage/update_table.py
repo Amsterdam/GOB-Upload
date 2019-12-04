@@ -66,6 +66,22 @@ class RelationTableEventExtractor:
         self.relation_table = "rel_" + get_relation_name(self.model, src_catalog_name, src_collection_name,
                                                          src_field_name)
 
+    def _validity_select_expressions(self):
+        if self.src_has_states and self.dst_has_states:
+            start = f"GREATEST(src_bg.{FIELD.START_VALIDITY}, dst_bg.{FIELD.START_VALIDITY})"
+            end = f"LEAST(src.{FIELD.END_VALIDITY}, dst.{FIELD.END_VALIDITY})"
+        elif self.src_has_states:
+            start = f"src_bg.{FIELD.START_VALIDITY}"
+            end = f"src.{FIELD.END_VALIDITY}"
+        elif self.dst_has_states:
+            start = f"dst_bg.{FIELD.START_VALIDITY}"
+            end = f"dst.{FIELD.END_VALIDITY}"
+        else:
+            start = "NULL"
+            end = "NULL"
+
+        return start, end
+
     def _select_expressions(self):
         """Returns the select expressions for the outer query
 
@@ -93,13 +109,22 @@ class RelationTableEventExtractor:
             f"LEAST(src.{FIELD.EXPIRATION_DATE}, dst.{FIELD.EXPIRATION_DATE}) AS expected_expiration_date"
         ]
 
+        start_validity, end_validity = self._validity_select_expressions()
+        start_validity = f"CASE WHEN dst.{FIELD.ID} IS NULL THEN NULL ELSE {start_validity} END"
+        end_validity = f"CASE WHEN dst.{FIELD.ID} IS NULL THEN NULL ELSE {end_validity} END"
+
+        select_expressions += [
+            f"{start_validity} AS expected_begin_geldigheid",
+            f"{end_validity} AS expected_eind_geldigheid",
+        ]
+
         if self.src_has_states:
             select_expressions.append(
-                f'src.{FIELD.SEQNR} AS src_volgnummer'
+                f"src.{FIELD.SEQNR} AS src_volgnummer"
             )
         if self.dst_has_states:
             select_expressions.append(
-                f'dst.{FIELD.SEQNR} AS dst_volgnummer'
+                f"dst.{FIELD.SEQNR} AS dst_volgnummer"
             )
 
         distinct_seqnr = f'OR dst.{FIELD.SEQNR} IS DISTINCT FROM rel.dst_volgnummer'
@@ -109,9 +134,11 @@ class RelationTableEventExtractor:
         WHEN rel.src_id IS NULL THEN '{ADD.name}'
         WHEN src.{FIELD.ID} IS NULL THEN '{DELETE.name}'
         WHEN dst.{FIELD.ID} IS DISTINCT FROM rel.dst_id
-            {distinct_seqnr if self.dst_has_states else ''}
+             {distinct_seqnr if self.dst_has_states else ''}
              OR LEAST(src.{FIELD.EXPIRATION_DATE}, dst.{FIELD.EXPIRATION_DATE})
              IS DISTINCT FROM rel.{FIELD.EXPIRATION_DATE}
+             OR ({start_validity})::timestamp without time zone IS DISTINCT FROM rel.{FIELD.START_VALIDITY}
+             OR ({end_validity})::timestamp without time zone IS DISTINCT FROM rel.{FIELD.END_VALIDITY}
              THEN '{MODIFY.name}'
         ELSE '{CONFIRM.name}'
     END AS event_type""")
@@ -292,6 +319,89 @@ LEFT JOIN (
 ) src_dst ON {self.and_join.join(self._src_dst_join_on())}
 """
 
+    def _start_validity_per_seqnr(self, src_or_dst):
+        """Generates the recursive WITH queries that find the begin_geldigheid for every volgnummer
+
+        Result of this recursive query isa relation src_volgnummer_begin_geldigheid or dst_volgnummer_begin_geldigheid
+        containing (_id, volgnummer, begin_geldigheid) tuples.
+
+        """
+        if src_or_dst == 'src':
+            table_name = self.src_table_name
+        else:
+            table_name = self.dst_table_name
+
+        return f"""
+all_{src_or_dst}_intervals(
+    {FIELD.ID},
+    start_{FIELD.SEQNR},
+    {FIELD.SEQNR},
+    {FIELD.START_VALIDITY},
+    {FIELD.END_VALIDITY}) AS (
+    SELECT
+        s.{FIELD.ID},
+        s.{FIELD.SEQNR},
+        s.{FIELD.SEQNR},
+        s.{FIELD.START_VALIDITY},
+        s.{FIELD.END_VALIDITY}
+    FROM {table_name} s
+    LEFT JOIN {table_name} t
+    ON s.{FIELD.ID} = t.{FIELD.ID}
+        AND t.{FIELD.SEQNR}::int < s.{FIELD.SEQNR}::int
+        AND t.{FIELD.END_VALIDITY} = s.{FIELD.START_VALIDITY}
+    WHERE t.{FIELD.ID} IS NULL
+    UNION
+    SELECT
+        intv.{FIELD.ID},
+        intv.start_{FIELD.SEQNR},
+        {src_or_dst}.{FIELD.SEQNR},
+        intv.{FIELD.START_VALIDITY},
+        {src_or_dst}.{FIELD.END_VALIDITY}
+    FROM all_{src_or_dst}_intervals intv
+    LEFT JOIN {table_name} {src_or_dst}
+    ON intv.{FIELD.END_VALIDITY} = {src_or_dst}.{FIELD.START_VALIDITY}
+        AND {src_or_dst}.{FIELD.ID} = intv.{FIELD.ID}
+        AND {src_or_dst}.{FIELD.SEQNR}::int = intv.{FIELD.SEQNR}::int + 1
+    WHERE {src_or_dst}.{FIELD.START_VALIDITY} IS NOT NULL
+), {src_or_dst}_volgnummer_begin_geldigheid AS (
+    SELECT
+        {FIELD.ID},
+        {FIELD.SEQNR},
+        MIN({FIELD.START_VALIDITY}) {FIELD.START_VALIDITY}
+    FROM all_{src_or_dst}_intervals
+    GROUP BY {FIELD.ID}, {FIELD.SEQNR}
+)"""
+
+    def _start_validities(self):
+        """Adds recursive queries to determine the begin_geldigheid for each volgnummer
+
+        """
+        result = []
+        if self.src_has_states:
+            result.append(self._start_validity_per_seqnr('src'))
+
+        if self.dst_has_states:
+            result.append(self._start_validity_per_seqnr('dst'))
+
+        if result:
+            return f"WITH RECURSIVE {','.join(result)}"
+        else:
+            return ""
+
+    def _join_geldigheid(self, src_dst):
+        """Returns the join with the begin_geldigheid for the given volgnummer for either 'src' or 'dst' (src_bg or
+        dst_bg)
+        """
+        return f"LEFT JOIN {src_dst}_volgnummer_begin_geldigheid {src_dst}_bg " \
+               f"ON {src_dst}_bg.{FIELD.ID} = {src_dst}.{FIELD.ID} " \
+               f"AND {src_dst}_bg.{FIELD.SEQNR} = {src_dst}.{FIELD.SEQNR}"
+
+    def _join_dst_geldigheid(self):
+        return self._join_geldigheid('dst') if self.dst_has_states else ""
+
+    def _join_src_geldigheid(self):
+        return self._join_geldigheid('src') if self.src_has_states else ""
+
     def _get_query(self):
         """Builds and returns the event extraction query
 
@@ -309,9 +419,12 @@ FULL JOIN {self.relation_table} rel
 {self._src_dst_join()}
 LEFT JOIN {self.dst_table_name} dst
     ON {self.and_join.join(dst_table_outer_join_on)}
+{self._join_src_geldigheid()}
+{self._join_dst_geldigheid()}
 """
 
         return f"""
+{self._start_validities()}
 SELECT
     {self.comma_join.join(select_expressions)}
 FROM (
@@ -349,6 +462,12 @@ class RelationTableUpdater:
     """
     MAX_QUEUE_LENGTH = 1000
 
+    cast_values = {
+        FIELD.EXPIRATION_DATE: 'timestamp without time zone',
+        FIELD.START_VALIDITY: 'timestamp without time zone',
+        FIELD.END_VALIDITY: 'timestamp without time zone',
+    }
+
     def __init__(self, src_catalog_name, src_collection_name, src_field_name):
         self.src_catalog_name = src_catalog_name
         self.src_collection_name = src_collection_name
@@ -377,6 +496,8 @@ class RelationTableUpdater:
             'src_id': 'src__id',
             'dst_source': 'dst__source',
             'dst_id': 'dst__id',
+            FIELD.START_VALIDITY: 'expected_begin_geldigheid',
+            FIELD.END_VALIDITY: 'expected_eind_geldigheid',
 
             # Expected expiration date is the expiration date we expect for this relation: least(src exp, dst exp)
             # If different from real expiration_date we should trigger an update on this relation
@@ -390,6 +511,9 @@ class RelationTableUpdater:
             fields['dst_volgnummer'] = 'dst_volgnummer'
 
         return fields
+
+    def _cast_expr(self, column_name: str):
+        return f'::{self.cast_values[column_name]}' if self.cast_values.get(column_name) else ''
 
     def _values_list(self, event: dict, include_gob_id=False):
         """Returns the values to insert/update as a list
@@ -409,7 +533,7 @@ class RelationTableUpdater:
             if row_key is None:
                 result.append('NULL')
             else:
-                result.append(f"'{event.get(row_key)}'" if event.get(row_key) else 'NULL')
+                result.append(f"'{event.get(row_key)}'{self._cast_expr(db_field)}" if event.get(row_key) else 'NULL')
         return result
 
     def _column_list(self, include_gob_id=False):
@@ -456,15 +580,9 @@ class RelationTableUpdater:
         :param events:
         :return:
         """
-
-        def cast(col_name):
-            if col_name == FIELD.EXPIRATION_DATE:
-                return f"{col_name}::timestamp without time zone"
-            return col_name
-
         values = ",\n".join([f"({','.join(self._values_list(dict(event), True))})" for event in events])
 
-        set_values = ',\n'.join([f"{col_name} = v.{cast(col_name)}"
+        set_values = ',\n'.join([f"{col_name} = v.{col_name}{self._cast_expr(col_name)}"
                                  for col_name in self.fields.keys() if col_name != FIELD.GOBID])
 
         query = \
