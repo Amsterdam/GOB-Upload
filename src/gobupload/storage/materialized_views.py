@@ -63,6 +63,8 @@ class MaterializedView:
             f"src_{FIELD.SEQNR}": self.src_has_states,
             f"dst{FIELD.ID}": True,
             f"dst_{FIELD.SEQNR}": self.dst_has_states,
+            FIELD.START_VALIDITY: True,
+            FIELD.END_VALIDITY: True,
             FIELD.SOURCE_VALUE: True,
         }
 
