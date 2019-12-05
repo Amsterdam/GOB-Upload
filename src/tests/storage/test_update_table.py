@@ -1,9 +1,7 @@
 from unittest import TestCase
 from unittest.mock import patch, MagicMock, call
-import re
 
-from gobupload.storage.update_table import RelationTableUpdater, RelationTableEventExtractor, RelateException, FIELD, \
-    RelationTableChecker
+from gobupload.storage.update_table import RelationTableUpdater, RelationTableEventExtractor, RelateException, FIELD
 
 
 class MockModel:
@@ -77,53 +75,157 @@ class TestRelationTableEventExtractor(TestCase):
         extractor.src_has_states = False
 
         result = extractor._select_expressions()
-        expected = ['src._id AS src__id', 'src._expiration_date AS src__expiration_date',
-                    "src.src_field_name->>'bronwaarde' AS src_bronwaarde", 'src._source AS src__source',
-                    'src._application AS src__application', 'src._source_id AS src__source_id',
-                    'src._version AS src__version', 'rel._gobid AS rel__gobid', 'rel.src_id AS rel_src_id',
-                    'rel.src_volgnummer AS rel_src_volgnummer', 'rel.dst_id AS rel_dst_id',
-                    'rel.dst_volgnummer AS rel_dst_volgnummer',
-                    'rel._expiration_date AS rel__expiration_date',
-                    'rel._id AS rel__id',
-                    'CASE WHEN rel._version IS NOT NULL THEN rel._version ELSE \'0.1\' END AS rel__version',
-                    'dst._id AS dst__id',
-                    'dst._expiration_date AS dst__expiration_date',
-                    'LEAST(src._expiration_date, dst._expiration_date) AS expected_expiration_date',
-                    "\n    CASE\n        WHEN rel.src_id IS NULL THEN 'ADD'\n"
-                    "        WHEN src._id IS NULL THEN 'DELETE'\n"
-                    "        WHEN dst._id IS DISTINCT FROM rel.dst_id\n            \n"
-                    "             OR LEAST(src._expiration_date, dst._expiration_date)\n"
-                    "             IS DISTINCT FROM rel._expiration_date\n"
-                    "             THEN 'MODIFY'\n        ELSE 'CONFIRM'\n    END AS event_type"]
+        expected = [
+            "src._id AS src__id",
+            "src._expiration_date AS src__expiration_date",
+            "src.src_field_name->>'bronwaarde' AS src_bronwaarde",
+            "src._source AS src__source",
+            "src._application AS src__application",
+            "src._source_id AS src__source_id",
+            "src._version AS src__version",
+            "rel._gobid AS rel__gobid",
+            "rel.src_id AS rel_src_id",
+            "rel.src_volgnummer AS rel_src_volgnummer",
+            "rel.dst_id AS rel_dst_id",
+            "rel.dst_volgnummer AS rel_dst_volgnummer",
+            "rel._expiration_date AS rel__expiration_date",
+            "rel._id AS rel__id",
+            "CASE WHEN rel._version IS NOT NULL THEN rel._version ELSE '0.1' END AS rel__version",
+            "dst._id AS dst__id",
+            "dst._expiration_date AS dst__expiration_date",
+            "LEAST(src._expiration_date, dst._expiration_date) AS expected_expiration_date",
+            "CASE WHEN dst._id IS NULL THEN NULL ELSE NULL END AS expected_begin_geldigheid",
+            "CASE WHEN dst._id IS NULL THEN NULL ELSE NULL END AS expected_eind_geldigheid",
+            "\n    CASE\n        WHEN rel.src_id IS NULL THEN 'ADD'\n"
+            "        WHEN src._id IS NULL THEN 'DELETE'\n"
+            "        WHEN dst._id IS DISTINCT FROM rel.dst_id\n             \n"
+            "             OR LEAST(src._expiration_date, dst._expiration_date)\n"
+            "             IS DISTINCT FROM rel._expiration_date\n"
+            "             OR (CASE WHEN dst._id IS NULL THEN NULL ELSE NULL END"
+            ")::timestamp without time zone IS DISTINCT FROM rel.begin_geldigheid\n"
+            "             OR (CASE WHEN dst._id IS NULL THEN NULL ELSE NULL END"
+            ")::timestamp without time zone IS DISTINCT FROM rel.eind_geldigheid\n"
+            "             THEN 'MODIFY'\n        ELSE 'CONFIRM'\n    END AS event_type"
+        ]
         self.assertEqual(expected, result)
 
         extractor.src_has_states = True
-        expected.append('src.volgnummer AS src_volgnummer')
+        expected = [
+            "src._id AS src__id",
+            "src._expiration_date AS src__expiration_date",
+            "src.src_field_name->>'bronwaarde' AS src_bronwaarde",
+            "src._source AS src__source",
+            "src._application AS src__application",
+            "src._source_id AS src__source_id",
+            "src._version AS src__version",
+            "rel._gobid AS rel__gobid",
+            "rel.src_id AS rel_src_id",
+            "rel.src_volgnummer AS rel_src_volgnummer",
+            "rel.dst_id AS rel_dst_id",
+            "rel.dst_volgnummer AS rel_dst_volgnummer",
+            "rel._expiration_date AS rel__expiration_date",
+            "rel._id AS rel__id",
+            "CASE WHEN rel._version IS NOT NULL THEN rel._version ELSE '0.1' END AS rel__version",
+            "dst._id AS dst__id",
+            "dst._expiration_date AS dst__expiration_date",
+            "LEAST(src._expiration_date, dst._expiration_date) AS expected_expiration_date",
+            "CASE WHEN dst._id IS NULL THEN NULL ELSE src_bg.begin_geldigheid END AS expected_begin_geldigheid",
+            "CASE WHEN dst._id IS NULL THEN NULL ELSE src.eind_geldigheid END AS expected_eind_geldigheid",
+            "\n    CASE\n        WHEN rel.src_id IS NULL THEN 'ADD'\n"
+            "        WHEN src._id IS NULL THEN 'DELETE'\n"
+            "        WHEN dst._id IS DISTINCT FROM rel.dst_id\n             \n"
+            "             OR LEAST(src._expiration_date, dst._expiration_date)\n"
+            "             IS DISTINCT FROM rel._expiration_date\n"
+            "             OR (CASE WHEN dst._id IS NULL THEN NULL ELSE src_bg.begin_geldigheid END"
+            ")::timestamp without time zone IS DISTINCT FROM rel.begin_geldigheid\n"
+            "             OR (CASE WHEN dst._id IS NULL THEN NULL ELSE src.eind_geldigheid END"
+            ")::timestamp without time zone IS DISTINCT FROM rel.eind_geldigheid\n"
+            "             THEN 'MODIFY'\n        ELSE 'CONFIRM'\n    END AS event_type",
+            "src.volgnummer AS src_volgnummer",
+        ]
         result = extractor._select_expressions()
         self.assertEqual(set(expected), set(result))
 
-        expected = ['src._id AS src__id', 'src._expiration_date AS src__expiration_date',
-                    "src.src_field_name->>'bronwaarde' AS src_bronwaarde", 'src._source AS src__source',
-                    'src._application AS src__application', 'src._source_id AS src__source_id',
-                    'src._version AS src__version', 'rel._gobid AS rel__gobid', 'rel.src_id AS rel_src_id',
-                    'rel.src_volgnummer AS rel_src_volgnummer', 'rel.dst_id AS rel_dst_id',
-                    'rel.dst_volgnummer AS rel_dst_volgnummer', 'rel._expiration_date AS rel__expiration_date',
-                    'rel._id AS rel__id',
-                    'CASE WHEN rel._version IS NOT NULL THEN rel._version ELSE \'0.1\' END AS rel__version',
-                    'dst._id AS dst__id',
-                    'dst._expiration_date AS dst__expiration_date',
-                    'LEAST(src._expiration_date, dst._expiration_date) AS expected_expiration_date',
-                    'src.volgnummer AS src_volgnummer', 'dst.volgnummer AS dst_volgnummer',
-                    "\n    CASE\n        WHEN rel.src_id IS NULL THEN 'ADD'\n"
-                    "        WHEN src._id IS NULL THEN 'DELETE'\n"
-                    "        WHEN dst._id IS DISTINCT FROM rel.dst_id\n"
-                    "            OR dst.volgnummer IS DISTINCT FROM rel.dst_volgnummer\n"
-                    "             OR LEAST(src._expiration_date, dst._expiration_date)\n"
-                    "             IS DISTINCT FROM rel._expiration_date\n             THEN 'MODIFY'\n"
-                    "        ELSE 'CONFIRM'\n    END AS event_type"]
+        expected = [
+            "src._id AS src__id",
+            "src._expiration_date AS src__expiration_date",
+            "src.src_field_name->>'bronwaarde' AS src_bronwaarde",
+            "src._source AS src__source",
+            "src._application AS src__application",
+            "src._source_id AS src__source_id",
+            "src._version AS src__version",
+            "rel._gobid AS rel__gobid",
+            "rel.src_id AS rel_src_id",
+            "rel.src_volgnummer AS rel_src_volgnummer",
+            "rel.dst_id AS rel_dst_id",
+            "rel.dst_volgnummer AS rel_dst_volgnummer",
+            "rel._expiration_date AS rel__expiration_date",
+            "rel._id AS rel__id",
+            "CASE WHEN rel._version IS NOT NULL THEN rel._version ELSE \'0.1\' END AS rel__version",
+            "dst._id AS dst__id",
+            "dst._expiration_date AS dst__expiration_date",
+            "LEAST(src._expiration_date, dst._expiration_date) AS expected_expiration_date",
+            "CASE WHEN dst._id IS NULL THEN NULL ELSE GREATEST(src_bg.begin_geldigheid, dst_bg.begin_geldigheid) "
+            "END AS expected_begin_geldigheid",
+            "CASE WHEN dst._id IS NULL THEN NULL ELSE LEAST(src.eind_geldigheid, dst.eind_geldigheid) "
+            "END AS expected_eind_geldigheid",
+            "\n    CASE\n        WHEN rel.src_id IS NULL THEN 'ADD'\n"
+            "        WHEN src._id IS NULL THEN 'DELETE'\n"
+            "        WHEN dst._id IS DISTINCT FROM rel.dst_id\n"
+            "             OR dst.volgnummer IS DISTINCT FROM rel.dst_volgnummer\n"
+            "             OR LEAST(src._expiration_date, dst._expiration_date)\n"
+            "             IS DISTINCT FROM rel._expiration_date\n"
+            "             OR (CASE WHEN dst._id IS NULL THEN NULL ELSE "
+            "GREATEST(src_bg.begin_geldigheid, dst_bg.begin_geldigheid) END"
+            ")::timestamp without time zone IS DISTINCT FROM rel.begin_geldigheid\n"
+            "             OR (CASE WHEN dst._id IS NULL THEN NULL ELSE "
+            "LEAST(src.eind_geldigheid, dst.eind_geldigheid) END"
+            ")::timestamp without time zone IS DISTINCT FROM rel.eind_geldigheid\n"
+            "             THEN 'MODIFY'\n"
+            "        ELSE 'CONFIRM'\n    END AS event_type",
+            "src.volgnummer AS src_volgnummer",
+            "dst.volgnummer AS dst_volgnummer",
+        ]
         extractor.dst_has_states = True
         result = extractor._select_expressions()
-        expected.append('dst.volgnummer AS dst_volgnummer')
+        self.assertEqual(set(expected), set(result))
+        self.maxDiff = None
+        extractor.src_has_states = False
+        expected = [
+            "src._id AS src__id",
+            "src._expiration_date AS src__expiration_date",
+            "src.src_field_name->>'bronwaarde' AS src_bronwaarde",
+            "src._source AS src__source",
+            "src._application AS src__application",
+            "src._source_id AS src__source_id",
+            "src._version AS src__version",
+            "rel._gobid AS rel__gobid",
+            "rel.src_id AS rel_src_id",
+            "rel.src_volgnummer AS rel_src_volgnummer",
+            "rel.dst_id AS rel_dst_id",
+            "rel.dst_volgnummer AS rel_dst_volgnummer",
+            "rel._expiration_date AS rel__expiration_date",
+            "rel._id AS rel__id",
+            "CASE WHEN rel._version IS NOT NULL THEN rel._version ELSE '0.1' END AS rel__version",
+            "dst._id AS dst__id",
+            "dst._expiration_date AS dst__expiration_date",
+            "LEAST(src._expiration_date, dst._expiration_date) AS expected_expiration_date",
+            "CASE WHEN dst._id IS NULL THEN NULL ELSE dst_bg.begin_geldigheid END AS expected_begin_geldigheid",
+            "CASE WHEN dst._id IS NULL THEN NULL ELSE dst.eind_geldigheid END AS expected_eind_geldigheid",
+            "\n    CASE\n        WHEN rel.src_id IS NULL THEN 'ADD'\n"
+            "        WHEN src._id IS NULL THEN 'DELETE'\n"
+            "        WHEN dst._id IS DISTINCT FROM rel.dst_id\n"
+            "             OR dst.volgnummer IS DISTINCT FROM rel.dst_volgnummer\n"
+            "             OR LEAST(src._expiration_date, dst._expiration_date)\n"
+            "             IS DISTINCT FROM rel._expiration_date\n"
+            "             OR (CASE WHEN dst._id IS NULL THEN NULL ELSE dst_bg.begin_geldigheid END"
+            ")::timestamp without time zone IS DISTINCT FROM rel.begin_geldigheid\n"
+            "             OR (CASE WHEN dst._id IS NULL THEN NULL ELSE dst.eind_geldigheid END"
+            ")::timestamp without time zone IS DISTINCT FROM rel.eind_geldigheid\n"
+            "             THEN 'MODIFY'\n        ELSE 'CONFIRM'\n    END AS event_type",
+            "dst.volgnummer AS dst_volgnummer",
+        ]
+        result = extractor._select_expressions()
         self.assertEqual(set(expected), set(result))
 
     def test_source_value_ref(self):
@@ -436,6 +538,87 @@ LEFT JOIN (
         result = extractor._src_dst_join()
         self.assertEqual(expected, result)
 
+    def test_start_validitity_per_seqnr(self):
+        extractor = self._get_extractor()
+        expected = """
+all_SRC_OR_DST_intervals(
+    _id,
+    start_volgnummer,
+    volgnummer,
+    begin_geldigheid,
+    eind_geldigheid) AS (
+    SELECT
+        s._id,
+        s.volgnummer,
+        s.volgnummer,
+        s.begin_geldigheid,
+        s.eind_geldigheid
+    FROM dst_catalog_name_dst_collection_name_table s
+    LEFT JOIN dst_catalog_name_dst_collection_name_table t
+    ON s._id = t._id
+        AND t.volgnummer::int < s.volgnummer::int
+        AND t.eind_geldigheid = s.begin_geldigheid
+    WHERE t._id IS NULL
+    UNION
+    SELECT
+        intv._id,
+        intv.start_volgnummer,
+        SRC_OR_DST.volgnummer,
+        intv.begin_geldigheid,
+        SRC_OR_DST.eind_geldigheid
+    FROM all_SRC_OR_DST_intervals intv
+    LEFT JOIN dst_catalog_name_dst_collection_name_table SRC_OR_DST
+    ON intv.eind_geldigheid = SRC_OR_DST.begin_geldigheid
+        AND SRC_OR_DST._id = intv._id
+        AND SRC_OR_DST.volgnummer::int = intv.volgnummer::int + 1
+    WHERE SRC_OR_DST.begin_geldigheid IS NOT NULL
+), SRC_OR_DST_volgnummer_begin_geldigheid AS (
+    SELECT
+        _id,
+        volgnummer,
+        MIN(begin_geldigheid) begin_geldigheid
+    FROM all_SRC_OR_DST_intervals
+    GROUP BY _id, volgnummer
+)"""
+
+        self.assertEqual(expected, extractor._start_validity_per_seqnr('SRC_OR_DST'))
+
+    def test_start_validities(self):
+        extractor = self._get_extractor()
+        extractor._start_validity_per_seqnr = lambda x: 'VALIDITIES_FOR_' + x.upper()
+
+        extractor.src_has_states = False
+        extractor.dst_has_states = False
+
+        self.assertEqual("", extractor._start_validities())
+
+        extractor.src_has_states = True
+        self.assertEqual("WITH RECURSIVE VALIDITIES_FOR_SRC", extractor._start_validities())
+
+        extractor.dst_has_states = True
+        self.assertEqual("WITH RECURSIVE VALIDITIES_FOR_SRC,VALIDITIES_FOR_DST", extractor._start_validities())
+
+        extractor.src_has_states = False
+        self.assertEqual("WITH RECURSIVE VALIDITIES_FOR_DST", extractor._start_validities())
+
+    def test_join_src_geldigheid(self):
+        extractor = self._get_extractor()
+        extractor.src_has_states = False
+        self.assertEqual("", extractor._join_src_geldigheid())
+        extractor.src_has_states = True
+        self.assertEqual("LEFT JOIN src_volgnummer_begin_geldigheid src_bg "
+                         "ON src_bg._id = src._id AND src_bg.volgnummer = src.volgnummer",
+                         extractor._join_src_geldigheid())
+
+    def test_join_dst_geldigheid(self):
+        extractor = self._get_extractor()
+        extractor.dst_has_states = False
+        self.assertEqual("", extractor._join_dst_geldigheid())
+        extractor.dst_has_states = True
+        self.assertEqual("LEFT JOIN dst_volgnummer_begin_geldigheid dst_bg "
+                         "ON dst_bg._id = dst._id AND dst_bg.volgnummer = dst.volgnummer",
+                         extractor._join_dst_geldigheid())
+
     def _get_get_query_mocked_extractor(self):
         extractor = self._get_extractor()
         extractor._rel_table_join_on = lambda: ['REL_TABLE_JOIN_ON1', 'REL_TABLE_JOIN_ON2']
@@ -444,6 +627,9 @@ LEFT JOIN (
         extractor._where = lambda: 'WHERE CLAUSE'
         extractor._join_array_elements = lambda: 'ARRAY_ELEMENTS'
         extractor._src_dst_join = lambda: 'SRC_DST_JOIN'
+        extractor._start_validities = lambda: 'SEQNR_BEGIN_GELDIGHEID'
+        extractor._join_src_geldigheid = lambda: 'JOIN_SRC_GELDIGHEID'
+        extractor._join_dst_geldigheid = lambda: 'JOIN_DST_GELDIGHEID'
 
         return extractor
 
@@ -452,6 +638,7 @@ LEFT JOIN (
         extractor.is_many = False
 
         expected = """
+SEQNR_BEGIN_GELDIGHEID
 SELECT
     SELECT_EXPRESSION1,
     SELECT_EXPRESSION2
@@ -467,6 +654,8 @@ SRC_DST_JOIN
 LEFT JOIN dst_catalog_name_dst_collection_name_table dst
     ON DST_TABLE_OUTER_JOIN_ON1 AND
     DST_TABLE_OUTER_JOIN_ON2
+JOIN_SRC_GELDIGHEID
+JOIN_DST_GELDIGHEID
 
 WHERE CLAUSE
 """
@@ -479,6 +668,7 @@ WHERE CLAUSE
         extractor.is_many = True
 
         expected = """
+SEQNR_BEGIN_GELDIGHEID
 SELECT
     SELECT_EXPRESSION1,
     SELECT_EXPRESSION2
@@ -494,6 +684,8 @@ SRC_DST_JOIN
 LEFT JOIN dst_catalog_name_dst_collection_name_table dst
     ON DST_TABLE_OUTER_JOIN_ON1 AND
     DST_TABLE_OUTER_JOIN_ON2
+JOIN_SRC_GELDIGHEID
+JOIN_DST_GELDIGHEID
 
 WHERE CLAUSE
 """
@@ -541,6 +733,8 @@ class TestRelationTableUpdater(TestCase):
             '_application': 'src__application',
             '_source_id': 'src__source_id',
             '_version': 'rel__version',
+            'begin_geldigheid': 'expected_begin_geldigheid',
+            'eind_geldigheid': 'expected_eind_geldigheid',
             'id': None,
             'src_source': 'src__source',
             'src_id': 'src__id',
@@ -630,7 +824,8 @@ class TestRelationTableUpdater(TestCase):
         updater._write_add_events(events)
 
         expected_query = 'INSERT INTO RELATION_TABLE (_id,_source,_application,_source_id,_version,id,' \
-                         'src_source,src_id,dst_source,dst_id,_expiration_date,bronwaarde,src_volgnummer,' \
+                         'src_source,src_id,dst_source,dst_id,begin_geldigheid,eind_geldigheid,_expiration_date,' \
+                         'bronwaarde,src_volgnummer,' \
                          'dst_volgnummer' \
                          ') VALUES (VALUES_LIST_EVENT1),\n(VALUES_LIST_EVENT2)'
 
@@ -785,163 +980,3 @@ class CheckerMockModel:
         if attributes == 'collection_a attributes':
             return {'reference a': 'ref', 'reference b': 'ref'}
         return {}
-
-
-@patch("gobupload.storage.update_table.RelationTableChecker.model", CheckerMockModel())
-@patch("gobupload.storage.update_table.get_relation_name", lambda m, cat, col, field: f"{cat}_{col}_{field}")
-class TestRelationTableChecker(TestCase):
-
-    @patch("gobupload.storage.update_table._execute")
-    def test_check_relation_manyref(self, mock_execute):
-        mock_execute.return_value = [{'src_id': 2}, {'src_id': 3}]
-        checker = RelationTableChecker()
-        checker._manyref_query = MagicMock()
-
-        result = checker.check_relation('the catalog', 'collection_a', 'field_name')
-
-        checker._manyref_query.assert_called_with(
-            'the catalog_collection_a',
-            'rel_the catalog_collection_a_field_name',
-            'field_name',
-            'some boolean value'
-        )
-        mock_execute.assert_called_with(checker._manyref_query.return_value)
-        self.assertEqual([2, 3], result)
-
-    @patch("gobupload.storage.update_table._execute")
-    def test_check_relation_singleref(self, mock_execute):
-        mock_execute.return_value = [{'src_id': 2}, {'src_id': 3}]
-        checker = RelationTableChecker()
-        checker._singleref_query = MagicMock()
-
-        result = checker.check_relation('the catalog', 'collection_b', 'field_name')
-
-        checker._singleref_query.assert_called_with(
-            'the catalog_collection_b',
-            'rel_the catalog_collection_b_field_name',
-            'field_name',
-            'some boolean value'
-        )
-        mock_execute.assert_called_with(checker._singleref_query.return_value)
-        self.assertEqual([2, 3], result)
-
-    def test_check_relation_nonref(self):
-        checker = RelationTableChecker()
-        self.assertEquals([], checker.check_relation('the catalog', 'collection_a', 'string_field'))
-
-    def test_singleref_query(self):
-        checker = RelationTableChecker()
-        src_table_name = 'src_table_name'
-        relation_table = 'relation_table_name'
-        field_name = 'field_name'
-        src_has_states = False
-
-        expected = """
-SELECT
-    src._id as src_id
-FROM src_table_name src
-LEFT JOIN relation_table_name rel ON rel.src_id = src._id 
-AND rel._date_deleted IS NULL
-AND rel._application = src._application
-WHERE rel.dst_id <> field_name->>'id' OR rel.dst_volgnummer <> field_name->>'volgnummer'
-"""
-
-        result = checker._singleref_query(src_table_name, relation_table, field_name, src_has_states)
-        self.assertEqual(expected, result)
-
-        src_has_states = True
-        expected = """
-SELECT
-    src._id as src_id
-FROM src_table_name src
-LEFT JOIN relation_table_name rel ON rel.src_id = src._id AND rel.src_volgnummer = src.volgnummer
-AND rel._date_deleted IS NULL
-AND rel._application = src._application
-WHERE rel.dst_id <> field_name->>'id' OR rel.dst_volgnummer <> field_name->>'volgnummer'
-"""
-        result = checker._singleref_query(src_table_name, relation_table, field_name, src_has_states)
-        self.assertEqual(expected, result)
-
-    def test_manyref_query(self):
-        checker = RelationTableChecker()
-
-        src_table_name = 'src_table_name'
-        relation_table = 'relation_table_name'
-        field_name = 'field_name'
-        src_has_states = False
-
-        expected = """
-SELECT src_id FROM (
-    SELECT
-        src._id as src_id,
-        array_agg(distinct (ref.item->>'id', ref.item->>'volgnummer')
-            order by (ref.item->>'id', ref.item->>'volgnummer')
-        )::text as src_refs,
-        array_agg(distinct(rel.dst_id, rel.dst_volgnummer)
-            order by (rel.dst_id, rel.dst_volgnummer)
-        )::text as rel_refs
-    FROM src_table_name src
-    JOIN jsonb_array_elements(field_name) ref(item) ON TRUE
-    LEFT JOIN relation_table_name rel on rel.src_id = src._id 
-    AND rel._date_deleted IS NULL
-    AND rel._application = src._application
-    GROUP BY src._id
-) q
-WHERE src_refs <> rel_refs
-"""
-
-        result = checker._manyref_query(src_table_name, relation_table, field_name, src_has_states)
-        self.assertEqual(expected, result)
-
-        src_has_states = True
-        expected = """
-SELECT src_id FROM (
-    SELECT
-        src._id as src_id,
-        array_agg(distinct (ref.item->>'id', ref.item->>'volgnummer')
-            order by (ref.item->>'id', ref.item->>'volgnummer')
-        )::text as src_refs,
-        array_agg(distinct(rel.dst_id, rel.dst_volgnummer)
-            order by (rel.dst_id, rel.dst_volgnummer)
-        )::text as rel_refs
-    FROM src_table_name src
-    JOIN jsonb_array_elements(field_name) ref(item) ON TRUE
-    LEFT JOIN relation_table_name rel on rel.src_id = src._id AND rel.src_volgnummer = src.volgnummer
-    AND rel._date_deleted IS NULL
-    AND rel._application = src._application
-    GROUP BY src._id
-) q
-WHERE src_refs <> rel_refs
-"""
-        result = checker._manyref_query(src_table_name, relation_table, field_name, src_has_states)
-        self.assertEqual(expected, result)
-
-    def test_check_collection(self):
-        checker = RelationTableChecker()
-        checker.check_relation = MagicMock()
-        checker.check_collection('the catalog', 'collection_a')
-
-        checker.check_relation.assert_has_calls([
-            call('the catalog', 'collection_a', 'reference a'),
-            call('the catalog', 'collection_a', 'reference b'),
-        ])
-
-    def test_check_catalog(self):
-        checker = RelationTableChecker()
-        checker.check_collection = MagicMock()
-        checker.check_catalog('the catalog')
-
-        checker.check_collection.assert_has_calls([
-            call('the catalog', 'collection_a'),
-            call('the catalog', 'collection_b'),
-        ])
-
-    def test_check_all_relations(self):
-        checker = RelationTableChecker()
-        checker.check_catalog = MagicMock()
-
-        checker.check_all_relations()
-        checker.check_catalog.assert_has_calls([
-            call('catalog a'),
-            call('catalog b'),
-        ])

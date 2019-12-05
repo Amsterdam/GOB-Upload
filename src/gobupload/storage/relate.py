@@ -14,7 +14,7 @@ from gobcore.model.relations import get_relation_name
 from gobcore.sources import GOBSources
 
 from gobupload.relate.exceptions import RelateException
-from gobupload.storage.update_table import RelationTableUpdater, RelationTableChecker
+from gobupload.storage.update_table import RelationTableUpdater
 from gobupload.storage.execute import _execute, _execute_multiple
 
 
@@ -441,23 +441,6 @@ GROUP BY
     {select}
 """
     _query_missing(dangling, f"{name} dangling destinations")
-
-    _check_relation_table(src_catalog_name, src_collection_name, src_field_name, f"{name} relations table out of sync")
-
-
-def _check_relation_table(src_catalog_name, src_collection_name, src_field_name, log_name, max_warnings=50):
-    checker = RelationTableChecker()
-    errors = checker.check_relation(src_catalog_name, src_collection_name, src_field_name)
-
-    for error in errors[:max_warnings]:
-        logger.warning(log_name, {
-            'id': log_name,
-            'data': {'src_id': error},
-        })
-
-    if len(errors) > max_warnings:
-        logger.warning(f"Have {len(errors)} objects where the relation table and the relations defined in the source "
-                       f"table don't match. Reported only first {max_warnings}")
 
 
 def check_very_many_relations(src_catalog_name, src_collection_name, src_field_name):
