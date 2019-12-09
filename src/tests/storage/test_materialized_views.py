@@ -51,16 +51,16 @@ class TestMaterializedView(TestCase):
         self.mv.create(storage_handler, False)
         storage_handler.execute.assert_called_with(
             f"CREATE MATERIALIZED VIEW IF NOT EXISTS {self.mv.name} AS "
-            f"SELECT _gobid,src_id,src_volgnummer,dst_id,bronwaarde "
+            f"SELECT _gobid,src_id,src_volgnummer,dst_id,begin_geldigheid,eind_geldigheid,bronwaarde "
             f"FROM {self.mv.relation_table_name} WHERE _date_deleted IS NULL")
 
         self.mv._create_indexes.assert_called_with(storage_handler, False)
 
         combinations = [
-            (True, True, '_gobid,src_id,src_volgnummer,dst_id,dst_volgnummer,bronwaarde'),
-            (True, False, '_gobid,src_id,src_volgnummer,dst_id,bronwaarde'),
-            (False, True, '_gobid,src_id,dst_id,dst_volgnummer,bronwaarde'),
-            (False, False, '_gobid,src_id,dst_id,bronwaarde'),
+            (True, True, '_gobid,src_id,src_volgnummer,dst_id,dst_volgnummer,begin_geldigheid,eind_geldigheid,bronwaarde'),
+            (True, False, '_gobid,src_id,src_volgnummer,dst_id,begin_geldigheid,eind_geldigheid,bronwaarde'),
+            (False, True, '_gobid,src_id,dst_id,dst_volgnummer,begin_geldigheid,eind_geldigheid,bronwaarde'),
+            (False, False, '_gobid,src_id,dst_id,begin_geldigheid,eind_geldigheid,bronwaarde'),
         ]
 
         pattern = re.compile(r'AS SELECT ([a-z_,]+) FROM')
@@ -83,7 +83,7 @@ class TestMaterializedView(TestCase):
         storage_handler.execute.assert_has_calls([
             call(f"DROP MATERIALIZED VIEW IF EXISTS {self.mv.name} CASCADE"),
             call(f"CREATE MATERIALIZED VIEW IF NOT EXISTS {self.mv.name} AS "
-                f"SELECT _gobid,src_id,src_volgnummer,dst_id,bronwaarde "
+                f"SELECT _gobid,src_id,src_volgnummer,dst_id,begin_geldigheid,eind_geldigheid,bronwaarde "
                 f"FROM {self.mv.relation_table_name} WHERE _date_deleted IS NULL"),
         ])
 
