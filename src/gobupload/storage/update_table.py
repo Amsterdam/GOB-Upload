@@ -361,7 +361,7 @@ all_{src_or_dst}_intervals(
     LEFT JOIN {table_name} {src_or_dst}
     ON intv.{FIELD.END_VALIDITY} = {src_or_dst}.{FIELD.START_VALIDITY}
         AND {src_or_dst}.{FIELD.ID} = intv.{FIELD.ID}
-        AND {src_or_dst}.{FIELD.SEQNR}::int = intv.{FIELD.SEQNR}::int + 1
+        AND {src_or_dst}.{FIELD.SEQNR}::int > intv.{FIELD.SEQNR}::int
     WHERE {src_or_dst}.{FIELD.START_VALIDITY} IS NOT NULL
 ), {src_or_dst}_volgnummer_begin_geldigheid AS (
     SELECT
