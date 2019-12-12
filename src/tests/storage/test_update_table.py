@@ -570,7 +570,7 @@ all_SRC_OR_DST_intervals(
     LEFT JOIN dst_catalog_name_dst_collection_name_table SRC_OR_DST
     ON intv.eind_geldigheid = SRC_OR_DST.begin_geldigheid
         AND SRC_OR_DST._id = intv._id
-        AND SRC_OR_DST.volgnummer::int = intv.volgnummer::int + 1
+        AND SRC_OR_DST.volgnummer::int > intv.volgnummer::int
     WHERE SRC_OR_DST.begin_geldigheid IS NOT NULL
 ), SRC_OR_DST_volgnummer_begin_geldigheid AS (
     SELECT
