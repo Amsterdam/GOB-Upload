@@ -69,10 +69,14 @@ De ingangsdatum van de relatie zou dus gelijk moeten zijn aan de ingangsdatum va
 Het stadsdeel bestaat weliswaar al eerder maar dat is niet van belang omdat de relatie toen nog niet bestond.
 
 Om de ingangs- en einddatum van een relatie te bepalen is het nodig om:
-- De aaneengesloten toestanden bepalen waarin de relatie heeft bestaan
+- De aaneengesloten toestanden* bepalen waarin de relatie heeft bestaan.
 - Dat levert start- en eindtoestanden op van de relatie
 - De ingangsdatum van een relatie is max(begin geldigheid(starttoestanden))
 - De einddatum van de relatie is het min(eind_geldigheid(eindtoestanden))
+
+Let op: aaneengesloten toestanden hoeven niet per definitie opeenvolgende volgnummers te hebben, maar de volgnummers dienen wel volgorderlijk te zijn.
+Een object kan in GOB bijvoorbeeld de volgnummers 1, 2 en 5 hebben, waarbij 3 en 4 niet in GOB staan. Zolang de eind_geldigheid van 2 aansluit op de
+begin_geldigheid van 5 worden 2 en 5 gezien als aaneengesloten toestanden.
 
 ## Nader voorbeeld
 ```
