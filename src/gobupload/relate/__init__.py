@@ -158,7 +158,7 @@ def build_relations(msg):
         "version": "0.1",
         "source": "GOB",
         "application": application,
-        "entity": catalog_name
+        "entity": collection_name
     }
 
     timestamp = datetime.datetime.utcnow().isoformat()
