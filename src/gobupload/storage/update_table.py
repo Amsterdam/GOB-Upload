@@ -89,24 +89,6 @@ class RelationTableRelater:
 
         :return:
         """
-        # example = {
-        #     '_version': '',
-        #     '_application': '',
-        #     '_source_id': '',
-        #     '_source': '',
-        #     '_expiration_date': '',
-        #     'id': '',                   # concat: src_id . src_volgnummer . src_source . bronwaarde
-        #     'src_source': '',
-        #     'src_id': '',
-        #     'src_volgnummer': '',
-        #     'derivation': '',
-        #     'dst_source': '',
-        #     'dst_id': '',
-        #     'dst_volgnummer': '',
-        #     'bronwaarde': '',
-        #     'begin_geldigheid': '',
-        #     'eind_geldigheid': '',
-        # }
 
         select_expressions = [
             f"src.{FIELD.VERSION} AS {FIELD.VERSION}",
@@ -454,10 +436,12 @@ class RelationTableUpdater:
     def _format_relation(self, relation: dict):
         timestamps = [FIELD.START_VALIDITY, FIELD.END_VALIDITY, FIELD.EXPIRATION_DATE]
 
-        for field in timestamps:
-            # Add time-part to date objects
-            if relation.get(field) and isinstance(relation.get(field), date):
-                relation[field] = datetime.combine(relation.get(field), datetime.min.time())
+        # Add time-part to date objects
+        relation.update({
+            field: datetime.combine(relation.get(field), datetime.min.time())
+            for field in timestamps
+            if relation.get(field) and isinstance(relation.get(field), date)
+        })
 
         return relation
 
