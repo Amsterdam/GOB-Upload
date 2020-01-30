@@ -8,10 +8,16 @@ Publishes the relation as import messages
 """
 import datetime
 
+from gobcore.exceptions import GOBException
 from gobcore.model import GOBModel
+from gobcore.sources import GOBSources
 from gobcore.logging.logger import logger
 from gobcore.model.relations import get_relation_name
+from gobcore.message_broker.config import CONNECTION_PARAMS, WORKFLOW_EXCHANGE, WORKFLOW_REQUEST_KEY
+from gobcore.message_broker.message_broker import Connection as MessageBrokerConnection
 
+from gobupload.storage.handler import GOBStorageHandler
+from gobupload.storage.materialized_views import MaterializedViews
 from gobupload.storage.relate import get_last_change, check_relations, check_very_many_relations
 
 from gobupload.relate.relate import relate_update
@@ -87,31 +93,27 @@ def check_relation(msg):
     :param msg:
     :return:
     """
-    catalog_name = msg['header']['catalogue']
-    collection_names = msg['header'].get('collection')
+    header = msg.get('header', {})
+    catalog_name = header.get('original_catalogue')
+    collection_name = header.get('original_collection')
+    attribute_name = header.get('original_attribute')
 
     model = GOBModel()
-
-    if collection_names is None:
-        collection_names = model.get_collection_names(catalog_name)
-    else:
-        collection_names = collection_names.split(" ")
 
     logger.configure(msg, "RELATE")
     logger.info(f"Relate check started")
 
-    for collection_name in collection_names:
-        collection = model.get_collection(catalog_name, collection_name)
-        assert collection is not None, f"Invalid collection name '{collection_name}'"
+    collection = model.get_collection(catalog_name, collection_name)
+    assert collection is not None, f"Invalid catalog/collection combination {catalog_name}/{collection_name}"
 
-        references = model._extract_references(collection['attributes'])
-        for reference_name, reference in references.items():
-            try:
-                is_very_many = reference['type'] == "GOB.VeryManyReference"
-                check_function = check_very_many_relations if is_very_many else check_relations
-                check_function(catalog_name, collection_name, reference_name)
-            except Exception as e:
-                _log_exception(f"{reference_name} check FAILED", e)
+    reference = model._extract_references(collection['attributes']).get(attribute_name)
+
+    try:
+        is_very_many = reference['type'] == "GOB.VeryManyReference"
+        check_function = check_very_many_relations if is_very_many else check_relations
+        check_function(catalog_name, collection_name, attribute_name)
+    except Exception as e:
+        _log_exception(f"{attribute_name} check FAILED", e)
 
     logger.info(f"Relate check completed")
 
@@ -125,18 +127,11 @@ def check_relation(msg):
     }
 
 
-def build_relations(msg):
-    """
-    Build all relations for a catalog and collections as specified in the message
-
-    If no collections are specified then all collections in the catalog will be processed
-
-    :param msg: a message from the broker containing the catalog and collections (optional)
-    :return: None
-    """
+def _split_job(msg: dict):
     header = msg.get('header', {})
     catalog_name = header.get('catalogue')
     collection_name = header.get('collection')
+    attribute_name = header.get('attribute')
 
     assert catalog_name is not None, "A catalog name is required"
 
@@ -152,6 +147,65 @@ def build_relations(msg):
 
     assert collection_names, f"No collections specified or found for catalog {catalog_name}"
 
+    with MessageBrokerConnection(CONNECTION_PARAMS) as connection:
+        for collection_name in collection_names:
+            collection = model.get_collection(catalog_name, collection_name)
+            assert collection is not None, f"Invalid collection name '{collection_name}'"
+
+            logger.info(f"** Relate {collection_name}")
+
+            if attribute_name is None:
+                attributes = model._extract_references(collection['attributes'])
+            else:
+                attributes = [attribute_name]
+
+            for attribute_name in attributes:
+                sources = GOBSources()
+                relation_specs = sources.get_field_relations(catalog_name, collection_name, attribute_name)
+
+                if not relation_specs:
+                    logger.info(f"Missing relation specification for {catalog_name} {collection_name} "
+                                f"{attribute_name}. Skipping")
+                    continue
+
+                logger.info(f"Splitting job for {catalog_name} {collection_name} {attribute_name}")
+
+                original_header = msg.get('header', {})
+
+                split_msg = {
+                    **msg,
+                    "header": {
+                        **original_header,
+                        "catalogue": catalog_name,
+                        "collection": collection_name,
+                        "attribute": attribute_name,
+                        "split_from": original_header.get('jobid'),
+                    },
+                    "workflow": {
+                        "workflow_name": "relate",
+                    }
+                }
+
+                del split_msg['header']['jobid']
+                del split_msg['header']['stepid']
+
+                connection.publish(WORKFLOW_EXCHANGE, WORKFLOW_REQUEST_KEY, split_msg)
+
+
+def build_relations(msg):
+    """
+    Build all relations for a catalog and collections as specified in the message
+
+    If no collections are specified then all collections in the catalog will be processed
+
+    :param msg: a message from the broker containing the catalog and collections (optional)
+    :return: None
+    """
+    header = msg.get('header', {})
+    catalog_name = header.get('catalogue')
+    collection_name = header.get('collection')
+    attribute_name = header.get('attribute')
+
     application = "GOBRelate"
     msg["header"] = {
         **msg.get("header", {}),
@@ -162,33 +216,115 @@ def build_relations(msg):
     }
 
     timestamp = datetime.datetime.utcnow().isoformat()
-    process_id = f"{timestamp}.{application}.{catalog_name}"
+    process_id = f"{timestamp}.{application}.{catalog_name}" + \
+                 (f".{collection_name}" if collection_name else "") + \
+                 (f".{attribute_name}" if attribute_name else "")
 
     msg["header"].update({
         "timestamp": timestamp,
         "process_id": process_id
     })
+
     logger.configure(msg, "RELATE")
 
-    _build_relations_for_collections(catalog_name, collection_names, model)
+    if not catalog_name or not collection_name or not attribute_name:
+        logger.info("Splitting relate job)")
 
-    return publish_result(msg, [])
+        _split_job(msg)
+        msg['header']['is_split'] = True
+
+        return publish_result(msg, [])
+    else:
+        logger.info(f"** Relate {catalog_name} {collection_name} {attribute_name}")
+
+        try:
+            contents_filename, updates = relate_update(catalog_name, collection_name, attribute_name)
+            relation_name = get_relation_name(GOBModel(), catalog_name, collection_name, attribute_name)
+
+            msg["header"].update({
+                "catalogue": "rel",
+                "collection": relation_name,
+                "entity": relation_name,
+                "original_catalogue": catalog_name,
+                "original_collection": collection_name,
+                "original_attribute": attribute_name,
+            })
+            msg["contents_ref"] = contents_filename
+
+            return msg
+        except Exception as e:
+            _log_exception(f"{attribute_name} update FAILED", e)
 
 
-def _build_relations_for_collections(catalog_name, collection_names, model):
-    for collection_name in collection_names:
-        collection = model.get_collection(catalog_name, collection_name)
-        assert collection is not None, f"Invalid collection name '{collection_name}'"
+def _get_materialized_view_by_relation_name(relation_name: str):
 
-        logger.info(f"** Relate {collection_name}")
+    try:
+        return MaterializedViews().get_by_relation_name(relation_name)
+    except Exception as e:
+        logger.error(str(e))
+        raise GOBException(f"Could not get materialized view for relation {relation_name}.")
 
-        references = model._extract_references(collection['attributes'])
-        for reference_name, reference in references.items():
-            logger.info(f"{reference_name}")
-            try:
-                relate_update(catalog_name, collection_name, reference_name)
-            except Exception as e:
-                _log_exception(f"{reference_name} update FAILED", e)
+
+def _get_materialized_view(catalog_name: str, collection_name: str, attribute_name: str):
+
+    if not collection_name:
+        raise GOBException("Need collection_name to update materialized view.")
+
+    if catalog_name == "rel":
+        return _get_materialized_view_by_relation_name(collection_name)
+
+    if not attribute_name:
+        raise GOBException("Missing attribute")
+    try:
+        return MaterializedViews().get(catalog_name, collection_name, attribute_name)
+    except Exception as e:
+        logger.error(str(e))
+        raise GOBException(f"Could not get materialized view for {catalog_name} {collection_name}.")
+
+
+def update_materialized_view(msg):
+    """Updates materialized view for a relation for a given catalog, collection and attribute or relation name.
+
+    Expects a message with headers:
+    - catalogue
+    - collection (if catalogue is 'rel' this should be the relation_name)
+    - attribute (optional if catalogue is 'rel')
+
+    examples of correct headers that are functionally equivalent:
+    header = {
+        "catalogue": "meetbouten",
+        "collection": "meetbouten",
+        "attribute": "ligt_in_buurt",
+    }
+    header = {
+        "catalogue": "rel",
+        "collection": "mbn_mbt_gbd_brt_ligt_in_buurt",
+    }
+
+    :param msg:
+    :return:
+    """
+    header = msg.get('header', {})
+    catalog_name = header.get('catalogue')
+    collection_name = header.get('collection')
+    attribute_name = header.get('attribute')
+
+    application = "GOBRelate"
+
+    logger.configure(msg, "UPDATE_VIEW")
+    storage_handler = GOBStorageHandler()
+
+    view = _get_materialized_view(catalog_name, collection_name, attribute_name)
+    view.refresh(storage_handler)
+    logger.info(f"Update materialized view {view.name}")
+
+    timestamp = datetime.datetime.utcnow().isoformat()
+    msg['header'].update({
+        "timestamp": timestamp,
+        "process_id": f"{timestamp}.{application}.{catalog_name}.{collection_name}"
+    })
+
+    return msg
 
 
 def _log_exception(msg, err, MAX_MSG_LENGTH=120):

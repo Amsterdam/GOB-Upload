@@ -142,9 +142,16 @@ class TestMaterializedViews(TestCase):
 
     @patch("gobupload.storage.materialized_views.model_relations.get_relation_name",
            lambda m, cat, col, attr: f"{cat}_{col}_{attr}")
-    @patch("gobupload.storage.materialized_views.MaterializedView", lambda x: 'mv_' + x)
     def test_get(self):
         mv = MaterializedViews()
+        mv.get_by_relation_name = MagicMock()
         res = mv.get('cat', 'col', 'attr')
 
-        self.assertEqual('mv_cat_col_attr', res)
+        mv.get_by_relation_name.assert_called_with('cat_col_attr')
+        self.assertEqual(mv.get_by_relation_name.return_value, res)
+
+    @patch("gobupload.storage.materialized_views.MaterializedView")
+    def test_get_by_relation_name(self, mock_materialized_view):
+        self.assertEqual(mock_materialized_view.return_value,
+                         MaterializedViews().get_by_relation_name('relation_name'))
+        mock_materialized_view.assert_called_with('relation_name')
