@@ -10,7 +10,7 @@ import argparse
 from gobcore.message_broker.config import WORKFLOW_EXCHANGE, FULLUPDATE_QUEUE, COMPARE_QUEUE, RELATE_QUEUE, \
     CHECK_RELATION_QUEUE, APPLY_QUEUE
 from gobcore.message_broker.config import COMPARE_RESULT_KEY, FULLUPDATE_RESULT_KEY, RELATE_RESULT_KEY, \
-    CHECK_RELATION_RESULT_KEY, APPLY_RESULT_KEY
+    CHECK_RELATION_RESULT_KEY, APPLY_RESULT_KEY, RELATE_UPDATE_VIEW_QUEUE, RELATE_UPDATE_VIEW_RESULT_KEY
 from gobcore.message_broker.messagedriven_service import MessagedrivenService
 
 from gobupload import compare
@@ -60,6 +60,14 @@ SERVICEDEFINITION = {
             'key': CHECK_RELATION_RESULT_KEY,
         }
     },
+    'update_view': {
+        'queue': RELATE_UPDATE_VIEW_QUEUE,
+        'handler': relate.update_materialized_view,
+        'report': {
+            'exchange': WORKFLOW_EXCHANGE,
+            'key': RELATE_UPDATE_VIEW_RESULT_KEY
+        }
+    }
 }
 
 parser = argparse.ArgumentParser(

@@ -717,13 +717,13 @@ ON
 """
 
     # Update the relations table first
-    _update_relations_rel_table(src_catalog_name, src_collection_name, src_field_name)
+    contents_filename = _update_relations_rel_table(src_catalog_name, src_collection_name, src_field_name)
 
     # Update the source tabel
     updates = _do_relate_update(new_values, src_field_name, src_has_states, dst_has_states, src_table_name, False)
 
     _check_relate_update(new_values, src_field_name, src_identification)
-    return updates
+    return contents_filename, updates
 
 
 def _relate_update_order_by(src_has_states, dst_has_states):

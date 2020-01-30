@@ -2,24 +2,26 @@
 
 Classes are ready to be modified to use events in the future.
 """
+from datetime import date, datetime
 
-from gobcore.events.import_events import ADD, CONFIRM, DELETE, MODIFY
+from gobcore.message_broker.offline_contents import ContentsWriter
 
+from gobcore.logging.logger import logger
 from gobcore.model import GOBModel
 from gobcore.model.metadata import FIELD
 from gobcore.model.relations import get_relation_name
 from gobcore.sources import GOBSources
+from gobcore.utils import ProgressTicker
 
 from gobupload.relate.exceptions import RelateException
 from gobupload.storage.execute import _execute
-from gobupload.storage.handler import GOBStorageHandler
-from gobupload.storage.materialized_views import MaterializedViews
 
 EQUALS = 'equals'
 LIES_IN = 'lies_in'
+GOB = 'GOB'
 
 
-class RelationTableEventExtractor:
+class RelationTableRelater:
     """RelationTableEventExtractor
 
     Generates events based on the current state of the source table and the relation table.
@@ -87,26 +89,38 @@ class RelationTableEventExtractor:
 
         :return:
         """
+        # example = {
+        #     '_version': '',
+        #     '_application': '',
+        #     '_source_id': '',
+        #     '_source': '',
+        #     '_expiration_date': '',
+        #     'id': '',                   # concat: src_id . src_volgnummer . src_source . bronwaarde
+        #     'src_source': '',
+        #     'src_id': '',
+        #     'src_volgnummer': '',
+        #     'derivation': '',
+        #     'dst_source': '',
+        #     'dst_id': '',
+        #     'dst_volgnummer': '',
+        #     'bronwaarde': '',
+        #     'begin_geldigheid': '',
+        #     'eind_geldigheid': '',
+        # }
+
         select_expressions = [
-            f"src.{FIELD.ID} AS src__id",
-            f"src.{FIELD.EXPIRATION_DATE} AS src__expiration_date",
-            f"{self._source_value_ref()} AS src_bronwaarde",
-            f"src.{FIELD.SOURCE} AS src__source",
-            f"src.{FIELD.APPLICATION} AS src__application",
-            f"src.{FIELD.SOURCE_ID} AS src__source_id",
-            f"src.{FIELD.VERSION} AS src__version",
-            f"rel.{FIELD.GOBID} AS rel__gobid",
-            f"rel.src_id AS rel_src_id",
-            f"rel.src_volgnummer AS rel_src_volgnummer",
-            f"rel.dst_id AS rel_dst_id",
-            f"rel.dst_volgnummer AS rel_dst_volgnummer",
-            f"rel.{FIELD.EXPIRATION_DATE} AS rel__expiration_date",
-            f"rel.{FIELD.ID} AS rel__id",
-            f"CASE WHEN rel.{FIELD.VERSION} IS NOT NULL THEN rel.{FIELD.VERSION} ELSE '{self.TABLE_VERSION}' "
-            f"END AS rel__version",
-            f"dst.{FIELD.ID} AS dst__id",
-            f"dst.{FIELD.EXPIRATION_DATE} AS dst__expiration_date",
-            f"LEAST(src.{FIELD.EXPIRATION_DATE}, dst.{FIELD.EXPIRATION_DATE}) AS expected_expiration_date"
+            f"src.{FIELD.VERSION} AS {FIELD.VERSION}",
+            f"src.{FIELD.APPLICATION} AS {FIELD.APPLICATION}",
+            f"src.{FIELD.SOURCE_ID} AS {FIELD.SOURCE_ID}",
+            f"'{GOB}' AS {FIELD.SOURCE}",
+            f"LEAST(src.{FIELD.EXPIRATION_DATE}, dst.{FIELD.EXPIRATION_DATE}) AS {FIELD.EXPIRATION_DATE}",
+            f"{self._get_id()} AS id",
+            f"{self._get_derivation()} AS derivation",  # match if method == 'equals' else method
+            f"src.{FIELD.SOURCE} AS src_source",
+            f"src.{FIELD.ID} AS src_id",
+            f"dst.{FIELD.SOURCE} AS dst_source",
+            f"dst.{FIELD.ID} AS dst_id",
+            f"{self._source_value_ref()} AS {FIELD.SOURCE_VALUE}",
         ]
 
         start_validity, end_validity = self._validity_select_expressions()
@@ -114,8 +128,8 @@ class RelationTableEventExtractor:
         end_validity = f"CASE WHEN dst.{FIELD.ID} IS NULL THEN NULL ELSE {end_validity} END"
 
         select_expressions += [
-            f"{start_validity} AS expected_begin_geldigheid",
-            f"{end_validity} AS expected_eind_geldigheid",
+            f"{start_validity} AS {FIELD.START_VALIDITY}",
+            f"{end_validity} AS {FIELD.END_VALIDITY}",
         ]
 
         if self.src_has_states:
@@ -127,22 +141,29 @@ class RelationTableEventExtractor:
                 f"dst.{FIELD.SEQNR} AS dst_volgnummer"
             )
 
-        distinct_seqnr = f'OR dst.{FIELD.SEQNR} IS DISTINCT FROM rel.dst_volgnummer'
-
-        select_expressions.append(f"""
-    CASE
-        WHEN rel.src_id IS NULL THEN '{ADD.name}'
-        WHEN src.{FIELD.ID} IS NULL THEN '{DELETE.name}'
-        WHEN dst.{FIELD.ID} IS DISTINCT FROM rel.dst_id
-             {distinct_seqnr if self.dst_has_states else ''}
-             OR LEAST(src.{FIELD.EXPIRATION_DATE}, dst.{FIELD.EXPIRATION_DATE})
-             IS DISTINCT FROM rel.{FIELD.EXPIRATION_DATE}
-             OR ({start_validity})::timestamp without time zone IS DISTINCT FROM rel.{FIELD.START_VALIDITY}
-             OR ({end_validity})::timestamp without time zone IS DISTINCT FROM rel.{FIELD.END_VALIDITY}
-             THEN '{MODIFY.name}'
-        ELSE '{CONFIRM.name}'
-    END AS event_type""")
         return select_expressions
+
+    def _get_id(self):
+        id_fields = [f"src.{FIELD.ID}"]
+
+        if self.src_has_states:
+            id_fields += [f"src.{FIELD.SEQNR}"]
+
+        id_fields += [
+            f"src.{FIELD.SOURCE}",
+            f"({self._source_value_ref()})"
+        ]
+        return " || '.' || ".join(id_fields)
+
+    def _get_derivation(self):
+        """Returns CASE statement for derivation in select expressions.
+
+        :return:
+        """
+        whens = "\n        ".join(
+            [f"WHEN '{spec['source']}' THEN '{spec['destination_attribute']}'" for spec in self.relation_specs]
+        )
+        return f'CASE src.{FIELD.APPLICATION}\n        {whens}\n    END'
 
     def _source_value_ref(self):
         """Returns the reference to the source value in the src object. For a many relation this reference points to
@@ -155,23 +176,6 @@ class RelationTableEventExtractor:
             return f"{self.json_join_alias}.item->>'{FIELD.SOURCE_VALUE}'"
         else:
             return f"src.{self.src_field_name}->>'{FIELD.SOURCE_VALUE}'"
-
-    def _rel_table_join_on(self):
-        """Returns the ON clause for the relation table join
-
-        :return:
-        """
-        join_on = [f"src.{FIELD.ID} = rel.src{FIELD.ID}"]
-        if self.src_has_states:
-            join_on.append(f"src.{FIELD.SEQNR} = rel.src_{FIELD.SEQNR}")
-
-        join_on += [
-            f'rel.src_source = src.{FIELD.SOURCE}',
-            f'rel.{FIELD.DATE_DELETED} IS NULL',
-            f'rel.bronwaarde = {self._source_value_ref()}',
-            f'rel.{FIELD.APPLICATION} = src.{FIELD.APPLICATION}',
-        ]
-        return join_on
 
     def _geo_resolve(self, spec, src_ref='src'):
         src_geo = f"{src_ref}.{spec['source_attribute']}"
@@ -256,20 +260,6 @@ class RelationTableEventExtractor:
         if self.src_has_states:
             group_by.append(f"src.{FIELD.SEQNR}")
         return group_by
-
-    def _where(self):
-        """WHERE clause filters all rows where src has an empty bronwaarde and there are no matching relations.
-        In that case we can safely ignore this row.
-
-        :return:
-        """
-
-        return f"WHERE NOT (" \
-            f"src.{FIELD.ID} IS NOT NULL AND " \
-            f"{self._source_value_ref()} IS NULL AND " \
-            f"rel.{FIELD.ID} IS NULL" \
-            f") AND " \
-            f"rel.{FIELD.DATE_DELETED} IS NULL"
 
     def _have_geo_specs(self):
         """Returns True if this relation includes a geo match.
@@ -408,14 +398,11 @@ all_{src_or_dst}_intervals(
         :return:
         """
 
-        rel_table_join_on = self._rel_table_join_on()
         dst_table_outer_join_on = self._dst_table_outer_join_on()
         select_expressions = self._select_expressions()
 
         joins = f"""
 {self._join_array_elements() if self.is_many else ""}
-FULL JOIN {self.relation_table} rel
-    ON {self.and_join.join(rel_table_join_on)}
 {self._src_dst_join()}
 LEFT JOIN {self.dst_table_name} dst
     ON {self.and_join.join(dst_table_outer_join_on)}
@@ -431,28 +418,24 @@ FROM (
     SELECT * FROM {self.src_table_name} WHERE {FIELD.DATE_DELETED} IS NULL
 ) src
 {joins}
-{self._where()}
+WHERE src.{FIELD.DATE_DELETED} IS NULL
 """
 
-    def extract(self):
-        """Extracts/generates events from the current state of the database.
-
-        The current results are close to GOB events, but the real implementation of GOB events should be done later on.
-
+    def extract_relations(self):
+        """Extracts relations from the current state of the database.
         :return:
         """
         query = self._get_query()
-
-        # For now (until real events are implemented in relation tables), ignore CONFIRM events
-        query = f"SELECT * FROM ({query}) q WHERE event_type <> 'CONFIRM'"
-
         return _execute(query, stream=True)
 
 
 class RelationTableUpdater:
-    """RelationTableUpder updates the relation table based on the observed relations in the model.
+    """RelationTableUpdater generates relation entities based on the observed relations in the model.
 
-    This class is written with the future use of real GOB events in mind.
+    This class imports the new relations just as all other entities; compare will be triggered, events will be
+    generated, etcetera.
+
+    The output of this class can be seen as the import step of entities from the rel catalog.
 
     Usage:
 
@@ -460,203 +443,43 @@ class RelationTableUpdater:
     update_cnt = updater.update_relation()
 
     """
-    MAX_QUEUE_LENGTH = 1000
-
-    cast_values = {
-        FIELD.EXPIRATION_DATE: 'timestamp without time zone',
-        FIELD.START_VALIDITY: 'timestamp without time zone',
-        FIELD.END_VALIDITY: 'timestamp without time zone',
-    }
 
     def __init__(self, src_catalog_name, src_collection_name, src_field_name):
         self.src_catalog_name = src_catalog_name
         self.src_collection_name = src_collection_name
         self.src_field_name = src_field_name
-        self.events_extractor = RelationTableEventExtractor(self.src_catalog_name, self.src_collection_name,
-                                                            self.src_field_name)
-        self.relation_table = self.events_extractor.relation_table
-        self.fields = self._get_fields()
-        self.update_cnt = 0
+        self.relater = RelationTableRelater(self.src_catalog_name, self.src_collection_name,
+                                            self.src_field_name)
+        self.relation_table = self.relater.relation_table
+        self.filename = None
 
-    def _get_fields(self):
-        """Returns the field mapping of database fields to the fields in the events as received from the
-        EventExtractor.
+    def _format_relation(self, relation: dict):
+        timestamps = [FIELD.START_VALIDITY, FIELD.END_VALIDITY, FIELD.EXPIRATION_DATE]
 
-        :return:
-        """
-        fields = {
-            FIELD.GOBID: 'rel__gobid',
-            FIELD.ID: None,
-            FIELD.SOURCE: 'src__source',
-            FIELD.APPLICATION: 'src__application',
-            FIELD.SOURCE_ID: 'src__source_id',
-            FIELD.VERSION: 'rel__version',
-            'id': None,
-            'src_source': 'src__source',
-            'src_id': 'src__id',
-            'dst_source': 'dst__source',
-            'dst_id': 'dst__id',
-            FIELD.START_VALIDITY: 'expected_begin_geldigheid',
-            FIELD.END_VALIDITY: 'expected_eind_geldigheid',
+        for field in timestamps:
+            # Add time-part to date objects
+            if relation.get(field) and isinstance(relation.get(field), date):
+                relation[field] = datetime.combine(relation.get(field), datetime.min.time())
 
-            # Expected expiration date is the expiration date we expect for this relation: least(src exp, dst exp)
-            # If different from real expiration_date we should trigger an update on this relation
-            FIELD.EXPIRATION_DATE: 'expected_expiration_date',
-            FIELD.SOURCE_VALUE: 'src_bronwaarde',
-        }
-
-        if self.events_extractor.src_has_states:
-            fields['src_volgnummer'] = 'src_volgnummer'
-        if self.events_extractor.dst_has_states:
-            fields['dst_volgnummer'] = 'dst_volgnummer'
-
-        return fields
-
-    def _cast_expr(self, column_name: str):
-        return f'::{self.cast_values[column_name]}' if self.cast_values.get(column_name) else ''
-
-    def _values_list(self, event: dict, include_gob_id=False):
-        """Returns the values to insert/update as a list
-
-        :param event:
-        :param include_gob_id:
-        :return:
-        """
-        result = []
-        for db_field, row_key in self.fields.items():
-            if db_field == FIELD.GOBID:
-                if include_gob_id:
-                    # Add without quotation marks, _gobid is the only int in the row
-                    result.append(str(event.get(row_key)) if event.get(row_key) else 'NULL')
-                continue
-
-            if row_key is None:
-                result.append('NULL')
-            else:
-                result.append(f"'{event.get(row_key)}'{self._cast_expr(db_field)}" if event.get(row_key) else 'NULL')
-        return result
-
-    def _column_list(self, include_gob_id=False):
-        """Returns the list of columns for an insert/update query
-
-        :param include_gob_id:
-        :return:
-        """
-        return ','.join([key for key in self.fields.keys() if not (key == FIELD.GOBID and include_gob_id is False)])
-
-    def _write_events(self, queue):
-        """Writes events in queue to the database. Events in queue should all be of the same type (add/modify/delete).
-
-        :param queue:
-        :return:
-        """
-        if not queue:
-            return 0
-
-        if queue[0]['event_type'] == ADD.name:
-            self._write_add_events(queue)
-        elif queue[0]['event_type'] == MODIFY.name:
-            self._write_modify_events(queue)
-        elif queue[0]['event_type'] == DELETE.name:
-            self._write_delete_events(queue)
-
-        self.update_cnt += len(queue)
-
-        queue.clear()
-
-    def _write_add_events(self, events):
-        """Updates database with adds
-
-        :param events:
-        :return:
-        """
-        values = ",\n".join([f"({','.join(self._values_list(dict(event)))})" for event in events])
-        query = f"INSERT INTO {self.relation_table} ({self._column_list()}) VALUES {values}"
-        return _execute(query)
-
-    def _write_modify_events(self, events):
-        """Updates database with modifies
-
-        :param events:
-        :return:
-        """
-        values = ",\n".join([f"({','.join(self._values_list(dict(event), True))})" for event in events])
-
-        set_values = ',\n'.join([f"{col_name} = v.{col_name}{self._cast_expr(col_name)}"
-                                 for col_name in self.fields.keys() if col_name != FIELD.GOBID])
-
-        query = \
-            f"UPDATE {self.relation_table} AS rel\n" \
-            f"SET {set_values}\n" \
-            f"FROM (VALUES {values}) AS v({self._column_list(True)})\n" \
-            f"WHERE rel.{FIELD.GOBID} = v.{FIELD.GOBID}"
-
-        return _execute(query)
-
-    def _write_delete_events(self, events):
-        """Updates database with deletes
-
-        :param events:
-        :return:
-        """
-        ids = ','.join([str(event['rel__gobid']) for event in events])
-
-        query = \
-            f"UPDATE {self.relation_table}\n" \
-            f"SET {FIELD.DATE_DELETED} = NOW()\n" \
-            f"WHERE {FIELD.GOBID} IN ({ids})"
-
-        return _execute(query)
-
-    def _add_event_to_queue(self, event, queue):
-        """Add event to the given queue. Triggers writing to the database if queue reached MAX_QUEUE_LENGTH
-
-        :param event:
-        :param queue:
-        :return:
-        """
-        queue.append(event)
-
-        if len(queue) >= self.MAX_QUEUE_LENGTH:
-            self._write_events(queue)
+        return relation
 
     def update_relation(self):
         """Entry method.
 
-        Gets 'events' from EventExtractor and applies these directly to the database (for now without actually creating
-        any GOB events).
-
         :return:
         """
-        events_like_objects = self.events_extractor.extract()
 
-        # Currently not using events yet. First make sure this works in sync with the source table relations.
-        # Next step will be to implement events.
-        add_events = []
-        modify_events = []
-        delete_events = []
+        relation_objects = self.relater.extract_relations()
 
-        for event in events_like_objects:
-            if event['event_type'] == ADD.name:
-                self._add_event_to_queue(event, add_events)
-            elif event['event_type'] == MODIFY.name:
-                self._add_event_to_queue(event, modify_events)
-            elif event['event_type'] == DELETE.name:
-                self._add_event_to_queue(event, delete_events)
+        cnt = 0
+        with ContentsWriter() as writer, \
+                ProgressTicker(
+                    f"Write relation {self.src_catalog_name} {self.src_collection_name} {self.src_field_name}",
+                    10000) as progress:
+            for relation in relation_objects:
+                progress.tick()
+                cnt += 1
+                writer.write(self._format_relation(dict(relation)))
 
-        # Flush queues
-        self._write_events(add_events)
-        self._write_events(modify_events)
-        self._write_events(delete_events)
-
-        # Update materialized view
-        self._refresh_materialized_view()
-
-        return self.update_cnt
-
-    def _refresh_materialized_view(self):
-        storage_handler = GOBStorageHandler()
-        materialized_views = MaterializedViews()
-        mv = materialized_views.get(self.src_catalog_name, self.src_collection_name, self.src_field_name)
-
-        mv.refresh(storage_handler)
+        logger.info(f"Written {cnt} relations")
+        return writer.filename
