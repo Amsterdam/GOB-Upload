@@ -137,4 +137,7 @@ class MaterializedViews:
         :return:
         """
         relation_name = model_relations.get_relation_name(self.model, catalog_name, collection_name, attribute)
+        return self.get_by_relation_name(relation_name)
+
+    def get_by_relation_name(self, relation_name):
         return MaterializedView(relation_name)

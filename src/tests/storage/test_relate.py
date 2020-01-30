@@ -311,9 +311,11 @@ JOIN jsonb_array_elements(src.field) AS json_arr_elm ON TRUE
         with patch.object(GOBSources, 'get_field_relations', mock_get_field_relations), \
              patch.object(GOBModel, 'get_collection', mock_get_collection), \
              patch.object(GOBModel, 'has_states', lambda *args: True):
-            update_relations("catalog", "collection", "field")
+            result = update_relations("catalog", "collection", "field")
         mock_execute.assert_called_with(expect)
         mock_update_relations_rel_table.assert_called_with('catalog', 'collection', 'field')
+
+        self.assertEqual((mock_update_relations_rel_table.return_value, 0), result)
 
     @patch("gobupload.storage.relate.GOBModel")
     @patch("gobupload.storage.relate.GOBSources")
