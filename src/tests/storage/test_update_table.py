@@ -540,9 +540,7 @@ SEQNR_BEGIN_GELDIGHEID
 SELECT
     SELECT_EXPRESSION1,
     SELECT_EXPRESSION2
-FROM (
-    SELECT * FROM src_catalog_name_src_collection_name_table WHERE _date_deleted IS NULL
-) src
+FROM src_catalog_name_src_collection_name_table src
 
 
 SRC_DST_JOIN
@@ -567,9 +565,7 @@ SEQNR_BEGIN_GELDIGHEID
 SELECT
     SELECT_EXPRESSION1,
     SELECT_EXPRESSION2
-FROM (
-    SELECT * FROM src_catalog_name_src_collection_name_table WHERE _date_deleted IS NULL
-) src
+FROM src_catalog_name_src_collection_name_table src
 
 ARRAY_ELEMENTS
 SRC_DST_JOIN

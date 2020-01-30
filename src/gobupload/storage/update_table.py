@@ -414,9 +414,7 @@ LEFT JOIN {self.dst_table_name} dst
 {self._start_validities()}
 SELECT
     {self.comma_join.join(select_expressions)}
-FROM (
-    SELECT * FROM {self.src_table_name} WHERE {FIELD.DATE_DELETED} IS NULL
-) src
+FROM {self.src_table_name} src
 {joins}
 WHERE src.{FIELD.DATE_DELETED} IS NULL
 """
