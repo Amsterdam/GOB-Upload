@@ -84,7 +84,7 @@ class TestRelationTableRelater(TestCase):
         minimal = [
             "src._version AS _version",
             "src._application AS _application",
-            "src._source_id AS _source_id",
+            "ID AS _source_id",
             "'GOB' AS _source",
             "LEAST(src._expiration_date, dst._expiration_date) AS _expiration_date",
             "ID AS id",
@@ -316,9 +316,10 @@ class TestRelationTableRelater(TestCase):
                    "(_application = 'sourceB' AND ST_IsValid(attrB))"
         self.assertEqual(expected, extractor._valid_geo_src_check())
 
-    def test_array_elements(self):
+    def test_join_array_elements(self):
         extractor = self._get_extractor()
-        expected = "JOIN jsonb_array_elements(src.src_field_name) json_arr_elm(item) ON TRUE"
+        expected = "JOIN jsonb_array_elements(src.src_field_name) json_arr_elm(item) " \
+                   "ON json_arr_elm->>'bronwaarde' IS NOT NULL"
         self.assertEqual(expected, extractor._join_array_elements())
 
     def _get_src_dst_join_mocked_extractor(self):
@@ -517,6 +518,16 @@ all_SRC_OR_DST_intervals(
                          "ON dst_bg._id = dst._id AND dst_bg.volgnummer = dst.volgnummer",
                          extractor._join_dst_geldigheid())
 
+    def test_get_where(self):
+        extractor = self._get_extractor()
+        extractor._source_value_ref = lambda: 'BRONWAARDE'
+        extractor.is_many = True
+
+        self.assertEqual("WHERE src._date_deleted IS NULL", extractor._get_where())
+
+        extractor.is_many = False
+        self.assertEqual("WHERE src._date_deleted IS NULL AND BRONWAARDE IS NOT NULL", extractor._get_where())
+
     def _get_get_query_mocked_extractor(self):
         extractor = self._get_extractor()
         extractor._rel_table_join_on = lambda: ['REL_TABLE_JOIN_ON1', 'REL_TABLE_JOIN_ON2']
@@ -528,6 +539,7 @@ all_SRC_OR_DST_intervals(
         extractor._start_validities = lambda: 'SEQNR_BEGIN_GELDIGHEID'
         extractor._join_src_geldigheid = lambda: 'JOIN_SRC_GELDIGHEID'
         extractor._join_dst_geldigheid = lambda: 'JOIN_DST_GELDIGHEID'
+        extractor._get_where = lambda: 'WHERE CLAUSE'
 
         return extractor
 
@@ -550,7 +562,7 @@ LEFT JOIN dst_catalog_name_dst_collection_name_table dst
 JOIN_SRC_GELDIGHEID
 JOIN_DST_GELDIGHEID
 
-WHERE src._date_deleted IS NULL
+WHERE CLAUSE
 """
 
         result = extractor._get_query()
@@ -575,7 +587,7 @@ LEFT JOIN dst_catalog_name_dst_collection_name_table dst
 JOIN_SRC_GELDIGHEID
 JOIN_DST_GELDIGHEID
 
-WHERE src._date_deleted IS NULL
+WHERE CLAUSE
 """
         result = extractor._get_query()
         self.assertEqual(result, expected)
