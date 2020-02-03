@@ -260,7 +260,8 @@ class RelationTableRelater:
             for spec in self.relation_specs])
 
     def _join_array_elements(self):
-        return f"JOIN jsonb_array_elements(src.{self.src_field_name}) {self.json_join_alias}(item) ON TRUE"
+        return f"JOIN jsonb_array_elements(src.{self.src_field_name}) {self.json_join_alias}(item) " \
+               f"ON {self.json_join_alias}->>'{FIELD.SOURCE_VALUE}' IS NOT NULL"
 
     def _src_dst_join(self):
         if self._have_geo_specs():
@@ -374,6 +375,10 @@ all_{src_or_dst}_intervals(
     def _join_src_geldigheid(self):
         return self._join_geldigheid('src') if self.src_has_states else ""
 
+    def _get_where(self):
+        filter_empty_source_value = f" AND {self._source_value_ref()} IS NOT NULL" if not self.is_many else ""
+        return f"WHERE src.{FIELD.DATE_DELETED} IS NULL{filter_empty_source_value}"
+
     def _get_query(self):
         """Builds and returns the event extraction query
 
@@ -398,7 +403,7 @@ SELECT
     {self.comma_join.join(select_expressions)}
 FROM {self.src_table_name} src
 {joins}
-WHERE src.{FIELD.DATE_DELETED} IS NULL
+{self._get_where()}
 """
 
     def extract_relations(self):
