@@ -81,7 +81,7 @@ class EventCollector:
                 'last_event': event['data']['_last_event']
             }]
 
-        is_valid = False not in [self._match_last_event(id, event_type) for id in ids]
+        is_valid = all([self._match_last_event(id, event_type) for id in ids])
         if not is_valid:
             print("Invalid event", event, [self.last_events.get(id['source_id']) for id in ids])
         return is_valid
