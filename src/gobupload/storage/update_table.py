@@ -93,7 +93,7 @@ class RelationTableRelater:
         select_expressions = [
             f"src.{FIELD.VERSION} AS {FIELD.VERSION}",
             f"src.{FIELD.APPLICATION} AS {FIELD.APPLICATION}",
-            f"src.{FIELD.SOURCE_ID} AS {FIELD.SOURCE_ID}",
+            f"{self._get_id()} AS {FIELD.SOURCE_ID}",
             f"'{GOB}' AS {FIELD.SOURCE}",
             f"LEAST(src.{FIELD.EXPIRATION_DATE}, dst.{FIELD.EXPIRATION_DATE}) AS {FIELD.EXPIRATION_DATE}",
             f"{self._get_id()} AS id",

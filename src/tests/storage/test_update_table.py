@@ -84,7 +84,7 @@ class TestRelationTableRelater(TestCase):
         minimal = [
             "src._version AS _version",
             "src._application AS _application",
-            "src._source_id AS _source_id",
+            "ID AS _source_id",
             "'GOB' AS _source",
             "LEAST(src._expiration_date, dst._expiration_date) AS _expiration_date",
             "ID AS id",
