@@ -152,23 +152,23 @@ def _split_job(msg: dict):
             collection = model.get_collection(catalog_name, collection_name)
             assert collection is not None, f"Invalid collection name '{collection_name}'"
 
-            logger.info(f"** Relate {collection_name}")
+            logger.info(f"** Split {collection_name}")
 
             if attribute_name is None:
                 attributes = model._extract_references(collection['attributes'])
             else:
                 attributes = [attribute_name]
 
-            for attribute_name in attributes:
+            for attr_name in attributes:
                 sources = GOBSources()
-                relation_specs = sources.get_field_relations(catalog_name, collection_name, attribute_name)
+                relation_specs = sources.get_field_relations(catalog_name, collection_name, attr_name)
 
                 if not relation_specs:
                     logger.info(f"Missing relation specification for {catalog_name} {collection_name} "
-                                f"{attribute_name}. Skipping")
+                                f"{attr_name}. Skipping")
                     continue
 
-                logger.info(f"Splitting job for {catalog_name} {collection_name} {attribute_name}")
+                logger.info(f"Splitting job for {catalog_name} {collection_name} {attr_name}")
 
                 original_header = msg.get('header', {})
 
@@ -178,7 +178,7 @@ def _split_job(msg: dict):
                         **original_header,
                         "catalogue": catalog_name,
                         "collection": collection_name,
-                        "attribute": attribute_name,
+                        "attribute": attr_name,
                         "split_from": original_header.get('jobid'),
                     },
                     "workflow": {
@@ -228,7 +228,7 @@ def build_relations(msg):
     logger.configure(msg, "RELATE")
 
     if not catalog_name or not collection_name or not attribute_name:
-        logger.info("Splitting relate job)")
+        logger.info("Splitting relate job")
 
         _split_job(msg)
         msg['header']['is_split'] = True
