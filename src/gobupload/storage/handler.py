@@ -131,7 +131,8 @@ class GOBStorageHandler():
             # Initialise materialized views for relations
             self._init_relation_materialized_views(recreate_materialized_views)
 
-            # Create model views. Should happen after initialisation of materialized views because views may depend on mvs
+            # Create model views.
+            # Should happen after initialisation of materialized views because views may depend on mvs
             self._init_views()
         except Exception as e:
             print(f'Storage migration failed: {str(e)}')
@@ -140,7 +141,6 @@ class GOBStorageHandler():
         finally:
             # Always unlock
             self.engine.execute(f"SELECT pg_advisory_unlock({MIGRATION_LOCK})")
-
 
     def _init_views(self):
         """
