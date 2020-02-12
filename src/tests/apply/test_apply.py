@@ -121,6 +121,7 @@ class TestApply(TestCase):
         # Only execute if msg has confirms
         mock_os.remove.reset_mock()
         msg = {
+            'header': {}
         }
         apply_confirm_events(self.mock_storage, mock_stats, msg)
         mock_os.remove.assert_not_called()
