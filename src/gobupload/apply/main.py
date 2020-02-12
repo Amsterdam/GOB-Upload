@@ -44,7 +44,9 @@ def apply_confirm_events(storage, stats, msg):
     :return:
     """
     confirms = msg.get('confirms')
-    if confirms:
+    # SKIP confirms for relations
+    catalogue = msg['header'].get('catalogue', "")
+    if confirms and catalogue != 'rel':
         reader = ContentsReader(confirms)
         with ProgressTicker("Apply CONFIRM events", 10000) as progress:
             for event in reader.items():
@@ -56,7 +58,8 @@ def apply_confirm_events(storage, stats, msg):
                 storage.apply_confirms(confirm_data, msg['header']['timestamp'])
                 stats.add_applied('CONFIRM', len(confirm_data))
         reader.close()
-        # Remove file after it has been handled
+    if confirms:
+        # Remove file after it has been handled (or skipped)
         os.remove(confirms)
 
 

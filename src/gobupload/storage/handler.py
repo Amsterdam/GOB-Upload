@@ -124,22 +124,23 @@ class GOBStorageHandler():
 
             # refresh reflected base
             self._set_base(update=True)
+
+            # Create necessary indexes
+            self._init_indexes()
+
+            # Initialise materialized views for relations
+            self._init_relation_materialized_views(recreate_materialized_views)
+
+            # Create model views.
+            # Should happen after initialisation of materialized views because views may depend on mvs
+            self._init_views()
         except Exception as e:
             print(f'Storage migration failed: {str(e)}')
         else:  # No exception
             print('Storage is up-to-date')
-
-        # Create necessary indexes
-        self._init_indexes()
-
-        # Initialise materialized views for relations
-        self._init_relation_materialized_views(recreate_materialized_views)
-
-        # Always unlock
-        self.engine.execute(f"SELECT pg_advisory_unlock({MIGRATION_LOCK})")
-
-        # Create model views. Should happen after initialisation of materialized views because views may depend on mvs
-        self._init_views()
+        finally:
+            # Always unlock
+            self.engine.execute(f"SELECT pg_advisory_unlock({MIGRATION_LOCK})")
 
     def _init_views(self):
         """
