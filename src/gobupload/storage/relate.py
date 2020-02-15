@@ -14,7 +14,6 @@ from gobcore.model.relations import get_relation_name
 from gobcore.sources import GOBSources
 
 from gobupload.relate.exceptions import RelateException
-from gobupload.storage.update_table import RelationTableUpdater
 from gobupload.storage.execute import _execute, _execute_multiple
 
 
@@ -526,11 +525,6 @@ def _update_match(spec, field, query_type, is_very_many=False):
         return _geo_resolve(spec, query_type)
 
 
-def _update_relations_rel_table(src_catalog_name, src_collection_name, src_field_name):
-    updater = RelationTableUpdater(src_catalog_name, src_collection_name, src_field_name)
-    return updater.update_relation()
-
-
 def update_relations(src_catalog_name, src_collection_name, src_field_name):
     """
     Compose a database query to get all relation data for the given catalog, collection and field
@@ -716,14 +710,11 @@ ON
         {where_clause}
 """
 
-    # Update the relations table first
-    contents_filename = _update_relations_rel_table(src_catalog_name, src_collection_name, src_field_name)
-
     # Update the source tabel
     updates = _do_relate_update(new_values, src_field_name, src_has_states, dst_has_states, src_table_name, False)
 
     _check_relate_update(new_values, src_field_name, src_identification)
-    return contents_filename, updates
+    return updates
 
 
 def _relate_update_order_by(src_has_states, dst_has_states):

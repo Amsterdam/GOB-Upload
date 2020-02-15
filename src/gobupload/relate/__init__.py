@@ -238,7 +238,7 @@ def build_relations(msg):
         logger.info(f"** Relate {catalog_name} {collection_name} {attribute_name}")
 
         try:
-            contents_filename, updates = relate_update(catalog_name, collection_name, attribute_name)
+            relate_update(catalog_name, collection_name, attribute_name)
             relation_name = get_relation_name(GOBModel(), catalog_name, collection_name, attribute_name)
 
             msg["header"].update({
@@ -249,7 +249,6 @@ def build_relations(msg):
                 "original_collection": collection_name,
                 "original_attribute": attribute_name,
             })
-            msg["contents_ref"] = contents_filename
 
             return msg
         except Exception as e:
