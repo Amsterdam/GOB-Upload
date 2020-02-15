@@ -149,7 +149,6 @@ class TestInit(TestCase):
                 'original_collection': 'collection',
                 'original_attribute': 'attribute',
             },
-            'contents_ref': mock_relate_update.return_value[0]
         }
 
         self.assertEqual(expected_result, result)
