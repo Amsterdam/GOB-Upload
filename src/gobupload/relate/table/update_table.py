@@ -138,8 +138,8 @@ class RelationTableRelater:
             "dst_id": f"CASE WHEN dst.{FIELD.DATE_DELETED} IS NULL THEN dst.{FIELD.ID} ELSE NULL END",
             "dst_volgnummer": f"CASE WHEN dst.{FIELD.DATE_DELETED} IS NULL THEN dst.{FIELD.SEQNR} ELSE NULL END",
             FIELD.SOURCE_VALUE: f"rel.{FIELD.SOURCE_VALUE}",
-            FIELD.LAST_SRC_EVENT: f"src.{FIELD.LAST_EVENT}",
-            FIELD.LAST_DST_EVENT: f"dst.{FIELD.LAST_EVENT}",
+            FIELD.LAST_SRC_EVENT: f"max_src_event.{FIELD.LAST_EVENT}",
+            FIELD.LAST_DST_EVENT: f"max_dst_event.{FIELD.LAST_EVENT}",
             FIELD.LAST_EVENT: f"rel.{FIELD.LAST_EVENT}",
             "src_deleted": "NULL",
             "rel_id": "rel.id",
@@ -176,8 +176,8 @@ class RelationTableRelater:
             "dst_id": f"dst.{FIELD.ID}",
             "dst_volgnummer": f"dst.{FIELD.SEQNR}",
             FIELD.SOURCE_VALUE: self._source_value_ref(),
-            FIELD.LAST_SRC_EVENT: f"src.{FIELD.LAST_EVENT}",
-            FIELD.LAST_DST_EVENT: f"dst.{FIELD.LAST_EVENT}",
+            FIELD.LAST_SRC_EVENT: f"max_src_event.{FIELD.LAST_EVENT}",
+            FIELD.LAST_DST_EVENT: f"max_dst_event.{FIELD.LAST_EVENT}",
             FIELD.LAST_EVENT: f"rel.{FIELD.LAST_EVENT}",
             "src_deleted": f"src.{FIELD.DATE_DELETED}",
             "rel_id": "rel.id",
@@ -497,6 +497,12 @@ all_{src_or_dst}_intervals(
     def _join_src_geldigheid(self):
         return self._join_geldigheid('src') if self.src_has_states else ""
 
+    def _join_max_event_ids(self):
+        return f"""
+LEFT JOIN (SELECT MAX({FIELD.LAST_EVENT}) {FIELD.LAST_EVENT} FROM {self.src_table_name}) max_src_event ON TRUE
+LEFT JOIN (SELECT MAX({FIELD.LAST_EVENT}) {FIELD.LAST_EVENT} FROM {self.dst_table_name}) max_dst_event ON TRUE
+"""
+
     def _join_rel(self):
         if self.src_has_states:
             return f"""
@@ -532,6 +538,7 @@ LEFT JOIN {self.dst_table_name} dst
 {self._join_rel()}
 {self._join_src_geldigheid()}
 {self._join_dst_geldigheid()}
+{self._join_max_event_ids()}
 """
 
         return f"""
@@ -556,6 +563,7 @@ INNER JOIN {self.relation_table} rel
     AND rel.src_source = src.{FIELD.SOURCE} AND rel.{FIELD.SOURCE_VALUE} = src_dst.{FIELD.SOURCE_VALUE}
 {self._join_src_geldigheid()}
 {self._join_dst_geldigheid()}
+{self._join_max_event_ids()}
 """
 
     def _get_modifications(self, row: dict, compare_fields: list):
