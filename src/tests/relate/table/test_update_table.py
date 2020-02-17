@@ -663,6 +663,16 @@ dst_entities AS (
                          "ON dst_bg._id = dst._id AND dst_bg.volgnummer = dst.volgnummer",
                          relater._join_dst_geldigheid())
 
+    def test_join_max_event_ids(self):
+        relater = self._get_relater()
+        relater.src_table_name = 'SRC TABLE'
+        relater.dst_table_name = 'DST TABLE'
+
+        self.assertEqual(f"""
+LEFT JOIN (SELECT MAX(_last_event) _last_event FROM SRC TABLE) max_src_event ON TRUE
+LEFT JOIN (SELECT MAX(_last_event) _last_event FROM DST TABLE) max_dst_event ON TRUE
+""", relater._join_max_event_ids())
+
     def test_join_rel(self):
         relater = self._get_relater()
         relater.src_has_states = False
@@ -699,6 +709,7 @@ FULL JOIN (
         relater._with_queries = lambda: 'WITH QUERIES'
         relater._get_where = lambda: 'WHERE CLAUSE'
         relater._join_rel = lambda: 'JOIN REL'
+        relater._join_max_event_ids = lambda: 'JOIN MAX EVENTIDS'
 
         return relater
 
@@ -721,6 +732,7 @@ LEFT JOIN dst_catalog_name_dst_collection_name_table dst
 JOIN REL
 JOIN_SRC_GELDIGHEID
 JOIN_DST_GELDIGHEID
+JOIN MAX EVENTIDS
 
 
 UNION
@@ -738,6 +750,7 @@ INNER JOIN rel_src_catalog_name_src_collection_name_src_field_name rel
     AND rel.src_source = src._source AND rel.bronwaarde = src_dst.bronwaarde
 JOIN_SRC_GELDIGHEID
 JOIN_DST_GELDIGHEID
+JOIN MAX EVENTIDS
 """
 
         result = relater._get_query()
@@ -762,6 +775,7 @@ LEFT JOIN dst_catalog_name_dst_collection_name_table dst
 JOIN REL
 JOIN_SRC_GELDIGHEID
 JOIN_DST_GELDIGHEID
+JOIN MAX EVENTIDS
 
 
 UNION
@@ -779,6 +793,7 @@ INNER JOIN rel_src_catalog_name_src_collection_name_src_field_name rel
     AND rel.src_source = src._source AND rel.bronwaarde = src_dst.bronwaarde
 JOIN_SRC_GELDIGHEID
 JOIN_DST_GELDIGHEID
+JOIN MAX EVENTIDS
 """
         result = relater._get_query()
         self.assertEqual(result, expected)
