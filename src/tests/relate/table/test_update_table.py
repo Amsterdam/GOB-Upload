@@ -798,6 +798,31 @@ JOIN MAX EVENTIDS
         result = relater._get_query()
         self.assertEqual(result, expected)
 
+    def test_get_query_initial_load(self):
+        relater = self._get_get_query_mocked_relater()
+        relater.is_many = False
+
+        expected = """
+WITH QUERIES
+SELECT
+    SELECT_EXPRESSION1SRC,
+    SELECT_EXPRESSION2SRC
+FROM src_entities src
+
+
+SRC_DST_JOIN(src)
+LEFT JOIN dst_catalog_name_dst_collection_name_table dst
+    ON DST_TABLE_OUTER_JOIN_ON1 AND
+    DST_TABLE_OUTER_JOIN_ON2
+JOIN REL
+JOIN_SRC_GELDIGHEID
+JOIN_DST_GELDIGHEID
+JOIN MAX EVENTIDS
+
+"""
+        result = relater._get_query(True)
+        self.assertEqual(result, expected)
+
     def test_get_modifications(self):
         relater = self._get_relater()
 
@@ -918,11 +943,22 @@ JOIN MAX EVENTIDS
         self.assertEqual(expected_result, [updater._format_relation(relation) for relation in rows])
 
     @patch("gobupload.relate.table.update_table._execute")
+    def test_is_initial_load(self, mock_execute):
+        relater = self._get_relater()
+
+        mock_execute.return_value = iter([])
+        self.assertTrue(relater._is_initial_load())
+
+        mock_execute.return_value = iter([1])
+        self.assertFalse(relater._is_initial_load())
+
+    @patch("gobupload.relate.table.update_table._execute")
     @patch("gobupload.relate.table.update_table.EventCollector")
     @patch("gobupload.relate.table.update_table.ContentsWriter")
     @patch("gobupload.relate.table.update_table.ProgressTicker", MagicMock())
     def test_update(self, mock_contents_writer, mock_event_collector, mock_execute):
         relater = self._get_relater()
+        relater._is_initial_load = MagicMock()
         relater._create_event = MagicMock(side_effect=lambda x: x)
         relater._get_query = MagicMock()
         relater._format_relation = MagicMock(side_effect=lambda x: x)
@@ -939,6 +975,7 @@ JOIN MAX EVENTIDS
             call({'b': 2}),
             call({'c': 3}),
         ])
+        relater._get_query.assert_called_with(relater._is_initial_load.return_value)
 
         self.assertEqual((mock_contents_writer.return_value.__enter__.return_value.filename,
                           mock_contents_writer.return_value.__enter__.return_value.filename), result)
