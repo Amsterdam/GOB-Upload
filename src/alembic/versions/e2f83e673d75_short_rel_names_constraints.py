@@ -1,4 +1,4 @@
-"""ttt
+"""Add constraints for new relation tables
 
 Revision ID: e2f83e673d75
 Revises: b5a8781def2e

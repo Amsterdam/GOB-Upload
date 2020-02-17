@@ -1,18 +1,18 @@
 """Add _last_src_event and _last_dst_event columns to relation table
 
-Revision ID: b80a234b4f02
-Revises: 06d37f0b30e7
-Create Date: 2020-02-11 13:32:19.666133
+Revision ID: 86cb00961506
+Revises: e2f83e673d75
+Create Date: 2020-02-17 08:47:34.213686
 
 """
 from alembic import op
 import sqlalchemy as sa
 import geoalchemy2
-from sqlalchemy.dialects import postgresql
+
 
 # revision identifiers, used by Alembic.
-revision = 'b80a234b4f02'
-down_revision = '06d37f0b30e7'
+revision = '86cb00961506'
+down_revision = 'e2f83e673d75'
 branch_labels = None
 depends_on = None
 
@@ -103,8 +103,8 @@ def upgrade():
     op.add_column('rel_brk_kot_brk_kse_aangeduid_door_kadastralesectie', sa.Column('_last_src_event', sa.Integer(), autoincrement=False, nullable=True))
     op.add_column('rel_brk_kse_brk_kce_is_onderdeel_van_kadastralegemeentecode', sa.Column('_last_dst_event', sa.Integer(), autoincrement=False, nullable=True))
     op.add_column('rel_brk_kse_brk_kce_is_onderdeel_van_kadastralegemeentecode', sa.Column('_last_src_event', sa.Integer(), autoincrement=False, nullable=True))
-    op.add_column('rel_brk_sdl_brk_akt_is_bron_voor_aantekening_kadastraal_object', sa.Column('_last_dst_event', sa.Integer(), autoincrement=False, nullable=True))
-    op.add_column('rel_brk_sdl_brk_akt_is_bron_voor_aantekening_kadastraal_object', sa.Column('_last_src_event', sa.Integer(), autoincrement=False, nullable=True))
+    op.add_column('rel_brk_sdl_brk_akt__bron_kad_obj_', sa.Column('_last_dst_event', sa.Integer(), autoincrement=False, nullable=True))
+    op.add_column('rel_brk_sdl_brk_akt__bron_kad_obj_', sa.Column('_last_src_event', sa.Integer(), autoincrement=False, nullable=True))
     op.add_column('rel_brk_sdl_brk_art_is_bron_voor_aantekening_recht', sa.Column('_last_dst_event', sa.Integer(), autoincrement=False, nullable=True))
     op.add_column('rel_brk_sdl_brk_art_is_bron_voor_aantekening_recht', sa.Column('_last_src_event', sa.Integer(), autoincrement=False, nullable=True))
     op.add_column('rel_brk_sdl_brk_tng_is_bron_voor_tenaamstelling', sa.Column('_last_dst_event', sa.Integer(), autoincrement=False, nullable=True))
@@ -119,8 +119,10 @@ def upgrade():
     op.add_column('rel_brk_tng_brk_zrt_van_zakelijkrecht', sa.Column('_last_src_event', sa.Integer(), autoincrement=False, nullable=True))
     op.add_column('rel_brk_zrt_brk_kot_rust_op_kadastraalobject', sa.Column('_last_dst_event', sa.Integer(), autoincrement=False, nullable=True))
     op.add_column('rel_brk_zrt_brk_kot_rust_op_kadastraalobject', sa.Column('_last_src_event', sa.Integer(), autoincrement=False, nullable=True))
-    op.add_column('rel_brk_zrt_brk_sjt_ontstaan_uit_appartementsrechtsplitsing_vve', sa.Column('_last_dst_event', sa.Integer(), autoincrement=False, nullable=True))
-    op.add_column('rel_brk_zrt_brk_sjt_ontstaan_uit_appartementsrechtsplitsing_vve', sa.Column('_last_src_event', sa.Integer(), autoincrement=False, nullable=True))
+    op.add_column('rel_brk_zrt_brk_sjt__betr_apprechtsplit_vve_', sa.Column('_last_dst_event', sa.Integer(), autoincrement=False, nullable=True))
+    op.add_column('rel_brk_zrt_brk_sjt__betr_apprechtsplit_vve_', sa.Column('_last_src_event', sa.Integer(), autoincrement=False, nullable=True))
+    op.add_column('rel_brk_zrt_brk_sjt__ontst_apprechtsplit_vve_', sa.Column('_last_dst_event', sa.Integer(), autoincrement=False, nullable=True))
+    op.add_column('rel_brk_zrt_brk_sjt__ontst_apprechtsplit_vve_', sa.Column('_last_src_event', sa.Integer(), autoincrement=False, nullable=True))
     op.add_column('rel_brk_zrt_brk_zrt_belast_met_zakelijkerechten', sa.Column('_last_dst_event', sa.Integer(), autoincrement=False, nullable=True))
     op.add_column('rel_brk_zrt_brk_zrt_belast_met_zakelijkerechten', sa.Column('_last_src_event', sa.Integer(), autoincrement=False, nullable=True))
     op.add_column('rel_brk_zrt_brk_zrt_belast_zakelijkerechten', sa.Column('_last_dst_event', sa.Integer(), autoincrement=False, nullable=True))
@@ -290,8 +292,10 @@ def downgrade():
     op.drop_column('rel_brk_zrt_brk_zrt_belast_zakelijkerechten', '_last_dst_event')
     op.drop_column('rel_brk_zrt_brk_zrt_belast_met_zakelijkerechten', '_last_src_event')
     op.drop_column('rel_brk_zrt_brk_zrt_belast_met_zakelijkerechten', '_last_dst_event')
-    op.drop_column('rel_brk_zrt_brk_sjt_ontstaan_uit_appartementsrechtsplitsing_vve', '_last_src_event')
-    op.drop_column('rel_brk_zrt_brk_sjt_ontstaan_uit_appartementsrechtsplitsing_vve', '_last_dst_event')
+    op.drop_column('rel_brk_zrt_brk_sjt__ontst_apprechtsplit_vve_', '_last_src_event')
+    op.drop_column('rel_brk_zrt_brk_sjt__ontst_apprechtsplit_vve_', '_last_dst_event')
+    op.drop_column('rel_brk_zrt_brk_sjt__betr_apprechtsplit_vve_', '_last_src_event')
+    op.drop_column('rel_brk_zrt_brk_sjt__betr_apprechtsplit_vve_', '_last_dst_event')
     op.drop_column('rel_brk_zrt_brk_kot_rust_op_kadastraalobject', '_last_src_event')
     op.drop_column('rel_brk_zrt_brk_kot_rust_op_kadastraalobject', '_last_dst_event')
     op.drop_column('rel_brk_tng_brk_zrt_van_zakelijkrecht', '_last_src_event')
@@ -306,8 +310,8 @@ def downgrade():
     op.drop_column('rel_brk_sdl_brk_tng_is_bron_voor_tenaamstelling', '_last_dst_event')
     op.drop_column('rel_brk_sdl_brk_art_is_bron_voor_aantekening_recht', '_last_src_event')
     op.drop_column('rel_brk_sdl_brk_art_is_bron_voor_aantekening_recht', '_last_dst_event')
-    op.drop_column('rel_brk_sdl_brk_akt_is_bron_voor_aantekening_kadastraal_object', '_last_src_event')
-    op.drop_column('rel_brk_sdl_brk_akt_is_bron_voor_aantekening_kadastraal_object', '_last_dst_event')
+    op.drop_column('rel_brk_sdl_brk_akt__bron_kad_obj_', '_last_src_event')
+    op.drop_column('rel_brk_sdl_brk_akt__bron_kad_obj_', '_last_dst_event')
     op.drop_column('rel_brk_kse_brk_kce_is_onderdeel_van_kadastralegemeentecode', '_last_src_event')
     op.drop_column('rel_brk_kse_brk_kce_is_onderdeel_van_kadastralegemeentecode', '_last_dst_event')
     op.drop_column('rel_brk_kot_brk_kse_aangeduid_door_kadastralesectie', '_last_src_event')
