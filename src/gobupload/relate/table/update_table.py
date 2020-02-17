@@ -548,7 +548,7 @@ SELECT
 FROM {self.src_entities_alias} src
 {joins}
 
-UNION
+UNION ALL
 
 SELECT
     {self.comma_join.join(self._select_expressions_dst())}
