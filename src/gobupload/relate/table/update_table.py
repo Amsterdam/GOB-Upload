@@ -1,5 +1,6 @@
 """
-TODO write documentation
+See README.md in this directory for explanation of this file.
+
 """
 import hashlib
 import json
