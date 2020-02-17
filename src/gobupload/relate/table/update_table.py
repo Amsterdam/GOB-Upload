@@ -1,5 +1,6 @@
 """
-TODO write documentation
+See README.md in this directory for explanation of this file.
+
 """
 import hashlib
 import json
@@ -522,9 +523,11 @@ FULL JOIN (
 ) rel ON rel.src_id = src.{FIELD.ID} AND {self._source_value_ref()} = rel.{FIELD.SOURCE_VALUE}
 """
 
-    def _get_query(self):
+    def _get_query(self, initial_load=False):
         """Builds and returns the event extraction query
 
+        Omits right-hand side of the query when initial_load=True, because it is unnecessary, and excluding everything
+        on the right-hand side that is done on the left-hand-side creates a heavy query.
         :return:
         """
 
@@ -541,14 +544,16 @@ LEFT JOIN {self.dst_table_name} dst
 {self._join_max_event_ids()}
 """
 
-        return f"""
+        query = f"""
 {self._with_queries()}
 SELECT
     {self.comma_join.join(self._select_expressions_src())}
 FROM {self.src_entities_alias} src
 {joins}
-
-UNION
+"""
+        if not initial_load:
+            query += f"""
+UNION ALL
 
 SELECT
     {self.comma_join.join(self._select_expressions_dst())}
@@ -565,6 +570,7 @@ INNER JOIN {self.relation_table} rel
 {self._join_dst_geldigheid()}
 {self._join_max_event_ids()}
 """
+        return query
 
     def _get_modifications(self, row: dict, compare_fields: list):
         modifications = []
@@ -643,8 +649,19 @@ INNER JOIN {self.relation_table} rel
 
         return relation
 
+    def _is_initial_load(self):
+        query = f"SELECT {FIELD.ID} FROM {self.relation_table} LIMIT 1"
+        result = _execute(query)
+
+        try:
+            next(result)
+        except StopIteration:
+            return True
+        return False
+
     def update(self):
-        query = self._get_query()
+        initial_load = self._is_initial_load()
+        query = self._get_query(initial_load)
         result = _execute(query, stream=True)
 
         with ProgressTicker("Process relate src result", 10000) as progress, \

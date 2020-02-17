@@ -47,7 +47,7 @@ def relate_table_src_message_handler(msg: dict):
     updater = RelationTableRelater(header[CATALOG_KEY], header[COLLECTION_KEY], header[ATTRIBUTE_KEY])
     filename, confirms = updater.update()
 
-    logger.info(f"Relate src completed")
+    logger.info(f"Relate table completed")
 
     relation_name = get_relation_name(GOBModel(), header[CATALOG_KEY], header[COLLECTION_KEY], header[ATTRIBUTE_KEY])
 
