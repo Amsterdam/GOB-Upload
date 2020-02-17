@@ -25,11 +25,12 @@ class MockSources(MockModel):
         return self.model.get(catalog, {}).get(collection, {}).get(attribute)
 
 
+@patch("gobupload.relate.table.entrypoint.logger")
 class TestEntrypoint(TestCase):
 
     @patch("gobupload.relate.table.entrypoint.GOBModel", MockModel)
     @patch("gobupload.relate.table.entrypoint.GOBSources", MockSources)
-    def test_check_message(self):
+    def test_check_message(self, mock_logger):
         msg = {
             'header': {
                 'original_catalogue': 'the catalog',
@@ -58,7 +59,7 @@ class TestEntrypoint(TestCase):
     @patch("gobupload.relate.table.entrypoint.get_relation_name", lambda m, cat, col, field: f"{cat}_{col}_{field}")
     @patch("gobupload.relate.table.entrypoint._check_message")
     @patch("gobupload.relate.table.entrypoint.RelationTableRelater")
-    def test_relate_table_src_message_handler(self, mock_relater, mock_check_message):
+    def test_relate_table_src_message_handler(self, mock_relater, mock_check_message, mock_logger):
         msg = {
             'header': {
                 'original_catalogue': 'the catalog',
@@ -88,8 +89,8 @@ class TestEntrypoint(TestCase):
                 'timestamp': 'the timestamp',
             },
             'summary': {
-                'warnings': [],
-                'errors': [],
+                'warnings': mock_logger.get_warnings.return_value,
+                'errors': mock_logger.get_errors.return_value,
             },
             'contents_ref': 'result filename',
             'confirms': 2840,
