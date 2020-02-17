@@ -288,6 +288,11 @@ class RelationTableRelater:
             if self.src_has_states:
                 join_on.append(f"src_dst.src_volgnummer = src.{FIELD.SEQNR}")
 
+            join_on += [
+                f"src_dst.{FIELD.SOURCE} = {source_side}.{FIELD.SOURCE}",
+                f"src_dst.bronwaarde = {self._json_obj_ref('src')}->>'bronwaarde'"
+            ]
+
         elif source_side == 'dst':
             join_on = [f"src_dst.dst_id = dst.{FIELD.ID}"]
 
@@ -296,11 +301,6 @@ class RelationTableRelater:
         else:
             raise NotImplementedError
 
-        if source_side == 'src':
-            join_on += [
-                f"src_dst.{FIELD.SOURCE} = {source_side}.{FIELD.SOURCE}",
-                f"src_dst.bronwaarde = {self._json_obj_ref('src')}->>'bronwaarde'"
-            ]
         return join_on
 
     def _src_dst_select_expressions(self):
