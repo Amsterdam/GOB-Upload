@@ -54,7 +54,7 @@ class TestInit(TestCase):
     class MockModel:
         collections = {
             'collA': {
-                'attributes': ['attrA', 'attrB']
+                'attributes': ['attrA', 'attrB', 'attrC']
             },
             'colB': {
                 'attributes': [],
@@ -96,12 +96,17 @@ class TestInit(TestCase):
         connection_instance = connection.return_value.__enter__.return_value
         calls = [call(WORKFLOW_EXCHANGE, WORKFLOW_REQUEST_KEY, message) for message in messages]
         connection_instance.publish.assert_has_calls(calls)
+        self.assertEqual(len(messages), connection_instance.publish.call_count)
 
     @patch("gobupload.relate.GOBModel", MockModel)
     @patch("gobupload.relate.GOBSources")
     @patch("gobupload.relate.MessageBrokerConnection")
     def test_split_job(self, mock_connection, mock_sources):
-        mock_sources.get_field_relations.return_value = True
+        mock_sources.return_value.get_field_relations.side_effect = [
+            [{'type': 'GOB.String'}],
+            [{'type': 'GOB.Integer'}],
+            [{'type': 'GOB.VeryManyReference'}],
+        ]
         msg = {
             'header': {
                 'catalogue': 'catalog',

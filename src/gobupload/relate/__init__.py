@@ -15,6 +15,8 @@ from gobcore.logging.logger import logger
 from gobcore.model.relations import get_relation_name
 from gobcore.message_broker.config import CONNECTION_PARAMS, WORKFLOW_EXCHANGE, WORKFLOW_REQUEST_KEY
 from gobcore.message_broker.message_broker import Connection as MessageBrokerConnection
+from gobcore.typesystem import fully_qualified_type_name
+from gobcore.typesystem.gob_types import VeryManyReference
 
 from gobupload.storage.handler import GOBStorageHandler
 from gobupload.storage.materialized_views import MaterializedViews
@@ -109,7 +111,7 @@ def check_relation(msg):
     reference = model._extract_references(collection['attributes']).get(attribute_name)
 
     try:
-        is_very_many = reference['type'] == "GOB.VeryManyReference"
+        is_very_many = reference['type'] == fully_qualified_type_name(VeryManyReference)
         check_function = check_very_many_relations if is_very_many else check_relations
         check_function(catalog_name, collection_name, attribute_name)
     except Exception as e:
@@ -154,10 +156,9 @@ def _split_job(msg: dict):
 
             logger.info(f"** Split {collection_name}")
 
-            if attribute_name is None:
-                attributes = model._extract_references(collection['attributes'])
-            else:
-                attributes = [attribute_name]
+            attributes = model._extract_references(collection['attributes']) \
+                if attribute_name is None \
+                else [attribute_name]
 
             for attr_name in attributes:
                 sources = GOBSources()
@@ -166,6 +167,10 @@ def _split_job(msg: dict):
                 if not relation_specs:
                     logger.info(f"Missing relation specification for {catalog_name} {collection_name} "
                                 f"{attr_name}. Skipping")
+                    continue
+
+                if relation_specs[0]['type'] == fully_qualified_type_name(VeryManyReference):
+                    logger.info(f"Skipping VeryManyReference {catalog_name} {collection_name} {attr_name}")
                     continue
 
                 logger.info(f"Splitting job for {catalog_name} {collection_name} {attr_name}")
