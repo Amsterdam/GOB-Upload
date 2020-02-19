@@ -3,7 +3,7 @@ import datetime
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from gobupload.relate.relate import relate_update
+from gobupload.relate.relate import relate_update, RelateException
 from gobupload.storage.relate import _convert_row
 
 
@@ -162,3 +162,11 @@ class TestRelateDateTime(TestCase):
         mock_update_relations.return_value = 24
         self.assertEqual(mock_update_relations.return_value, relate_update("any catalog", "any collection", "any reference"))
         mock_update_relations.assert_called()
+
+    @patch("gobupload.relate.relate.update_relations")
+    @patch("builtins.print")
+    def test_relate_update_exception(self, mock_print, mock_update_relations):
+        mock_update_relations.side_effect = RelateException
+
+        self.assertIsNone(relate_update('cat', 'col', 'ref'))
+        mock_print.assert_called_with('Relate Error: ')
