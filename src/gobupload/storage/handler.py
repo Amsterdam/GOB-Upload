@@ -13,8 +13,9 @@ Use it like this:
 import copy
 import functools
 import json
+import warnings
 
-from sqlalchemy import create_engine, Table, update
+from sqlalchemy import create_engine, Table, update, exc as sa_exc
 from sqlalchemy.engine.url import URL
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.exc import OperationalError
@@ -74,9 +75,13 @@ class GOBStorageHandler():
     @classmethod
     def _set_base(cls, update=False):
         if update or cls.base is None:
-            cls.base = automap_base()
-            cls.base.prepare(cls.engine, reflect=True)
-            cls.base.metadata.reflect(bind=cls.engine)
+            with warnings.catch_warnings():
+                # Ignore warnings for unsupported reflection for expression-based indexes
+                warnings.simplefilter("ignore", category=sa_exc.SAWarning)
+
+                cls.base = automap_base()
+                cls.base.prepare(cls.engine, reflect=True)
+                cls.base.metadata.reflect(bind=cls.engine)
 
     EVENTS_TABLE = "events"
     ALL_TABLES = [EVENTS_TABLE] + gob_model.get_table_names()
@@ -196,6 +201,10 @@ WHERE
 """
 
     def _drop_indexes(self):
+        """Drops indexes on managed tables that aren't defined in this script.
+
+        :return:
+        """
         query = self._indexes_to_drop_query([index['table_name'] for index in indexes.values()], list(indexes.keys()))
 
         try:
@@ -211,14 +220,28 @@ WHERE
             except OperationalError as e:
                 print(f"ERROR: Could not drop index {index[0]}: {e}")
 
+    def _get_existing_indexes(self) -> list:
+        query = "SELECT indexname FROM pg_indexes"
+
+        try:
+            return [row[0] for row in self.engine.execute(query)]
+        except OperationalError as e:
+            print(f"WARNING: Could not fetch list of existing indexes: {e}")
+            return []
+
     def _init_indexes(self):
         """Create indexes
 
         :return:
         """
         self._drop_indexes()
+        existing_indexes = self._get_existing_indexes()
 
         for name, definition in indexes.items():
+            if name in existing_indexes:
+                # Don't run CREATE INDEX IF NOT EXISTS query to prevent unnecessary locks
+                continue
+
             columns = ','.join(definition['columns'])
             index_type = self._get_index_type(definition.get('type'))
             statement = f"CREATE INDEX IF NOT EXISTS \"{name}\" " \
