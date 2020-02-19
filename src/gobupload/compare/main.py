@@ -92,13 +92,10 @@ def compare(msg):
         confirms = None
         contents_writer.close()
     else:
-        # Skip CONFIRM events for rel catalog
-        write_confirms = msg["header"]['catalogue'] != "rel"
         # Compare entities from temporary table
         with storage.get_session():
             diff = storage.compare_temporary_data(mode)
-            filename, confirms = _process_compare_results(storage, entity_model, diff, stats,
-                                                          write_confirms=write_confirms)
+            filename, confirms = _process_compare_results(storage, entity_model, diff, stats)
 
     # Build result message
     results = stats.results()
