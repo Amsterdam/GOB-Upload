@@ -92,13 +92,10 @@ def compare(msg):
         confirms = None
         contents_writer.close()
     else:
-        # Skip CONFIRM events for rel catalog
-        write_confirms = msg["header"]['catalogue'] != "rel"
         # Compare entities from temporary table
         with storage.get_session():
             diff = storage.compare_temporary_data(mode)
-            filename, confirms = _process_compare_results(storage, entity_model, diff, stats,
-                                                          write_confirms=write_confirms)
+            filename, confirms = _process_compare_results(storage, entity_model, diff, stats)
 
     # Build result message
     results = stats.results()
@@ -140,7 +137,7 @@ def meets_dependencies(storage, msg):
     return True
 
 
-def _process_compare_results(storage, model, results, stats, write_confirms=True):
+def _process_compare_results(storage, model, results, stats):
     """Process the results of the in database compare
 
     Creates the ADD, DELETE and CONFIRM records and returns them with the remaining records
@@ -172,7 +169,7 @@ def _process_compare_results(storage, model, results, stats, write_confirms=True
                 source_id = row['_source_id']
                 entity["_last_event"] = row['_last_event']
                 event = GOB.ADD.create_event(source_id, source_id, entity)
-            elif row['type'] == 'CONFIRM' and write_confirms:
+            elif row['type'] == 'CONFIRM':
                 source_id = row['_source_id']
                 data = {
                     '_last_event': row['_last_event']
