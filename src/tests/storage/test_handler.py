@@ -169,6 +169,18 @@ WHERE
 
         mock_print.assert_called_with(f"ERROR: Could not drop index a: {str(e)}")
 
+    def test_get_existing_indexes(self):
+        self.storage.engine.execute = MagicMock(return_value=[('indexA',), ('indexB',)])
+        self.assertEqual(['indexA', 'indexB'], self.storage._get_existing_indexes())
+
+    @patch("builtins.print")
+    def test_get_existing_indexes_exception(self, mock_print):
+        e = OperationalError('stmt', 'params', 'orig')
+        self.storage.engine.execute = MagicMock(side_effect=e)
+
+        self.assertEqual([], self.storage._get_existing_indexes())
+        mock_print.assert_called_with(f"WARNING: Could not fetch list of existing indexes: {e}")
+
     def test_init_indexes(self):
         gobupload.storage.handler.indexes = {
             "indexname": {
@@ -189,9 +201,13 @@ WHERE
                 "columns": ["somejsoncol"],
                 "type": "json",
             },
+            "existing": {
+
+            }
         }
 
         self.storage._drop_indexes = MagicMock()
+        self.storage._get_existing_indexes = lambda: ['existing']
         self.storage._init_indexes()
         self.storage.engine.execute.assert_has_calls([
             call("CREATE INDEX IF NOT EXISTS \"indexname\" ON sometable USING BTREE(cola,colb)"),
