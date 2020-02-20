@@ -419,7 +419,7 @@ WHERE
         """
         result = self.session.query(self.DbEvent) \
             .filter_by(source=self.metadata.source, catalogue=self.metadata.catalogue, entity=self.metadata.entity) \
-            .order_by(self.DbEvent.eventid.desc(), self.DbEvent.timestamp.desc())\
+            .order_by(self.DbEvent.eventid.desc())\
             .first()
         return None if result is None else result.eventid
 
@@ -432,7 +432,7 @@ WHERE
         return self.session.query(self.DbEvent).yield_per(10000) \
             .filter_by(source=self.metadata.source, catalogue=self.metadata.catalogue, entity=self.metadata.entity) \
             .filter(self.DbEvent.eventid > eventid if eventid else True) \
-            .order_by(self.DbEvent.eventid)
+            .order_by(self.DbEvent.eventid.asc())  # Parse events from youngest to oldest
 
     @with_session
     def has_any_event(self, filter):
