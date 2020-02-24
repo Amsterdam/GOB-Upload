@@ -1,7 +1,7 @@
 """events partitioning
 
 Revision ID: ea556acbed92
-Revises: 030c8d16a3be
+Revises: d53cfff60616
 Create Date: 2020-02-20 18:33:18.110196
 
 """
@@ -12,7 +12,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision = 'ea556acbed92'
-down_revision = '030c8d16a3be'
+down_revision = 'd53cfff60616'
 branch_labels = None
 depends_on = None
 
