@@ -32,8 +32,9 @@ target_metadata = Base.metadata
 
 
 def include_object(object, name, type_, reflected, compare_to):
-    if type_ == "index" or name == "spatial_ref_sys":
+    if type_ == "index" or name in ["spatial_ref_sys", "events"]:
         # Indexes are created by gobupload upon startup
+        # Events is a partitioned table and is maintained manually
         return False
     else:
         return True
