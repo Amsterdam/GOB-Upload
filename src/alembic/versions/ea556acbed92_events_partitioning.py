@@ -35,7 +35,7 @@ CREATE TABLE public.events (
     "version"   VARCHAR   NOT NULL,
     "action"    VARCHAR   NOT NULL,
     "source"    VARCHAR   NOT NULL,
-    source_id   VARCHAR   NOT NULL,
+    source_id   VARCHAR,
     contents    JSONB     NOT NULL,
     application VARCHAR   NOT NULL,
     PRIMARY KEY (eventid, catalogue, entity),
@@ -111,7 +111,7 @@ BEGIN
             quote_literal(ev.version)     || ', ' ||
             quote_literal(ev.action)      || ', ' ||
             quote_literal(ev.source)      || ', ' ||
-            quote_literal(ev.source_id)   || ', ' ||
+            coalesce(quote_literal(ev.source_id), 'NULL') || ', ' ||
             quote_literal(ev.contents)    || ', ' ||
             quote_literal(ev.application) ||
             ')';
