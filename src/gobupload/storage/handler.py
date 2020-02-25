@@ -89,6 +89,16 @@ class GOBStorageHandler():
 
     user_name = f"({GOB_DB['username']}@{GOB_DB['host']}:{GOB_DB['port']})"
 
+    WARNING = 'warning'
+    ERROR = 'error'
+
+    config_checks = [
+        # (setting, check, message, error/warning)
+        ('default_statistics_target', lambda x: int(x) >= 1000, 'should be greater than or equal to 1000', WARNING),
+        ('enable_partition_pruning', lambda x: x == 'on', 'should be set to on', ERROR),
+        ('constraint_exclusion', lambda x: x == 'on', 'should be set to on', WARNING),
+    ]
+
     def __init__(self, gob_metadata=None):
         """Initialize StorageHandler with gob metadata
 
@@ -146,6 +156,21 @@ class GOBStorageHandler():
         finally:
             # Always unlock
             self.engine.execute(f"SELECT pg_advisory_unlock({MIGRATION_LOCK})")
+
+        self._check_configuration()
+
+    def _get_config_value(self, setting: str):
+        return next(self.engine.execute(f"SHOW {setting}"))[0]
+
+    def _check_configuration(self):
+        for setting, check, message, type in self.config_checks:
+            value = self._get_config_value(setting)
+            if not check(value):
+                msg = f"Checking Postgres config for {setting}. Value is {value}, but {message}"
+                if type == self.ERROR:
+                    raise GOBException(msg)
+                else:
+                    print(f"WARNING: {msg}")
 
     def _init_views(self):
         """
