@@ -286,5 +286,20 @@ class TestEnrichAutoid(TestCase):
             for content in msg["contents"]:
                 enricher.enrich(content)
 
+    def test_enrich_dry_run(self):
+        msg = self.mock_msg
+        msg["contents"] = [
+            {"id": None, "code": "0"},
+        ]
+        msg["header"]["enrich"]["id"]["dry_run"] = True
+
+        self.mock_storage.get_column_values_for_key_value.return_value = None
+        self.mock_storage.get_last_column_value.return_value = None
+        enricher = Enricher(self.mock_storage, msg)
+
+        for content in msg["contents"]:
+            enricher.enrich(content)
+            self.assertIsNone(content["id"])
+
     def test_autoid(self):
         pass

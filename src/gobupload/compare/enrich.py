@@ -38,8 +38,14 @@ class Enricher:
     def enrich(self, entity):
         for column, specs in self.enrich_spec.items():
             enricher = self.enrichers[specs["type"]]
-            entity[column], logging = enricher["func"](
+            value, logging = enricher["func"](
                 storage=self.storage, data=entity, specs=specs, column=column, assigned=self.assigned)
+
+            if specs.get("dry_run", False) and value != entity.get(column):
+                logger.info(f"Enrich dry run: Generated value {value} for entity {entity[specs['on']]}")
+            else:
+                entity[column] = value
+
             if logging:
                 logger.info(logging)
 
