@@ -66,7 +66,7 @@ BEGIN
     -- Construct catalogue and entity partition table names
     schema_name := 'events';
     -- catalogue partition: event_parts.events_catalogue
-    cat_part    := schema_name || '.events_' || ev.catalogue;
+    cat_part    := schema_name || '.' || ev.catalogue;
     -- entity partition:    event_parts.events_catalogue_entity
     ent_part    := cat_part || '_' || ev.entity;
     -- source partition:    event_parts.events_catalogue_entity_source
