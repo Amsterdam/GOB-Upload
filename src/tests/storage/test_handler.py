@@ -80,6 +80,7 @@ class TestStorageHandler(unittest.TestCase):
         self.storage._init_indexes = MagicMock()
         self.storage._set_base = MagicMock()
         self.storage._init_relation_materialized_views = MagicMock()
+        self.storage._check_configuration = MagicMock()
 
         self.storage.init_storage(recreate_materialized_views='booleanValue')
         # mock_alembic.config.main.assert_called_once()
@@ -88,6 +89,40 @@ class TestStorageHandler(unittest.TestCase):
         # self.storage._set_base.assert_called_with(update=True)
         self.storage._init_indexes.assert_called_once()
         self.storage._init_relation_materialized_views.assert_called_with('booleanValue')
+        self.storage._check_configuration.assert_called_once()
+
+    def test_get_config_value(self):
+        self.storage.engine = MagicMock()
+        self.storage.engine.execute.return_value = iter([('the value',)])
+
+        self.assertEqual('the value', self.storage._get_config_value('the setting'))
+        self.storage.engine.execute.assert_called_with('SHOW the setting')
+
+    @patch("builtins.print")
+    def test_check_configuration(self, mock_print):
+        self.storage._get_config_value = lambda x: 'the value'
+        self.storage.config_checks = [
+            ('the setting', lambda x: True, 'the message', self.storage.WARNING)
+        ]
+
+        self.storage._check_configuration()
+        mock_print.assert_not_called()
+
+        self.storage.config_checks = [
+            ('the setting', lambda x: False, 'the message', self.storage.WARNING)
+        ]
+
+        self.storage._check_configuration()
+        mock_print.assert_called_with('WARNING: Checking Postgres config for the setting. '
+                                      'Value is the value, but the message')
+        mock_print.reset_mock()
+
+        self.storage.config_checks = [
+            ('the setting', lambda x: False, 'the message', self.storage.ERROR)
+        ]
+
+        with self.assertRaises(GOBException):
+            self.storage._check_configuration()
 
     @patch("gobupload.storage.handler.MaterializedViews")
     def test_init_relation_materialized_view(self, mock_materialized_views):
