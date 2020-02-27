@@ -479,10 +479,27 @@ all_{src_or_dst}_intervals(
 )
 """
 
+    def _with_max_src_event(self):
+        return f"""
+max_src_event AS (SELECT MAX({FIELD.LAST_EVENT}) {FIELD.LAST_EVENT} FROM {self.src_table_name})
+"""
+
+    def _with_max_dst_event(self):
+        return f"""
+max_dst_event AS (SELECT MAX({FIELD.LAST_EVENT}) {FIELD.LAST_EVENT} FROM {self.dst_table_name})
+"""
+
     def _with_queries(self):
         start_validities = self._start_validities()
+        other_withs = [
+            self._with_src_entities(),
+            self._with_dst_entities(),
+            self._with_max_src_event(),
+            self._with_max_dst_event()
+        ]
+
         return f"WITH{' RECURSIVE' if start_validities else ''} " \
-               f"{','.join(start_validities + [self._with_src_entities(), self._with_dst_entities()])}"
+               f"{','.join(start_validities + other_withs)}"
 
     def _join_geldigheid(self, src_dst):
         """Returns the join with the begin_geldigheid for the given volgnummer for either 'src' or 'dst' (src_bg or
@@ -500,8 +517,8 @@ all_{src_or_dst}_intervals(
 
     def _join_max_event_ids(self):
         return f"""
-LEFT JOIN (SELECT MAX({FIELD.LAST_EVENT}) {FIELD.LAST_EVENT} FROM {self.src_table_name}) max_src_event ON TRUE
-LEFT JOIN (SELECT MAX({FIELD.LAST_EVENT}) {FIELD.LAST_EVENT} FROM {self.dst_table_name}) max_dst_event ON TRUE
+JOIN max_src_event ON TRUE
+JOIN max_dst_event ON TRUE
 """
 
     def _join_rel(self):

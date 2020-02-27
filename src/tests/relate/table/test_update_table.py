@@ -634,16 +634,32 @@ dst_entities AS (
 """
         self.assertEqual(expected, relater._with_dst_entities())
 
+    def test_with_max_src_event(self):
+        relater = self._get_relater()
+        self.assertEqual("""
+max_src_event AS (SELECT MAX(_last_event) _last_event FROM src_catalog_name_src_collection_name_table)
+""", relater._with_max_src_event())
+
+    def test_with_max_dst_event(self):
+        relater = self._get_relater()
+        self.assertEqual("""
+max_dst_event AS (SELECT MAX(_last_event) _last_event FROM dst_catalog_name_dst_collection_name_table)
+""", relater._with_max_dst_event())
+
     def test_with_queries(self):
         relater = self._get_relater()
         relater._with_src_entities = lambda: 'SRC ENTITIES'
         relater._with_dst_entities = lambda: 'DST ENTITIES'
+        relater._with_max_src_event = lambda: 'MAX SRC EVENT'
+        relater._with_max_dst_event = lambda: 'MAX DST EVENT'
         relater._start_validities = lambda: []
-        self.assertEqual('WITH SRC ENTITIES,DST ENTITIES', relater._with_queries())
+        self.assertEqual('WITH SRC ENTITIES,DST ENTITIES,MAX SRC EVENT,MAX DST EVENT', relater._with_queries())
 
         relater._start_validities = lambda: ['START_VALIDITIES1', 'START_VALIDITIES2']
-        self.assertEqual('WITH RECURSIVE START_VALIDITIES1,START_VALIDITIES2,SRC ENTITIES,DST ENTITIES',
-                         relater._with_queries())
+        self.assertEqual(
+            'WITH RECURSIVE START_VALIDITIES1,START_VALIDITIES2,SRC ENTITIES,DST ENTITIES,MAX SRC EVENT,MAX DST EVENT',
+            relater._with_queries()
+        )
 
     def test_join_src_geldigheid(self):
         relater = self._get_relater()
@@ -669,8 +685,8 @@ dst_entities AS (
         relater.dst_table_name = 'DST TABLE'
 
         self.assertEqual(f"""
-LEFT JOIN (SELECT MAX(_last_event) _last_event FROM SRC TABLE) max_src_event ON TRUE
-LEFT JOIN (SELECT MAX(_last_event) _last_event FROM DST TABLE) max_dst_event ON TRUE
+JOIN max_src_event ON TRUE
+JOIN max_dst_event ON TRUE
 """, relater._join_max_event_ids())
 
     def test_join_rel(self):
