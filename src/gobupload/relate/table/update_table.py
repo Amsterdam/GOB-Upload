@@ -112,7 +112,7 @@ class RelationTableRelater:
 
         return start, end
 
-    def _build_select_expressions(self, mapping: dict):
+    def _build_select_expressions(self, mapping: dict):  WERKT DIT NOG?
         aliases = self.select_aliases + (['src_volgnummer'] if self.src_has_states else []) \
                                + (['dst_volgnummer'] if self.dst_has_states else [])
 
@@ -404,14 +404,14 @@ all_{src_or_dst}_intervals(
     {FIELD.END_VALIDITY}) AS (
     SELECT
         s.{FIELD.ID},
-        s.{FIELD.SEQNR},
+        s.{FIELD.SEQNR}, TWEE KEER NEEDED?
         s.{FIELD.SEQNR},
         s.{FIELD.START_VALIDITY},
         s.{FIELD.END_VALIDITY}
     FROM {table_name} s
     LEFT JOIN {table_name} t
     ON s.{FIELD.ID} = t.{FIELD.ID}
-        AND t.{FIELD.SEQNR}::int < s.{FIELD.SEQNR}::int
+        AND t.{FIELD.SEQNR}::int < s.{FIELD.SEQNR}::int  NOT NEEDED
         AND t.{FIELD.END_VALIDITY} = s.{FIELD.START_VALIDITY}
     WHERE t.{FIELD.ID} IS NULL
     UNION
@@ -425,7 +425,7 @@ all_{src_or_dst}_intervals(
     LEFT JOIN {table_name} {src_or_dst}
     ON intv.{FIELD.END_VALIDITY} = {src_or_dst}.{FIELD.START_VALIDITY}
         AND {src_or_dst}.{FIELD.ID} = intv.{FIELD.ID}
-        AND {src_or_dst}.{FIELD.SEQNR}::int > intv.{FIELD.SEQNR}::int
+        AND {src_or_dst}.{FIELD.SEQNR}::int > intv.{FIELD.SEQNR}::int  NOT NEEDED
     WHERE {src_or_dst}.{FIELD.START_VALIDITY} IS NOT NULL
 ), {src_or_dst}_volgnummer_begin_geldigheid AS (
     SELECT

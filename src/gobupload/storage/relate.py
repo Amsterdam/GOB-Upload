@@ -664,7 +664,7 @@ ON
     # Use IS DISTINCT FROM because comparing null values will result in unkown in postgres
     where_clause = f"""rel_dst_id IS DISTINCT FROM dst__id""" \
                    if is_very_many else f"src_matchcolumn != {src_field_name}_updated"
-    where_clause += f""" AND rel_dst_volgnummer IS DISTINCT FROM dst_volgnummer""" \
+    where_clause += f""" AND rel_dst_volgnummer IS DISTINCT FROM dst_volgnummer""" \  STILL NEEDED?
                     if is_very_many and dst_has_states else ""
 
     new_values = f"""
@@ -722,7 +722,7 @@ def _relate_update_order_by(src_has_states, dst_has_states):
     order_by = [f"src.{FIELD.SOURCE}", f"src.{FIELD.ID}"]
     if src_has_states:
         # then on source volgnummer and begin geldigheid
-        order_by.extend([f"src.{FIELD.SEQNR}::int", f"src.{FIELD.START_VALIDITY}"])
+        order_by.extend([f"src.{FIELD.SEQNR}::int", f"src.{FIELD.START_VALIDITY}"])  NOT NEEDED
     if dst_has_states:
         # then on destination begin and eind geldigheid
         order_by.extend([f"dst.{FIELD.START_VALIDITY}", f"dst.{FIELD.END_VALIDITY}"])
