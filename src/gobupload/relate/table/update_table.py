@@ -417,7 +417,7 @@ all_{src_or_dst}_intervals(
     {FIELD.END_VALIDITY}) AS (
     SELECT
         s.{FIELD.ID},
-        s.{FIELD.SEQNR}, # TWEE KEER NEEDED?
+        s.{FIELD.SEQNR},
         s.{FIELD.SEQNR},
         s.{FIELD.START_VALIDITY},
         s.{FIELD.END_VALIDITY}
