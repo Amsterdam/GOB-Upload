@@ -21,6 +21,7 @@ from gobupload.compare.entity_collector import EntityCollector
 from gobupload.compare.event_collector import EventCollector
 from gobupload.compare.compare_statistics import CompareStatistics
 from gobupload.config import FULL_UPLOAD
+from gobupload.utils import cleaned_modifications
 
 
 def compare(msg):
@@ -178,6 +179,7 @@ def _process_compare_results(storage, model, results, stats):
             elif row['type'] == 'MODIFY':
                 current_entity = storage.get_current_entity(entity)
                 modifications = get_modifications(current_entity, entity, model['all_fields'])
+                modifications = cleaned_modifications(modifications)
                 event = get_event_for(current_entity, entity, modifications)
             elif row['type'] == 'DELETE':
                 source_id = row['_entity_source_id']
