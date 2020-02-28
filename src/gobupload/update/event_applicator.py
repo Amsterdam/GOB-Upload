@@ -45,7 +45,10 @@ class EventApplicator:
 
     def apply(self, event):
         # Parse the json data of the event
-        data = json.loads(event.contents)
+        if isinstance(event.contents, dict):
+            data = event.contents
+        else:
+            data = json.loads(event.contents)
 
         # Reconstruct the gob event out of the database event
         gob_event = _get_gob_event(event, data)
