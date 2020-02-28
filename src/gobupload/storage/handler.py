@@ -656,7 +656,7 @@ WHERE
             :return: the JSON string suitably quoted to be used as a string literal in an SQL statement string
             """
             return json \
-                .dumps(copy.deepcopy(data), cls=GobTypeJSONEncoder) \
+                .dumps(data, cls=GobTypeJSONEncoder) \
                 .replace("'", "''")
 
         values = ",".join([f"""
