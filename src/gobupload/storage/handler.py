@@ -647,7 +647,7 @@ WHERE
                 .dumps(copy.deepcopy(data), cls=GobTypeJSONEncoder) \
                 .replace("'", "''")
 
-        values = ",\n    ".join([f"""
+        values = ",".join([f"""
 (
     '{ self.metadata.timestamp }',
     '{ self.metadata.catalogue }',
@@ -658,8 +658,7 @@ WHERE
     '{ event['data'].get('_source_id') }',
     '{ to_json(event['data']) }',
     '{ self.metadata.application }'
-)
-""" for event in events])
+)""" for event in events])
         statement = f"""
 INSERT INTO
     events
@@ -674,9 +673,7 @@ INSERT INTO
     contents,
     application
 )
-VALUES
-    {values}
-"""
+VALUES {values}"""
         self.execute(statement)
 
     def bulk_update_confirms(self, event, eventid):
