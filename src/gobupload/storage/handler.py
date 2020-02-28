@@ -641,8 +641,20 @@ WHERE
 
     @with_session
     def add_events(self, events):
+        """
+        Add the given events to the events table
+
+        :param events: the list of events to insert
+        :return: None
+        """
 
         def to_json(data):
+            """
+            Convert the data dictionary to a JSON string that can be inserted in the events table.
+
+            :param data: dictionary
+            :return: the JSON string suitably quoted to be used as a string literal in an SQL statement string
+            """
             return json \
                 .dumps(copy.deepcopy(data), cls=GobTypeJSONEncoder) \
                 .replace("'", "''")
@@ -659,9 +671,11 @@ WHERE
     '{ to_json(event['data']) }',
     '{ self.metadata.application }'
 )""" for event in events])
+
+        # INSERT INTO events (...) VALUES (...)[, (...), ...]
         statement = f"""
 INSERT INTO
-    events
+    "{ self.EVENTS_TABLE }"
 (
     "timestamp",
     catalogue,
