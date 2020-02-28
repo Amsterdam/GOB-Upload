@@ -301,18 +301,6 @@ WHERE
         # Assert the temporary table is deleted
         self.storage.engine.execute.assert_any_call(f"DROP TABLE IF EXISTS {temporary}")
 
-    def test_bulk_add_events(self):
-        metadata = fixtures.get_metadata_fixture()
-        event = fixtures.get_event_fixture(metadata)
-
-        # Make sure the events table exists
-        self.storage.base.metadata.tables = {'events': MagicMock()}
-        self.storage.bulk_insert = MagicMock()
-
-        self.storage.bulk_add_events([event])
-        # Assert the query is performed
-        self.storage.bulk_insert.assert_called()
-
     def test_bulk_insert(self):
         insert_data = {'key': 'value'}
         table = MagicMock()
