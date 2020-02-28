@@ -641,47 +641,43 @@ WHERE
 
     @with_session
     def add_events(self, events):
-        rows = [{
-            'timestamp': self.metadata.timestamp,
-            'catalogue': self.metadata.catalogue,
-            'entity': self.metadata.entity,
-            'version': self.metadata.version,
-            'action': event['event'],
-            'source': self.metadata.source,
-            'application': self.metadata.application,
-            'source_id': event['data'].get('_source_id'),
-            'contents': json.dumps(copy.deepcopy(event['data']), cls=GobTypeJSONEncoder),
-        } for event in events]
-        table = self.base.metadata.tables[self.EVENTS_TABLE]
-        self.session.execute(table.insert(), rows)
 
-    def bulk_add_events(self, events):
-        """Adds all ADD events to the session, for storage
+        def to_json(data):
+            return json \
+                .dumps(copy.deepcopy(data), cls=GobTypeJSONEncoder) \
+                .replace("'", "''")
 
-        :param events: list of events
-        """
-        # Create the ADD event insert list
-        insert_data = []
-        progress = ProgressTicker("Bulk add events", 10000)
-        while events:
-            progress.tick()
-
-            event = events.pop(0)
-            row = {
-                'timestamp': self.metadata.timestamp,
-                'catalogue': self.metadata.catalogue,
-                'entity': self.metadata.entity,
-                'version': self.metadata.version,
-                'action': event['event'],
-                'source': self.metadata.source,
-                'application': self.metadata.application,
-                'source_id': event['data'].get('_source_id'),
-                'contents': json.dumps(copy.deepcopy(event['data']), cls=GobTypeJSONEncoder),
-            }
-            insert_data.append(row)
-        table = self.base.metadata.tables[self.EVENTS_TABLE]
-
-        self.bulk_insert(table, insert_data)
+        values = ",\n    ".join([f"""
+(
+    '{ self.metadata.timestamp }',
+    '{ self.metadata.catalogue }',
+    '{ self.metadata.entity }',
+    '{ self.metadata.version }',
+    '{ event['event'] }',
+    '{ self.metadata.source }',
+    '{ event['data'].get('_source_id') }',
+    '{ to_json(event['data']) }',
+    '{ self.metadata.application }'
+)
+""" for event in events])
+        statement = f"""
+INSERT INTO
+    events
+(
+    "timestamp",
+    catalogue,
+    entity,
+    "version",
+    "action",
+    "source",
+    source_id,
+    contents,
+    application
+)
+VALUES
+    {values}
+"""
+        self.execute(statement)
 
     def bulk_update_confirms(self, event, eventid):
         """ Confirm entities in bulk
