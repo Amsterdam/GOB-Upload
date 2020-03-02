@@ -268,7 +268,7 @@ JOIN jsonb_array_elements(src.field) AS json_arr_elm ON TRUE
                 WHERE
                     (src._application = 'src_application' AND json_arr_elm IS NOT NULL AND json_arr_elm ->> 'bronwaarde' IS NOT NULL) AND (src._date_deleted IS NULL AND dst._date_deleted IS NULL)
                 ORDER BY
-                    src._source, src._id, src.volgnummer::int, src.begin_geldigheid, dst.begin_geldigheid, dst.eind_geldigheid
+                    src._source, src._id, src.volgnummer, src.begin_geldigheid, dst.begin_geldigheid, dst.eind_geldigheid
         ) relations
         GROUP BY
             src__id, src_volgnummer,

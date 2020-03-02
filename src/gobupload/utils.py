@@ -45,13 +45,3 @@ def get_event_ids(storage):
         entity_max_eventid = storage.get_entity_max_eventid()
         last_eventid = storage.get_last_eventid()
         return entity_max_eventid, last_eventid
-
-
-def cleaned_modifications(modifications):
-    if len(modifications) == 1 and modifications[0]['key'] == '_hash':
-        # A hash change only can happen because a type has changed, eg string to int
-        # But if no real change can be detected then it is awkward to create a modify event for the hash value
-        return []
-    else:
-        # Don't bother with real modifications
-        return modifications
