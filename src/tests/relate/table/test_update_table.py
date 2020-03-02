@@ -224,7 +224,7 @@ class TestRelationTableRelater(TestCase):
             "((src_ref._application = 'source1' AND relate_match(source1)) OR\n"
             "    (src_ref._application = 'source2' AND relate_match(source2)))",
         ]
-        self.assertEqual(expected, relater._dst_table_inner_join_on('src_ref'))
+        self.assertEqual(expected, relater._src_dst_match('src_ref'))
 
         relater.dst_has_states = True
         expected = [
@@ -232,7 +232,7 @@ class TestRelationTableRelater(TestCase):
             "    (src_ref._application = 'source2' AND relate_match(source2)))",
             '(dst.eind_geldigheid IS NULL OR dst.eind_geldigheid > NOW())',
         ]
-        self.assertEqual(set(expected), set(relater._dst_table_inner_join_on('src_ref')))
+        self.assertEqual(set(expected), set(relater._src_dst_match('src_ref')))
 
         relater.src_has_states = True
         expected = [
@@ -241,7 +241,7 @@ class TestRelationTableRelater(TestCase):
             '(dst.begin_geldigheid < src_ref.eind_geldigheid OR src_ref.eind_geldigheid IS NULL)',
             '(dst.eind_geldigheid >= src_ref.eind_geldigheid OR dst.eind_geldigheid IS NULL)',
         ]
-        self.assertEqual(expected, relater._dst_table_inner_join_on('src_ref'))
+        self.assertEqual(expected, relater._src_dst_match('src_ref'))
 
     def test_table_outer_join_on(self):
         relater = self._get_relater()
@@ -261,7 +261,7 @@ class TestRelationTableRelater(TestCase):
 
         self.assertEqual(expected, relater._dst_table_outer_join_on())
 
-    def test_src_dst_join_on_src(self):
+    def test_src_dst_join_on(self):
         relater = self._get_relater()
         relater._json_obj_ref = MagicMock(return_value='json_obj_ref')
         relater.src_has_states = False
@@ -281,29 +281,6 @@ class TestRelationTableRelater(TestCase):
             "src_dst.bronwaarde = json_obj_ref->>'bronwaarde'"
         ]
         self.assertEqual(expected, relater._src_dst_join_on())
-
-    def test_src_dst_join_on_dst(self):
-        relater = self._get_relater()
-        relater._json_obj_ref = MagicMock(return_value='json_obj_ref')
-        relater.dst_has_states = False
-
-        expected = [
-            "src_dst.dst_id = dst._id",
-        ]
-        self.assertEqual(expected, relater._src_dst_join_on('dst'))
-
-        relater.dst_has_states = True
-        expected = [
-            "src_dst.dst_id = dst._id",
-            "src_dst.dst_volgnummer = dst.volgnummer",
-        ]
-        self.assertEqual(expected, relater._src_dst_join_on('dst'))
-
-    def test_src_dst_join_on_invalid(self):
-        relater = self._get_relater()
-
-        with self.assertRaises(NotImplementedError):
-            relater._src_dst_join_on('invalid')
 
     def test_src_dst_select_expressions(self):
         relater = self._get_relater()
@@ -371,28 +348,16 @@ class TestRelationTableRelater(TestCase):
         relater = self._get_relater()
 
         self.assertEqual('SELECT * FROM src_entities WHERE _date_deleted IS NULL', relater._src_dst_select())
-        self.assertEqual('SELECT * FROM src_entities WHERE _date_deleted IS NULL', relater._src_dst_select('src'))
-
-        relater.src_has_states = False
-        self.assertEqual('SELECT * FROM src_catalog_name_src_collection_name_table WHERE _date_deleted IS NULL '
-                         'AND (_id) NOT IN (SELECT _id FROM src_entities)', relater._src_dst_select('dst'))
-        relater.src_has_states = True
-        self.assertEqual('SELECT * FROM src_catalog_name_src_collection_name_table WHERE _date_deleted IS NULL '
-                         'AND (_id,volgnummer) NOT IN (SELECT _id,volgnummer FROM src_entities)',
-                         relater._src_dst_select('dst'))
-
-        with self.assertRaises(NotImplementedError):
-            relater._src_dst_select('invalid')
 
     def _get_src_dst_join_mocked_relater(self):
         relater = self._get_relater()
         relater._valid_geo_src_check = lambda: 'CHECK_VALID_GEO_SRC'
         relater._src_dst_select_expressions = lambda: ['SRC_DST SELECT EXPRESSION1', 'SRC_DST SELECT EXPRESSION2']
         relater._join_array_elements = lambda: 'ARRAY_ELEMENTS'
-        relater._dst_table_inner_join_on = lambda: ['DST_TABLE_INNER_JOIN_ON1', 'DST_TABLE_INNER_JOIN_ON2']
+        relater._src_dst_match = lambda: ['DST_TABLE_INNER_JOIN_ON1', 'DST_TABLE_INNER_JOIN_ON2']
         relater._src_dst_group_by = lambda: ['SRC_DST_GROUP_BY1', 'SRC_DST_GROUP_BY2']
-        relater._src_dst_join_on = lambda x: ['SRC_DST_JOIN_ON1(' + x + ')', 'SRC_DST_JOIN_ON2(' + x + ')']
-        relater._src_dst_select = lambda x: 'SRC_DST_SELECT(' + x + ')'
+        relater._src_dst_join_on = lambda: ['SRC_DST_JOIN_ON1', 'SRC_DST_JOIN_ON2']
+        relater._src_dst_select = lambda: 'SRC_DST_SELECT'
 
         return relater
 
@@ -407,7 +372,7 @@ LEFT JOIN (
         SRC_DST SELECT EXPRESSION1,
     SRC_DST SELECT EXPRESSION2
     FROM (
-        SRC_DST_SELECT(src)
+        SRC_DST_SELECT
     ) src
     
     
@@ -416,8 +381,8 @@ LEFT JOIN (
     AND dst._date_deleted IS NULL
     GROUP BY SRC_DST_GROUP_BY1,
     SRC_DST_GROUP_BY2
-) src_dst ON SRC_DST_JOIN_ON1(src) AND
-    SRC_DST_JOIN_ON2(src)
+) src_dst ON SRC_DST_JOIN_ON1 AND
+    SRC_DST_JOIN_ON2
 """
 
         result = relater._src_dst_join()
@@ -434,7 +399,7 @@ LEFT JOIN (
         SRC_DST SELECT EXPRESSION1,
     SRC_DST SELECT EXPRESSION2
     FROM (
-        SRC_DST_SELECT(src)
+        SRC_DST_SELECT
     ) src
     
     ARRAY_ELEMENTS
@@ -443,8 +408,8 @@ LEFT JOIN (
     AND dst._date_deleted IS NULL
     GROUP BY SRC_DST_GROUP_BY1,
     SRC_DST_GROUP_BY2
-) src_dst ON SRC_DST_JOIN_ON1(src) AND
-    SRC_DST_JOIN_ON2(src)
+) src_dst ON SRC_DST_JOIN_ON1 AND
+    SRC_DST_JOIN_ON2
 """
 
         result = relater._src_dst_join()
@@ -461,7 +426,7 @@ LEFT JOIN (
         SRC_DST SELECT EXPRESSION1,
     SRC_DST SELECT EXPRESSION2
     FROM (
-        SRC_DST_SELECT(src)
+        SRC_DST_SELECT
     ) src
     JOIN (SELECT * FROM src_catalog_name_src_collection_name_table WHERE (CHECK_VALID_GEO_SRC)) valid_src ON src._gobid = valid_src._gobid
     
@@ -470,8 +435,8 @@ LEFT JOIN (
     AND dst._date_deleted IS NULL
     GROUP BY SRC_DST_GROUP_BY1,
     SRC_DST_GROUP_BY2
-) src_dst ON SRC_DST_JOIN_ON1(src) AND
-    SRC_DST_JOIN_ON2(src)
+) src_dst ON SRC_DST_JOIN_ON1 AND
+    SRC_DST_JOIN_ON2
 """
 
         result = relater._src_dst_join()
@@ -488,7 +453,7 @@ LEFT JOIN (
         SRC_DST SELECT EXPRESSION1,
     SRC_DST SELECT EXPRESSION2
     FROM (
-        SRC_DST_SELECT(src)
+        SRC_DST_SELECT
     ) src
     JOIN (SELECT * FROM src_catalog_name_src_collection_name_table WHERE (CHECK_VALID_GEO_SRC)) valid_src ON src._gobid = valid_src._gobid
     ARRAY_ELEMENTS
@@ -497,12 +462,23 @@ LEFT JOIN (
     AND dst._date_deleted IS NULL
     GROUP BY SRC_DST_GROUP_BY1,
     SRC_DST_GROUP_BY2
-) src_dst ON SRC_DST_JOIN_ON1(src) AND
-    SRC_DST_JOIN_ON2(src)
+) src_dst ON SRC_DST_JOIN_ON1 AND
+    SRC_DST_JOIN_ON2
 """
 
         result = relater._src_dst_join()
         self.assertEqual(expected, result)
+
+    def test_select_rest_src(self):
+        relater = self._get_relater()
+
+        relater.src_has_states = False
+        self.assertEqual('SELECT * FROM src_catalog_name_src_collection_name_table WHERE _date_deleted IS NULL '
+                         'AND (_id) NOT IN (SELECT _id FROM src_entities)', relater._select_rest_src())
+        relater.src_has_states = True
+        self.assertEqual('SELECT * FROM src_catalog_name_src_collection_name_table WHERE _date_deleted IS NULL '
+                         'AND (_id,volgnummer) NOT IN (SELECT _id,volgnummer FROM src_entities)',
+                         relater._select_rest_src())
 
     def test_start_validitity_per_seqnr_src(self):
         relater = self._get_relater()
@@ -718,7 +694,7 @@ FULL JOIN (
         relater._select_expressions_src = lambda: ['SELECT_EXPRESSION1SRC', 'SELECT_EXPRESSION2SRC']
         relater._select_expressions_dst = lambda: ['SELECT_EXPRESSION1DST', 'SELECT_EXPRESSION2DST']
         relater._join_array_elements = lambda: 'ARRAY_ELEMENTS'
-        relater._src_dst_join = lambda x: 'SRC_DST_JOIN(' + x + ')'
+        relater._src_dst_join = lambda: 'SRC_DST_JOIN'
         relater._start_validities = lambda: 'SEQNR_BEGIN_GELDIGHEID'
         relater._join_src_geldigheid = lambda: 'JOIN_SRC_GELDIGHEID'
         relater._join_dst_geldigheid = lambda: 'JOIN_DST_GELDIGHEID'
@@ -726,6 +702,9 @@ FULL JOIN (
         relater._get_where = lambda: 'WHERE CLAUSE'
         relater._join_rel = lambda: 'JOIN REL'
         relater._join_max_event_ids = lambda: 'JOIN MAX EVENTIDS'
+        relater._select_rest_src = lambda: 'REST SRC'
+        relater._src_dst_match = lambda: ['SRC_DST_MATCH1', 'SRC_DST_MATCH2']
+        relater._source_value_ref = lambda: 'SOURCE VALUE'
 
         return relater
 
@@ -741,7 +720,7 @@ SELECT
 FROM src_entities src
 
 
-SRC_DST_JOIN(src)
+SRC_DST_JOIN
 LEFT JOIN dst_catalog_name_dst_collection_name_table dst
     ON DST_TABLE_OUTER_JOIN_ON1 AND
     DST_TABLE_OUTER_JOIN_ON2
@@ -757,13 +736,11 @@ SELECT
     SELECT_EXPRESSION1DST,
     SELECT_EXPRESSION2DST
 FROM dst_entities dst
-SRC_DST_JOIN(dst)
-INNER JOIN src_catalog_name_src_collection_name_table src
-    ON src_dst.src_id = src._id AND src_dst.src_volgnummer = src.volgnummer
-    AND src_dst._source = src._source
+INNER JOIN (REST SRC) src ON SRC_DST_MATCH1 AND
+    SRC_DST_MATCH2
 INNER JOIN rel_src_catalog_name_src_collection_name_src_field_name rel
     ON rel.src_id=src._id AND rel.src_volgnummer = src.volgnummer
-    AND rel.src_source = src._source AND rel.bronwaarde = src_dst.bronwaarde
+    AND rel.src_source = src._source AND rel.bronwaarde = SOURCE VALUE
 JOIN_SRC_GELDIGHEID
 JOIN_DST_GELDIGHEID
 JOIN MAX EVENTIDS
@@ -775,6 +752,7 @@ JOIN MAX EVENTIDS
     def test_get_query_manyref(self):
         relater = self._get_get_query_mocked_relater()
         relater.is_many = True
+        self.maxDiff = None
 
         expected = """
 WITH QUERIES
@@ -784,7 +762,7 @@ SELECT
 FROM src_entities src
 
 ARRAY_ELEMENTS
-SRC_DST_JOIN(src)
+SRC_DST_JOIN
 LEFT JOIN dst_catalog_name_dst_collection_name_table dst
     ON DST_TABLE_OUTER_JOIN_ON1 AND
     DST_TABLE_OUTER_JOIN_ON2
@@ -800,13 +778,11 @@ SELECT
     SELECT_EXPRESSION1DST,
     SELECT_EXPRESSION2DST
 FROM dst_entities dst
-SRC_DST_JOIN(dst)
-INNER JOIN src_catalog_name_src_collection_name_table src
-    ON src_dst.src_id = src._id AND src_dst.src_volgnummer = src.volgnummer
-    AND src_dst._source = src._source
+INNER JOIN (REST SRC) src ON SRC_DST_MATCH1 AND
+    SRC_DST_MATCH2
 INNER JOIN rel_src_catalog_name_src_collection_name_src_field_name rel
     ON rel.src_id=src._id AND rel.src_volgnummer = src.volgnummer
-    AND rel.src_source = src._source AND rel.bronwaarde = src_dst.bronwaarde
+    AND rel.src_source = src._source AND rel.bronwaarde = SOURCE VALUE
 JOIN_SRC_GELDIGHEID
 JOIN_DST_GELDIGHEID
 JOIN MAX EVENTIDS
@@ -826,7 +802,7 @@ SELECT
 FROM src_entities src
 
 
-SRC_DST_JOIN(src)
+SRC_DST_JOIN
 LEFT JOIN dst_catalog_name_dst_collection_name_table dst
     ON DST_TABLE_OUTER_JOIN_ON1 AND
     DST_TABLE_OUTER_JOIN_ON2
