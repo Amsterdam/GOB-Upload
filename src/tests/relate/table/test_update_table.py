@@ -498,7 +498,7 @@ all_src_intervals(
     FROM src_catalog_name_src_collection_name_table s
     LEFT JOIN src_catalog_name_src_collection_name_table t
     ON s._id = t._id
-        AND t.volgnummer::int < s.volgnummer::int
+        AND t.volgnummer < s.volgnummer
         AND t.eind_geldigheid = s.begin_geldigheid
     WHERE t._id IS NULL
     UNION
@@ -512,7 +512,7 @@ all_src_intervals(
     LEFT JOIN src_catalog_name_src_collection_name_table src
     ON intv.eind_geldigheid = src.begin_geldigheid
         AND src._id = intv._id
-        AND src.volgnummer::int > intv.volgnummer::int
+        AND src.volgnummer > intv.volgnummer
     WHERE src.begin_geldigheid IS NOT NULL
 ), src_volgnummer_begin_geldigheid AS (
     SELECT
@@ -543,7 +543,7 @@ all_dst_intervals(
     FROM dst_catalog_name_dst_collection_name_table s
     LEFT JOIN dst_catalog_name_dst_collection_name_table t
     ON s._id = t._id
-        AND t.volgnummer::int < s.volgnummer::int
+        AND t.volgnummer < s.volgnummer
         AND t.eind_geldigheid = s.begin_geldigheid
     WHERE t._id IS NULL
     UNION
@@ -557,7 +557,7 @@ all_dst_intervals(
     LEFT JOIN dst_catalog_name_dst_collection_name_table dst
     ON intv.eind_geldigheid = dst.begin_geldigheid
         AND dst._id = intv._id
-        AND dst.volgnummer::int > intv.volgnummer::int
+        AND dst.volgnummer > intv.volgnummer
     WHERE dst.begin_geldigheid IS NOT NULL
 ), dst_volgnummer_begin_geldigheid AS (
     SELECT

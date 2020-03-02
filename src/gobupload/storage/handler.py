@@ -10,7 +10,6 @@ Use it like this:
     with storage.get_session():
         entity = storage.get_entity_for_update(entity_id, source_id, gob_event)
 """
-import copy
 import functools
 import json
 import warnings

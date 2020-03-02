@@ -20,7 +20,6 @@ from gobcore.typesystem.json import GobTypeJSONEncoder
 from gobupload.relate.exceptions import RelateException
 from gobupload.storage.execute import _execute
 from gobupload.compare.event_collector import EventCollector
-from gobupload.utils import cleaned_modifications
 
 EQUALS = 'equals'
 LIES_IN = 'lies_in'
@@ -626,7 +625,7 @@ INNER JOIN {self.relation_table} rel
             row[FIELD.HASH] = self._get_hash(row)
             modifications = [] \
                 if row[FIELD.HASH] == row[f"rel_{FIELD.HASH}"] \
-                else cleaned_modifications(self._get_modifications(row, compare_fields))
+                else self._get_modifications(row, compare_fields)
 
             if modifications:
                 data = {
