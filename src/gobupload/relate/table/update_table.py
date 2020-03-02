@@ -247,20 +247,20 @@ class RelationTableRelater:
         else:
             return self._geo_resolve(spec, src_ref)
 
-    def _dst_table_inner_join_on(self, src_ref='src'):
-        """Returns the ON clause for the dst table join
+    def _src_dst_match(self, src_ref='src'):
+        """Returns the match clause to match src and dst, to be used in an ON clause (or WHERE, for that matter)
 
         :param src_ref:
         :return:
         """
-        join_on = [f"({src_ref}.{FIELD.APPLICATION} = '{spec['source']}' AND " +
-                   f"{self._relate_match(spec, src_ref)})" for spec in self.relation_specs]
+        clause = [f"({src_ref}.{FIELD.APPLICATION} = '{spec['source']}' AND " +
+                  f"{self._relate_match(spec, src_ref)})" for spec in self.relation_specs]
         # If more matches have been defined that catch any of the matches
-        if len(join_on) > 1:
-            join_on = [f"({self.or_join.join(join_on)})"]
+        if len(clause) > 1:
+            clause = [f"({self.or_join.join(clause)})"]
         # If both collections have states then join with corresponding geldigheid intervals
         if self.src_has_states and self.dst_has_states:
-            join_on.extend([
+            clause.extend([
                 f"(dst.{FIELD.START_VALIDITY} < {src_ref}.{FIELD.END_VALIDITY} "
                 f"OR {src_ref}.{FIELD.END_VALIDITY} IS NULL)",
                 f"(dst.{FIELD.END_VALIDITY} >= {src_ref}.{FIELD.END_VALIDITY} "
@@ -268,11 +268,11 @@ class RelationTableRelater:
             ])
         elif self.dst_has_states:
             # If only destination has states, get the destination that is valid until forever
-            join_on.extend([
+            clause.extend([
                 f"(dst.{FIELD.END_VALIDITY} IS NULL OR dst.{FIELD.END_VALIDITY} > NOW())"
             ])
 
-        return join_on
+        return clause
 
     def _dst_table_outer_join_on(self):
         join_on = [f"dst.{FIELD.ID} = src_dst.dst_id"]
@@ -282,25 +282,16 @@ class RelationTableRelater:
 
         return join_on
 
-    def _src_dst_join_on(self, source_side='src'):
+    def _src_dst_join_on(self):
 
-        if source_side == 'src':
-            join_on = [f"src_dst.src_id = src.{FIELD.ID}"]
-            if self.src_has_states:
-                join_on.append(f"src_dst.src_volgnummer = src.{FIELD.SEQNR}")
+        join_on = [f"src_dst.src_id = src.{FIELD.ID}"]
+        if self.src_has_states:
+            join_on.append(f"src_dst.src_volgnummer = src.{FIELD.SEQNR}")
 
-            join_on += [
-                f"src_dst.{FIELD.SOURCE} = {source_side}.{FIELD.SOURCE}",
-                f"src_dst.bronwaarde = {self._json_obj_ref('src')}->>'bronwaarde'"
-            ]
-
-        elif source_side == 'dst':
-            join_on = [f"src_dst.dst_id = dst.{FIELD.ID}"]
-
-            if self.dst_has_states:
-                join_on.append(f"src_dst.dst_volgnummer = dst.{FIELD.SEQNR}")
-        else:
-            raise NotImplementedError
+        join_on += [
+            f"src_dst.{FIELD.SOURCE} = src.{FIELD.SOURCE}",
+            f"src_dst.bronwaarde = {self._json_obj_ref('src')}->>'bronwaarde'"
+        ]
 
         return join_on
 
@@ -345,19 +336,10 @@ class RelationTableRelater:
         return f"JOIN jsonb_array_elements(src.{self.src_field_name}) {self.json_join_alias}(item) " \
                f"ON {self.json_join_alias}->>'{FIELD.SOURCE_VALUE}' IS NOT NULL"
 
-    def _src_dst_select(self, source_side='src'):
-        if source_side == 'src':
-            return f"SELECT * FROM {self.src_entities_alias} WHERE {FIELD.DATE_DELETED} IS NULL"
-        elif source_side == 'dst':
-            not_in_fields = [FIELD.ID, FIELD.SEQNR] if self.src_has_states else [FIELD.ID]
+    def _src_dst_select(self):
+        return f"SELECT * FROM {self.src_entities_alias} WHERE {FIELD.DATE_DELETED} IS NULL"
 
-            return f"SELECT * FROM {self.src_table_name} WHERE {FIELD.DATE_DELETED} IS NULL AND " \
-                   f"({','.join(not_in_fields)}) NOT IN " \
-                   f"(SELECT {','.join(not_in_fields)} FROM {self.src_entities_alias})"
-        else:
-            raise NotImplementedError
-
-    def _src_dst_join(self, source_side='src'):
+    def _src_dst_join(self):
         """Generated twice, once to generate relations from a subset of the src relation to all the dst relations
         (source_side='src'), and once to generate the remaining relations from a subset of the dst relations to all
         the src relations (source_side='dst') that were not included in the first step
@@ -380,20 +362,26 @@ class RelationTableRelater:
             validgeo_src = ""
 
         return f"""
-{'LEFT' if source_side == 'src' else 'INNER'} JOIN (
+LEFT JOIN (
     SELECT
         {self.comma_join.join(self._src_dst_select_expressions())}
     FROM (
-        {self._src_dst_select(source_side)}
+        {self._src_dst_select()}
     ) src
     {validgeo_src}
     {self._join_array_elements() if self.is_many else ""}
-    {f'LEFT JOIN {self.dst_table_name}' if source_side == 'src'
-        else f'INNER JOIN {self.dst_entities_alias}'} dst ON {self.and_join.join(self._dst_table_inner_join_on())}
-    {f'AND dst.{FIELD.DATE_DELETED} IS NULL' if source_side == 'src' else ''}
+    LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(self._src_dst_match())}
+    AND dst.{FIELD.DATE_DELETED} IS NULL
     GROUP BY {self.comma_join.join(self._src_dst_group_by())}
-) src_dst ON {self.and_join.join(self._src_dst_join_on(source_side))}
+) src_dst ON {self.and_join.join(self._src_dst_join_on())}
 """
+
+    def _select_rest_src(self):
+        not_in_fields = [FIELD.ID, FIELD.SEQNR] if self.src_has_states else [FIELD.ID]
+
+        return f"SELECT * FROM {self.src_table_name} WHERE {FIELD.DATE_DELETED} IS NULL AND " \
+               f"({','.join(not_in_fields)}) NOT IN " \
+               f"(SELECT {','.join(not_in_fields)} FROM {self.src_entities_alias})"
 
     def _start_validity_per_seqnr(self, src_or_dst):
         """Generates the recursive WITH queries that find the begin_geldigheid for every volgnummer
@@ -552,7 +540,7 @@ FULL JOIN (
 
         joins = f"""
 {self._join_array_elements() if self.is_many else ""}
-{self._src_dst_join('src')}
+{self._src_dst_join()}
 LEFT JOIN {self.dst_table_name} dst
     ON {self.and_join.join(dst_table_outer_join_on)}
 {self._join_rel()}
@@ -575,14 +563,10 @@ UNION ALL
 SELECT
     {self.comma_join.join(self._select_expressions_dst())}
 FROM {self.dst_entities_alias} dst
-{self._src_dst_join('dst')}
-INNER JOIN {self.src_table_name} src
-    ON src_dst.src_id = src.{FIELD.ID} {f'AND src_dst.src_volgnummer = src.{FIELD.SEQNR}'
-        if self.src_has_states else ''}
-    AND src_dst.{FIELD.SOURCE} = src.{FIELD.SOURCE}
+INNER JOIN ({self._select_rest_src()}) src ON {self.and_join.join(self._src_dst_match())}
 INNER JOIN {self.relation_table} rel
     ON rel.src_id=src.{FIELD.ID} {f'AND rel.src_volgnummer = src.{FIELD.SEQNR}' if self.src_has_states else ''}
-    AND rel.src_source = src.{FIELD.SOURCE} AND rel.{FIELD.SOURCE_VALUE} = src_dst.{FIELD.SOURCE_VALUE}
+    AND rel.src_source = src.{FIELD.SOURCE} AND rel.{FIELD.SOURCE_VALUE} = {self._source_value_ref()}
 {self._join_src_geldigheid()}
 {self._join_dst_geldigheid()}
 {self._join_max_event_ids()}
