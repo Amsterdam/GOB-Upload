@@ -27,6 +27,21 @@ $$
 DECLARE
     t record;
 BEGIN
+    -- Drop all views
+    FOR t IN
+        SELECT
+            *
+        FROM
+            pg_views
+        WHERE
+            schemaname = 'public'          AND
+            viewname NOT LIKE 'geography%' AND
+            viewname NOT LIKE 'raster%'    AND
+            viewname NOT LIKE 'geometry%'
+    LOOP
+        EXECUTE 'DROP VIEW ' || t.viewname;
+    END LOOP;	
+
     -- Relate tables
     FOR t IN
         SELECT
@@ -45,21 +60,6 @@ BEGIN
                 '      ALTER COLUMN src_volgnummer TYPE integer USING (src_volgnummer::integer),' ||
                 '      ALTER COLUMN dst_volgnummer TYPE integer USING (dst_volgnummer::integer)';
     END LOOP;
-
-    -- Drop all views
-    FOR t IN
-        SELECT
-            *
-        FROM
-            pg_views
-        WHERE
-            schemaname = 'public'          AND
-            viewname NOT LIKE 'geography%' AND
-            viewname NOT LIKE 'raster%'    AND
-            viewname NOT LIKE 'geometry%'
-    LOOP
-        EXECUTE 'DROP VIEW ' || t.viewname;
-    END LOOP;	
 
     -- Regular tables
     FOR t IN
