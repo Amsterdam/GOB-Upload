@@ -38,7 +38,7 @@ BEGIN
             viewname NOT LIKE 'geography%' AND
             viewname NOT LIKE 'raster%'    AND
             viewname NOT LIKE 'geometry%'  AND
-            viewname NOT LIKE 'pg_%
+            viewname NOT LIKE 'pg_%'
     LOOP
         EXECUTE 'DROP VIEW ' || t.viewname;
     END LOOP;	
