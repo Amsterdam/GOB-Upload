@@ -789,4 +789,4 @@ VALUES {values}"""
         if where:
             stmt += " WHERE " + "AND ".join([f"{k} = '{v}'" for k, v in where.items()])
         with self.get_session() as session:
-            return session.execute(stmt)
+            return [combination for combination in session.execute(stmt)]
