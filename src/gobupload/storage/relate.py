@@ -722,7 +722,7 @@ def _relate_update_order_by(src_has_states, dst_has_states):
     order_by = [f"src.{FIELD.SOURCE}", f"src.{FIELD.ID}"]
     if src_has_states:
         # then on source volgnummer and begin geldigheid
-        order_by.extend([f"src.{FIELD.SEQNR}::int", f"src.{FIELD.START_VALIDITY}"])
+        order_by.extend([f"src.{FIELD.SEQNR}", f"src.{FIELD.START_VALIDITY}"])
     if dst_has_states:
         # then on destination begin and eind geldigheid
         order_by.extend([f"dst.{FIELD.START_VALIDITY}", f"dst.{FIELD.END_VALIDITY}"])

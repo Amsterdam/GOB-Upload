@@ -228,8 +228,8 @@ class RelationTableRelater:
         else:
             return f"src.{self.src_field_name}->>'{FIELD.SOURCE_VALUE}'"
 
-    def _geo_resolve(self, spec, src_ref='src'):
-        src_geo = f"{src_ref}.{spec['source_attribute']}"
+    def _geo_resolve(self, spec):
+        src_geo = f"src.{spec['source_attribute']}"
         dst_geo = f"dst.{spec['destination_attribute']}"
 
         resolvers = {
@@ -238,32 +238,36 @@ class RelationTableRelater:
         }
         return resolvers.get(spec["method"])
 
-    def _json_obj_ref(self, src_ref='src'):
-        return f'{self.json_join_alias}.item' if self.is_many else f'{src_ref}.{self.src_field_name}'
+    def _json_obj_ref(self):
+        return f'{self.json_join_alias}.item' if self.is_many else f'src.{self.src_field_name}'
 
-    def _relate_match(self, spec, src_ref='src'):
+    def _relate_match(self, spec, source_value_ref=None):
+        source_value_ref = source_value_ref if source_value_ref is not None \
+            else f"{self._json_obj_ref()}->>'bronwaarde'"
+
         if spec['method'] == EQUALS:
-            return f"dst.{spec['destination_attribute']} = {self._json_obj_ref(src_ref)}->>'bronwaarde'"
+            return f"dst.{spec['destination_attribute']} = {source_value_ref}"
         else:
-            return self._geo_resolve(spec, src_ref)
+            return self._geo_resolve(spec)
 
-    def _src_dst_match(self, src_ref='src'):
+    def _src_dst_match(self, source_value_ref=None):
         """Returns the match clause to match src and dst, to be used in an ON clause (or WHERE, for that matter)
 
         :param src_ref:
         :return:
         """
-        clause = [f"({src_ref}.{FIELD.APPLICATION} = '{spec['source']}' AND " +
-                  f"{self._relate_match(spec, src_ref)})" for spec in self.relation_specs]
+
+        clause = [f"(src.{FIELD.APPLICATION} = '{spec['source']}' AND " +
+                  f"{self._relate_match(spec, source_value_ref)})" for spec in self.relation_specs]
         # If more matches have been defined that catch any of the matches
         if len(clause) > 1:
             clause = [f"({self.or_join.join(clause)})"]
         # If both collections have states then join with corresponding geldigheid intervals
         if self.src_has_states and self.dst_has_states:
             clause.extend([
-                f"(dst.{FIELD.START_VALIDITY} < {src_ref}.{FIELD.END_VALIDITY} "
-                f"OR {src_ref}.{FIELD.END_VALIDITY} IS NULL)",
-                f"(dst.{FIELD.END_VALIDITY} >= {src_ref}.{FIELD.END_VALIDITY} "
+                f"(dst.{FIELD.START_VALIDITY} < src.{FIELD.END_VALIDITY} "
+                f"OR src.{FIELD.END_VALIDITY} IS NULL)",
+                f"(dst.{FIELD.END_VALIDITY} >= src.{FIELD.END_VALIDITY} "
                 f"OR dst.{FIELD.END_VALIDITY} IS NULL)"
             ])
         elif self.dst_has_states:
@@ -290,7 +294,7 @@ class RelationTableRelater:
 
         join_on += [
             f"src_dst.{FIELD.SOURCE} = src.{FIELD.SOURCE}",
-            f"src_dst.bronwaarde = {self._json_obj_ref('src')}->>'bronwaarde'"
+            f"src_dst.bronwaarde = {self._json_obj_ref()}->>'bronwaarde'"
         ]
 
         return join_on
@@ -298,7 +302,7 @@ class RelationTableRelater:
     def _src_dst_select_expressions(self):
         expressions = [f"src.{FIELD.ID} AS src_id",
                        f"dst.{FIELD.ID} AS dst_id",
-                       f"{self._json_obj_ref('src')}->>'bronwaarde' as bronwaarde",
+                       f"{self._json_obj_ref()}->>'bronwaarde' as bronwaarde",
                        f"src.{FIELD.SOURCE}"]
 
         if self.src_has_states:
@@ -379,9 +383,16 @@ LEFT JOIN (
     def _select_rest_src(self):
         not_in_fields = [FIELD.ID, FIELD.SEQNR] if self.src_has_states else [FIELD.ID]
 
-        return f"SELECT * FROM {self.src_table_name} WHERE {FIELD.DATE_DELETED} IS NULL AND " \
-               f"({','.join(not_in_fields)}) NOT IN " \
-               f"(SELECT {','.join(not_in_fields)} FROM {self.src_entities_alias})"
+        return f"""
+    SELECT
+        src.*,
+        {self._source_value_ref()} {FIELD.SOURCE_VALUE}
+    FROM {self.src_table_name} src
+    {self._join_array_elements() if self.is_many else ""}
+    WHERE src.{FIELD.DATE_DELETED} IS NULL AND ({','.join(not_in_fields)}) NOT IN (
+        SELECT {','.join(not_in_fields)} FROM {self.src_entities_alias}
+    )
+"""
 
     def _start_validity_per_seqnr(self, src_or_dst):
         """Generates the recursive WITH queries that find the begin_geldigheid for every volgnummer
@@ -411,7 +422,7 @@ all_{src_or_dst}_intervals(
     FROM {table_name} s
     LEFT JOIN {table_name} t
     ON s.{FIELD.ID} = t.{FIELD.ID}
-        AND t.{FIELD.SEQNR}::int < s.{FIELD.SEQNR}::int
+        AND t.{FIELD.SEQNR} < s.{FIELD.SEQNR}
         AND t.{FIELD.END_VALIDITY} = s.{FIELD.START_VALIDITY}
     WHERE t.{FIELD.ID} IS NULL
     UNION
@@ -425,7 +436,7 @@ all_{src_or_dst}_intervals(
     LEFT JOIN {table_name} {src_or_dst}
     ON intv.{FIELD.END_VALIDITY} = {src_or_dst}.{FIELD.START_VALIDITY}
         AND {src_or_dst}.{FIELD.ID} = intv.{FIELD.ID}
-        AND {src_or_dst}.{FIELD.SEQNR}::int > intv.{FIELD.SEQNR}::int
+        AND {src_or_dst}.{FIELD.SEQNR} > intv.{FIELD.SEQNR}
     WHERE {src_or_dst}.{FIELD.START_VALIDITY} IS NOT NULL
 ), {src_or_dst}_volgnummer_begin_geldigheid AS (
     SELECT
@@ -563,10 +574,10 @@ UNION ALL
 SELECT
     {self.comma_join.join(self._select_expressions_dst())}
 FROM {self.dst_entities_alias} dst
-INNER JOIN ({self._select_rest_src()}) src ON {self.and_join.join(self._src_dst_match())}
+INNER JOIN ({self._select_rest_src()}) src ON {self.and_join.join(self._src_dst_match(f'src.{FIELD.SOURCE_VALUE}'))}
 INNER JOIN {self.relation_table} rel
     ON rel.src_id=src.{FIELD.ID} {f'AND rel.src_volgnummer = src.{FIELD.SEQNR}' if self.src_has_states else ''}
-    AND rel.src_source = src.{FIELD.SOURCE} AND rel.{FIELD.SOURCE_VALUE} = {self._source_value_ref()}
+    AND rel.src_source = src.{FIELD.SOURCE} AND rel.{FIELD.SOURCE_VALUE} = src.{FIELD.SOURCE_VALUE}
 {self._join_src_geldigheid()}
 {self._join_dst_geldigheid()}
 {self._join_max_event_ids()}

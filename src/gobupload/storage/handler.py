@@ -10,7 +10,6 @@ Use it like this:
     with storage.get_session():
         entity = storage.get_entity_for_update(entity_id, source_id, gob_event)
 """
-import copy
 import functools
 import json
 import warnings
@@ -656,7 +655,7 @@ WHERE
             :return: the JSON string suitably quoted to be used as a string literal in an SQL statement string
             """
             return json \
-                .dumps(copy.deepcopy(data), cls=GobTypeJSONEncoder) \
+                .dumps(data, cls=GobTypeJSONEncoder) \
                 .replace("'", "''")
 
         values = ",".join([f"""
