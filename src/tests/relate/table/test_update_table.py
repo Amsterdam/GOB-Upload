@@ -177,7 +177,7 @@ class TestRelationTableRelater(TestCase):
 
     def test_geo_resolve(self):
         expected = "ST_IsValid(dst.dst_attribute) AND " \
-                   "ST_Contains(dst.dst_attribute::geometry, ST_PointOnSurface(src_ref.src_attribute::geometry))"
+                   "ST_Contains(dst.dst_attribute::geometry, ST_PointOnSurface(src.src_attribute::geometry))"
 
         relater = self._get_relater()
 
@@ -186,17 +186,17 @@ class TestRelationTableRelater(TestCase):
             'source_attribute': 'src_attribute',
             'method': 'lies_in',
         }
-        self.assertEqual(expected, relater._geo_resolve(spec, 'src_ref'))
+        self.assertEqual(expected, relater._geo_resolve(spec))
 
     def test_json_obj_ref(self):
         relater = self._get_relater()
         relater.is_many = True
         expected = 'json_arr_elm.item'
-        self.assertEqual(expected, relater._json_obj_ref('src_ref'))
+        self.assertEqual(expected, relater._json_obj_ref())
 
         relater.is_many = False
-        expected = 'src_ref.src_field_name'
-        self.assertEqual(expected, relater._json_obj_ref('src_ref'))
+        expected = 'src.src_field_name'
+        self.assertEqual(expected, relater._json_obj_ref())
 
     def test_relate_match(self):
         relater = self._get_relater()
@@ -208,40 +208,45 @@ class TestRelationTableRelater(TestCase):
             'destination_attribute': 'dst_attr',
         }
         expected = "dst.dst_attr = json_obj_ref->>'bronwaarde'"
-        self.assertEqual(expected, relater._relate_match(spec, 'src_ref'))
+        self.assertEqual(expected, relater._relate_match(spec))
 
+        # Override source_value_ref
+        expected = "dst.dst_attr = source_value_ref"
+        self.assertEqual(expected, relater._relate_match(spec, 'source_value_ref'))
+
+        # Geo match
         spec['method'] = 'lies_in'
-        self.assertEqual(relater._geo_resolve.return_value, relater._relate_match(spec, 'src_ref'))
+        self.assertEqual(relater._geo_resolve.return_value, relater._relate_match(spec))
 
-    def test_dst_table_inner_join_on(self):
+    def test_src_dst_match(self):
         relater = self._get_relater()
         relater.src_has_states = False
         relater.dst_has_states = False
         relater.relation_specs = [{'source': 'source1'}, {'source': 'source2'}]
-        relater._relate_match = lambda spec, src_ref: 'relate_match(' + spec['source'] + ')'
+        relater._relate_match = lambda spec, src_val_ref: 'relate_match(' + spec['source'] + ',' + src_val_ref + ')'
 
         expected = [
-            "((src_ref._application = 'source1' AND relate_match(source1)) OR\n"
-            "    (src_ref._application = 'source2' AND relate_match(source2)))",
+            "((src._application = 'source1' AND relate_match(source1,src_val_ref)) OR\n"
+            "    (src._application = 'source2' AND relate_match(source2,src_val_ref)))",
         ]
-        self.assertEqual(expected, relater._src_dst_match('src_ref'))
+        self.assertEqual(expected, relater._src_dst_match('src_val_ref'))
 
         relater.dst_has_states = True
         expected = [
-            "((src_ref._application = 'source1' AND relate_match(source1)) OR\n"
-            "    (src_ref._application = 'source2' AND relate_match(source2)))",
+            "((src._application = 'source1' AND relate_match(source1,src_val_ref)) OR\n"
+            "    (src._application = 'source2' AND relate_match(source2,src_val_ref)))",
             '(dst.eind_geldigheid IS NULL OR dst.eind_geldigheid > NOW())',
         ]
-        self.assertEqual(set(expected), set(relater._src_dst_match('src_ref')))
+        self.assertEqual(set(expected), set(relater._src_dst_match('src_val_ref')))
 
         relater.src_has_states = True
         expected = [
-            "((src_ref._application = 'source1' AND relate_match(source1)) OR\n    "
-            "(src_ref._application = 'source2' AND relate_match(source2)))",
-            '(dst.begin_geldigheid < src_ref.eind_geldigheid OR src_ref.eind_geldigheid IS NULL)',
-            '(dst.eind_geldigheid >= src_ref.eind_geldigheid OR dst.eind_geldigheid IS NULL)',
+            "((src._application = 'source1' AND relate_match(source1,src_val_ref)) OR\n    "
+            "(src._application = 'source2' AND relate_match(source2,src_val_ref)))",
+            '(dst.begin_geldigheid < src.eind_geldigheid OR src.eind_geldigheid IS NULL)',
+            '(dst.eind_geldigheid >= src.eind_geldigheid OR dst.eind_geldigheid IS NULL)',
         ]
-        self.assertEqual(expected, relater._src_dst_match('src_ref'))
+        self.assertEqual(expected, relater._src_dst_match('src_val_ref'))
 
     def test_table_outer_join_on(self):
         relater = self._get_relater()
@@ -473,12 +478,30 @@ LEFT JOIN (
         relater = self._get_relater()
 
         relater.src_has_states = False
-        self.assertEqual('SELECT * FROM src_catalog_name_src_collection_name_table WHERE _date_deleted IS NULL '
-                         'AND (_id) NOT IN (SELECT _id FROM src_entities)', relater._select_rest_src())
+        relater.is_many = False
+        self.assertEqual(f"""
+    SELECT
+        src.*,
+        src.src_field_name->>'bronwaarde' bronwaarde
+    FROM src_catalog_name_src_collection_name_table src
+    
+    WHERE src._date_deleted IS NULL AND (_id) NOT IN (
+        SELECT _id FROM src_entities
+    )
+""", relater._select_rest_src())
+
         relater.src_has_states = True
-        self.assertEqual('SELECT * FROM src_catalog_name_src_collection_name_table WHERE _date_deleted IS NULL '
-                         'AND (_id,volgnummer) NOT IN (SELECT _id,volgnummer FROM src_entities)',
-                         relater._select_rest_src())
+        relater.is_many = True
+        self.assertEqual(f"""
+    SELECT
+        src.*,
+        json_arr_elm.item->>'bronwaarde' bronwaarde
+    FROM src_catalog_name_src_collection_name_table src
+    JOIN jsonb_array_elements(src.src_field_name) json_arr_elm(item) ON json_arr_elm->>'bronwaarde' IS NOT NULL
+    WHERE src._date_deleted IS NULL AND (_id,volgnummer) NOT IN (
+        SELECT _id,volgnummer FROM src_entities
+    )
+""", relater._select_rest_src())
 
     def test_start_validitity_per_seqnr_src(self):
         relater = self._get_relater()
@@ -703,8 +726,8 @@ FULL JOIN (
         relater._join_rel = lambda: 'JOIN REL'
         relater._join_max_event_ids = lambda: 'JOIN MAX EVENTIDS'
         relater._select_rest_src = lambda: 'REST SRC'
-        relater._src_dst_match = lambda: ['SRC_DST_MATCH1', 'SRC_DST_MATCH2']
-        relater._source_value_ref = lambda: 'SOURCE VALUE'
+        relater._src_dst_match = lambda x: ['SRC_DST_MATCH1(' + x + ')', 'SRC_DST_MATCH2(' + x + ')'] if x \
+            else ['SRC_DST_MATCH1', 'SRC_DST_MATCH2']
 
         return relater
 
@@ -736,11 +759,11 @@ SELECT
     SELECT_EXPRESSION1DST,
     SELECT_EXPRESSION2DST
 FROM dst_entities dst
-INNER JOIN (REST SRC) src ON SRC_DST_MATCH1 AND
-    SRC_DST_MATCH2
+INNER JOIN (REST SRC) src ON SRC_DST_MATCH1(src.bronwaarde) AND
+    SRC_DST_MATCH2(src.bronwaarde)
 INNER JOIN rel_src_catalog_name_src_collection_name_src_field_name rel
     ON rel.src_id=src._id AND rel.src_volgnummer = src.volgnummer
-    AND rel.src_source = src._source AND rel.bronwaarde = SOURCE VALUE
+    AND rel.src_source = src._source AND rel.bronwaarde = src.bronwaarde
 JOIN_SRC_GELDIGHEID
 JOIN_DST_GELDIGHEID
 JOIN MAX EVENTIDS
@@ -778,11 +801,11 @@ SELECT
     SELECT_EXPRESSION1DST,
     SELECT_EXPRESSION2DST
 FROM dst_entities dst
-INNER JOIN (REST SRC) src ON SRC_DST_MATCH1 AND
-    SRC_DST_MATCH2
+INNER JOIN (REST SRC) src ON SRC_DST_MATCH1(src.bronwaarde) AND
+    SRC_DST_MATCH2(src.bronwaarde)
 INNER JOIN rel_src_catalog_name_src_collection_name_src_field_name rel
     ON rel.src_id=src._id AND rel.src_volgnummer = src.volgnummer
-    AND rel.src_source = src._source AND rel.bronwaarde = SOURCE VALUE
+    AND rel.src_source = src._source AND rel.bronwaarde = src.bronwaarde
 JOIN_SRC_GELDIGHEID
 JOIN_DST_GELDIGHEID
 JOIN MAX EVENTIDS
