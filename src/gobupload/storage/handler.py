@@ -14,7 +14,7 @@ import functools
 import json
 import warnings
 
-from sqlalchemy import create_engine, Table, update, exc as sa_exc
+from sqlalchemy import create_engine, Table, update, exc as sa_exc, text as sa_text
 from sqlalchemy.engine.url import URL
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.exc import OperationalError
@@ -769,7 +769,7 @@ VALUES {values}"""
             self.added_session_entity_cnt = 0
 
     def execute(self, statement):
-        result = self.engine.execute(statement)
+        result = self.engine.execute(sa_text(statement))
         result.close()
 
     def get_query_value(self, query):
