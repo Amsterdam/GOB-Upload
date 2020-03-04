@@ -24,11 +24,14 @@ def apply_events(storage, last_events, start_after, stats):
         with ProgressTicker("Apply events", 10000) as progress, \
                 EventApplicator(storage, last_events) as event_applicator:
             unhandled_events = storage.get_events_starting_after(start_after)
-            for event in unhandled_events:
-                progress.tick()
+            while unhandled_events:
+                for event in unhandled_events:
+                    progress.tick()
 
-                action, count = event_applicator.apply(event)
-                stats.add_applied(action, count)
+                    action, count = event_applicator.apply(event)
+                    stats.add_applied(action, count)
+                    start_after = event.eventid
+                unhandled_events = storage.get_events_starting_after(start_after)
 
 
 def apply_confirm_events(storage, stats, msg):
