@@ -457,7 +457,8 @@ WHERE
             .filter_by(source=self.metadata.source, catalogue=self.metadata.catalogue, entity=self.metadata.entity) \
             .filter(self.DbEvent.eventid > eventid if eventid else True) \
             .order_by(self.DbEvent.eventid.asc()) \
-            .yield_per(10000)
+            .limit(10000) \
+            .all()
 
     @with_session
     def has_any_event(self, filter):
