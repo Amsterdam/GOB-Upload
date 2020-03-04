@@ -14,7 +14,7 @@ import functools
 import json
 import warnings
 
-from sqlalchemy import create_engine, Table, update, exc as sa_exc, text as sa_text
+from sqlalchemy import create_engine, Table, update, exc as sa_exc
 from sqlalchemy.engine.url import URL
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.exc import OperationalError
@@ -658,7 +658,8 @@ WHERE
             """
             return json \
                 .dumps(data, cls=GobTypeJSONEncoder) \
-                .replace("'", "''")
+                .replace("'", "''") \
+                .replace("%", "%%")
 
         values = ",".join([f"""
 (
@@ -689,7 +690,7 @@ INSERT INTO
     application
 )
 VALUES {values}"""
-        self.execute(sa_text(statement))
+        self.execute(statement)
 
     def bulk_update_confirms(self, event, eventid):
         """ Confirm entities in bulk
