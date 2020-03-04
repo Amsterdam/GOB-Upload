@@ -689,7 +689,7 @@ INSERT INTO
     application
 )
 VALUES {values}"""
-        self.execute(statement)
+        self.execute(sa_text(statement))
 
     def bulk_update_confirms(self, event, eventid):
         """ Confirm entities in bulk
@@ -769,7 +769,7 @@ VALUES {values}"""
             self.added_session_entity_cnt = 0
 
     def execute(self, statement):
-        result = self.engine.execute(sa_text(statement))
+        result = self.engine.execute(statement)
         result.close()
 
     def get_query_value(self, query):
