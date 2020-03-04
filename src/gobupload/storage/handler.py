@@ -453,10 +453,11 @@ WHERE
 
         :return: The list of events
         """
-        return self.session.query(self.DbEvent).yield_per(10000) \
+        return self.session.query(self.DbEvent) \
             .filter_by(source=self.metadata.source, catalogue=self.metadata.catalogue, entity=self.metadata.entity) \
             .filter(self.DbEvent.eventid > eventid if eventid else True) \
-            .order_by(self.DbEvent.eventid.asc())  # Parse events from oldest to youngest
+            .order_by(self.DbEvent.eventid.asc()) \
+            .yield_per(10000)
 
     @with_session
     def has_any_event(self, filter):
