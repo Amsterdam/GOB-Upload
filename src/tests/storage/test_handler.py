@@ -32,7 +32,6 @@ class MockedEngine:
         pass
 
 
-@patch("gobupload.storage.handler.sa_text", lambda x: x)
 class TestStorageHandler(unittest.TestCase):
 
     @patch('gobupload.storage.handler.create_engine', MagicMock())
