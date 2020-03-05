@@ -9,6 +9,11 @@ from gobupload.update.update_statistics import UpdateStatistics
 from gobupload.update.event_applicator import EventApplicator
 from gobupload.utils import ActiveGarbageCollection, is_corrupted, get_event_ids
 
+# Trigger VACUUM ANALYZE on database if more than ANALYZE_THRESHOLD of entities are updated. When ANALYZE_THRESHOLD =
+# 0.3, this means that if more than 30% of the events update the data (MODIFY's, ADDs, DELETEs), a VACUUM ANALYZE is
+# triggered.
+ANALYZE_THRESHOLD = 0.3
+
 
 def apply_events(storage, last_events, start_after, stats):
     """Apply any unhandled events to the database
@@ -66,6 +71,12 @@ def apply_confirm_events(storage, stats, msg):
         os.remove(confirms)
 
 
+def _should_analyze(stats):
+    applied_stats = stats.get_applied_stats()
+    return (1 - applied_stats.get('CONFIRM', {}).get('relative', 0)) > ANALYZE_THRESHOLD and \
+        sum([value['absolute'] for value in applied_stats.values()]) > 0
+
+
 def apply(msg):
     catalogue = msg['header'].get('catalogue', "")
     entity = msg['header'].get('entity', "")
@@ -97,6 +108,10 @@ def apply(msg):
 
         # Build result message
         results = stats.results()
+
+        if _should_analyze(stats):
+            logger.info(f"Running VACUUM ANALYZE on table")
+            storage.analyze_table()
 
         stats.log()
         logger.info(f"Update model {model} completed", {'data': results})

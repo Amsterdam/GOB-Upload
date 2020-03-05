@@ -68,6 +68,19 @@ class UpdateStatistics():
 
         return results
 
+    def get_applied_stats(self):
+        return self._get_stats(self.applied)
+
+    def _get_stats(self, stats):
+        total = sum([stats[key] for key in stats.keys()])
+
+        return {
+            key: {
+                'absolute': value,
+                'relative': value / total
+            } for key, value in stats.items()
+        }
+
     def log(self):
         for process in ["stored", "skipped", "applied"]:
             for action, n in getattr(self, process).items():
