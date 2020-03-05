@@ -49,6 +49,7 @@ def _process_events(storage, events, stats):
     """
     # Get the max eventid of the entities and the last eventid of the events
     entity_max_eventid, last_eventid = get_event_ids(storage)
+    logger.info(f"Events are at {last_eventid or 0:,}, model is at {entity_max_eventid or 0:,}")
 
     # Get all source_id - last_event combinations to check for validity and existence
     with storage.get_session():
