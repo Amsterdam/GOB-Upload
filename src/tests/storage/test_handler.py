@@ -375,3 +375,17 @@ WHERE
         self.storage.get_session = mock_session
         result = self.storage.get_source_catalogue_entity_combinations(col="val")
         mock_session.return_value.__enter__().execute.assert_called_with("SELECT DISTINCT source, catalogue, entity FROM events WHERE col = 'val'")
+
+    def test_get_tablename(self):
+        self.storage.gob_model = MagicMock()
+        result = self.storage._get_tablename()
+        self.assertEqual(self.storage.gob_model.get_table_name.return_value, result)
+        self.storage.gob_model.get_table_name.assert_called_with(self.storage.metadata.catalogue,
+                                                                 self.storage.metadata.entity)
+
+    def test_analyze_table(self):
+        self.storage.engine = MagicMock()
+        self.storage._get_tablename = lambda: 'tablename'
+        self.storage.analyze_table()
+
+        self.storage.engine.connect.return_value.execute.assert_called_with('VACUUM ANALYZE tablename')

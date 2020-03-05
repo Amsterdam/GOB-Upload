@@ -3,7 +3,7 @@ import logging
 from unittest import TestCase
 from unittest.mock import MagicMock, patch, ANY
 
-from gobupload.apply.main import apply_events, apply_confirm_events, apply
+from gobupload.apply.main import apply_events, apply_confirm_events, apply, _should_analyze
 from gobupload.storage.handler import GOBStorageHandler
 from tests import fixtures
 
@@ -155,3 +155,31 @@ class TestApply(TestCase):
 
         self.assertEqual(result, {'header': {}, 'summary': {'errors': ANY, 'warnings': ANY}})
         mock_apply.assert_not_called()
+
+    def test_should_analyze(self, mock):
+        stats = MagicMock()
+        stats.get_applied_stats = lambda: {
+            'CONFIRM': {
+                'relative': 0.2,
+                'absolute': 1,
+            }
+        }
+
+        self.assertTrue(_should_analyze(stats))
+
+        stats.get_applied_stats = lambda: {
+            'CONFIRM': {
+                'relative': 0,
+                'absolute': 0,
+            }
+        }
+        self.assertFalse(_should_analyze(stats))
+
+        stats.get_applied_stats = lambda: {
+            'CONFIRM': {
+                'relative': 0.8,
+                'absolute': 2,
+            }
+        }
+
+        self.assertFalse(_should_analyze(stats))

@@ -377,8 +377,10 @@ WHERE
 
     @property
     def DbEntity(self):
-        table_name = self.gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
-        return getattr(self.base.classes, table_name)
+        return getattr(self.base.classes, self._get_tablename())
+
+    def _get_tablename(self):
+        return self.gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
 
     def _drop_table(self, table):
         statement = f"DROP TABLE IF EXISTS {table} CASCADE"
@@ -793,3 +795,15 @@ VALUES {values}"""
             stmt += " WHERE " + "AND ".join([f"{k} = '{v}'" for k, v in where.items()])
         with self.get_session() as session:
             return [combination for combination in session.execute(stmt)]
+
+    def analyze_table(self):
+        """Runs VACUUM ANALYZE on table
+
+        :return:
+        """
+        # Create separate connection and start with COMMIT to be outside of transaction context, otherwise VACUUM won't
+        # work.
+        connection = self.engine.connect()
+        connection.execute("COMMIT")
+        connection.execute(f"VACUUM ANALYZE {self._get_tablename()}")
+        connection.close()
