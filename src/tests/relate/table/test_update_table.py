@@ -87,30 +87,33 @@ class TestRelationTableRelater(TestCase):
             relater.dst_has_states = dst_has_states
             self.assertEqual(result, relater._validity_select_expressions())
 
+    def test_select_aliases(self):
+        relater = self._get_relater()
+        relater.select_aliases = ['a']
+        relater.src_has_states = False
+        relater.dst_has_states = False
+
+        self.assertEqual(['a'], relater._select_aliases())
+
+        relater.src_has_states = True
+        relater.dst_has_states = True
+
+        self.assertEqual([
+            'a',
+            'src_volgnummer',
+            'dst_volgnummer',
+        ], relater._select_aliases())
+
     def test_build_select_expressions(self):
         relater = self._get_relater()
         relater.src_has_states = False
         relater.dst_has_states = False
-        relater.select_aliases = ['a', 'b']
+        relater._select_aliases = lambda: ['a', 'b']
 
         mapping = {'a': 'some a', 'b': 'some b'}
         self.assertEqual([
             'some a AS a',
             'some b AS b',
-        ], relater._build_select_expressions(mapping))
-
-        relater.src_has_states = True
-        relater.dst_has_states = True
-        mapping.update({
-            'src_volgnummer': 'some src volgnummer',
-            'dst_volgnummer': 'some dst volgnummer',
-        })
-
-        self.assertEqual([
-            'some a AS a',
-            'some b AS b',
-            'some src volgnummer AS src_volgnummer',
-            'some dst volgnummer AS dst_volgnummer',
         ], relater._build_select_expressions(mapping))
 
         # All keys must be present
@@ -274,7 +277,8 @@ class TestRelationTableRelater(TestCase):
         expected = [
             "src_dst.src_id = src._id",
             "src_dst._source = src._source",
-            "src_dst.bronwaarde = json_obj_ref->>'bronwaarde'"
+            "src_dst.bronwaarde = json_obj_ref->>'bronwaarde'",
+            "src_dst.row_number = 1",
         ]
         self.assertEqual(expected, relater._src_dst_join_on())
 
@@ -283,7 +287,8 @@ class TestRelationTableRelater(TestCase):
             "src_dst.src_id = src._id",
             "src_dst.src_volgnummer = src.volgnummer",
             "src_dst._source = src._source",
-            "src_dst.bronwaarde = json_obj_ref->>'bronwaarde'"
+            "src_dst.bronwaarde = json_obj_ref->>'bronwaarde'",
+            "src_dst.row_number = 1",
         ]
         self.assertEqual(expected, relater._src_dst_join_on())
 
@@ -291,22 +296,24 @@ class TestRelationTableRelater(TestCase):
         relater = self._get_relater()
         relater.src_has_states = False
         relater.dst_has_states = False
+        relater._row_number_partition = lambda: 'ROW_NUMBER_PARTITION'
         relater._json_obj_ref = MagicMock(return_value='json_obj_ref')
 
         expected = [
             "src._id AS src_id",
             "dst._id AS dst_id",
-            "json_obj_ref->>'bronwaarde' as bronwaarde",
+            "json_obj_ref->>'bronwaarde' AS bronwaarde",
             "src._source",
+            "ROW_NUMBER_PARTITION AS row_number"
         ]
         self.assertEqual(expected, relater._src_dst_select_expressions())
 
         relater.src_has_states = True
-        expected.append("src.volgnummer as src_volgnummer")
+        expected.append("src.volgnummer AS src_volgnummer")
         self.assertEqual(expected, relater._src_dst_select_expressions())
 
         relater.dst_has_states = True
-        expected.append("max(dst.volgnummer) as dst_volgnummer")
+        expected.append("max(dst.volgnummer) AS dst_volgnummer")
         self.assertEqual(expected, relater._src_dst_select_expressions())
 
     def test_src_dst_group_by(self):
@@ -726,6 +733,8 @@ FULL JOIN (
         relater._join_rel = lambda: 'JOIN REL'
         relater._join_max_event_ids = lambda: 'JOIN MAX EVENTIDS'
         relater._select_rest_src = lambda: 'REST SRC'
+        relater._select_aliases = lambda: ['SELECT_ALIAS1', 'SELECT_ALIAS2']
+        relater._row_number_partition = lambda: 'ROW_NUMBER_PARTITION'
         relater._src_dst_match = lambda x: ['SRC_DST_MATCH1(' + x + ')', 'SRC_DST_MATCH2(' + x + ')'] if x \
             else ['SRC_DST_MATCH1', 'SRC_DST_MATCH2']
 
@@ -754,10 +763,14 @@ JOIN MAX EVENTIDS
 
 
 UNION ALL
-
+SELECT
+    SELECT_ALIAS1,
+    SELECT_ALIAS2
+FROM (
 SELECT
     SELECT_EXPRESSION1DST,
-    SELECT_EXPRESSION2DST
+    SELECT_EXPRESSION2DST,
+    ROW_NUMBER_PARTITION AS row_number
 FROM dst_entities dst
 INNER JOIN (REST SRC) src ON SRC_DST_MATCH1(src.bronwaarde) AND
     SRC_DST_MATCH2(src.bronwaarde)
@@ -767,6 +780,8 @@ INNER JOIN rel_src_catalog_name_src_collection_name_src_field_name rel
 JOIN_SRC_GELDIGHEID
 JOIN_DST_GELDIGHEID
 JOIN MAX EVENTIDS
+) q
+WHERE row_number = 1
 """
 
         result = relater._get_query()
@@ -796,10 +811,14 @@ JOIN MAX EVENTIDS
 
 
 UNION ALL
-
+SELECT
+    SELECT_ALIAS1,
+    SELECT_ALIAS2
+FROM (
 SELECT
     SELECT_EXPRESSION1DST,
-    SELECT_EXPRESSION2DST
+    SELECT_EXPRESSION2DST,
+    ROW_NUMBER_PARTITION AS row_number
 FROM dst_entities dst
 INNER JOIN (REST SRC) src ON SRC_DST_MATCH1(src.bronwaarde) AND
     SRC_DST_MATCH2(src.bronwaarde)
@@ -809,6 +828,8 @@ INNER JOIN rel_src_catalog_name_src_collection_name_src_field_name rel
 JOIN_SRC_GELDIGHEID
 JOIN_DST_GELDIGHEID
 JOIN MAX EVENTIDS
+) q
+WHERE row_number = 1
 """
         result = relater._get_query()
         self.assertEqual(result, expected)
