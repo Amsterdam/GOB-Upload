@@ -112,9 +112,12 @@ class RelationTableRelater:
 
         return start, end
 
+    def _select_aliases(self):
+        return self.select_aliases + (['src_volgnummer'] if self.src_has_states else []) \
+                  + (['dst_volgnummer'] if self.dst_has_states else [])
+
     def _build_select_expressions(self, mapping: dict):
-        aliases = self.select_aliases + (['src_volgnummer'] if self.src_has_states else []) \
-                               + (['dst_volgnummer'] if self.dst_has_states else [])
+        aliases = self._select_aliases()
 
         assert all([alias in mapping.keys() for alias in aliases]), \
             'Missing key(s): ' + str([alias for alias in aliases if alias not in mapping.keys()])
@@ -142,7 +145,7 @@ class RelationTableRelater:
             FIELD.LAST_SRC_EVENT: f"max_src_event.{FIELD.LAST_EVENT}",
             FIELD.LAST_DST_EVENT: f"max_dst_event.{FIELD.LAST_EVENT}",
             FIELD.LAST_EVENT: f"rel.{FIELD.LAST_EVENT}",
-            "src_deleted": "NULL",
+            "src_deleted": "NULL::timestamp without time zone",
             "rel_id": "rel.id",
             "rel_dst_id": "rel.dst_id",
             "rel_dst_volgnummer": "rel.dst_volgnummer",
@@ -294,7 +297,8 @@ class RelationTableRelater:
 
         join_on += [
             f"src_dst.{FIELD.SOURCE} = src.{FIELD.SOURCE}",
-            f"src_dst.bronwaarde = {self._json_obj_ref()}->>'bronwaarde'"
+            f"src_dst.bronwaarde = {self._json_obj_ref()}->>'bronwaarde'",
+            f"src_dst.row_number = 1"
         ]
 
         return join_on
@@ -302,14 +306,15 @@ class RelationTableRelater:
     def _src_dst_select_expressions(self):
         expressions = [f"src.{FIELD.ID} AS src_id",
                        f"dst.{FIELD.ID} AS dst_id",
-                       f"{self._json_obj_ref()}->>'bronwaarde' as bronwaarde",
-                       f"src.{FIELD.SOURCE}"]
+                       f"{self._json_obj_ref()}->>'bronwaarde' AS bronwaarde",
+                       f"src.{FIELD.SOURCE}",
+                       f"{self._row_number_partition()} AS row_number"]
 
         if self.src_has_states:
-            expressions.append(f"src.{FIELD.SEQNR} as src_volgnummer")
+            expressions.append(f"src.{FIELD.SEQNR} AS src_volgnummer")
 
         if self.dst_has_states:
-            expressions.append(f"max(dst.{FIELD.SEQNR}) as dst_volgnummer")
+            expressions.append(f"max(dst.{FIELD.SEQNR}) AS dst_volgnummer")
 
         return expressions
 
@@ -379,6 +384,24 @@ LEFT JOIN (
     GROUP BY {self.comma_join.join(self._src_dst_group_by())}
 ) src_dst ON {self.and_join.join(self._src_dst_join_on())}
 """
+
+    def _row_number_partition(self):
+        """Returns the row_number() window function to avoid duplicate (src_id, [src_volgummer,] bronwaarde) rows in
+        the relation table. Partitions by src_id, src_volgnummer and bronwaarde, so that we can select only the row
+        where the row number = 1. Rows within a partition are ordered by bronwaarde.
+
+        :return:
+        """
+        partition_by = [
+            f"src.{FIELD.ID}",
+            f"src.{FIELD.SEQNR}",
+            self._source_value_ref()
+        ] if self.src_has_states else [
+            f"src.{FIELD.ID}",
+            self._source_value_ref()
+        ]
+
+        return f"row_number() OVER (PARTITION BY {','.join(partition_by)} ORDER BY {self._source_value_ref()})"
 
     def _select_rest_src(self):
         not_in_fields = [FIELD.ID, FIELD.SEQNR] if self.src_has_states else [FIELD.ID]
@@ -570,9 +593,12 @@ FROM {self.src_entities_alias} src
         if not initial_load:
             query += f"""
 UNION ALL
-
 SELECT
-    {self.comma_join.join(self._select_expressions_dst())}
+    {self.comma_join.join(self._select_aliases())}
+FROM (
+SELECT
+    {self.comma_join.join(self._select_expressions_dst())},
+    {self._row_number_partition()} AS row_number
 FROM {self.dst_entities_alias} dst
 INNER JOIN ({self._select_rest_src()}) src ON {self.and_join.join(self._src_dst_match(f'src.{FIELD.SOURCE_VALUE}'))}
 INNER JOIN {self.relation_table} rel
@@ -581,6 +607,8 @@ INNER JOIN {self.relation_table} rel
 {self._join_src_geldigheid()}
 {self._join_dst_geldigheid()}
 {self._join_max_event_ids()}
+) q
+WHERE row_number = 1
 """
         return query
 
