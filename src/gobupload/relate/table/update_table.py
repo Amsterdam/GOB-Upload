@@ -385,23 +385,25 @@ LEFT JOIN (
 ) src_dst ON {self.and_join.join(self._src_dst_join_on())}
 """
 
-    def _row_number_partition(self):
+    def _row_number_partition(self, source_value_ref=None):
         """Returns the row_number() window function to avoid duplicate (src_id, [src_volgummer,] bronwaarde) rows in
         the relation table. Partitions by src_id, src_volgnummer and bronwaarde, so that we can select only the row
         where the row number = 1. Rows within a partition are ordered by bronwaarde.
 
         :return:
         """
+        source_value_ref = source_value_ref if source_value_ref is not None else self._source_value_ref()
+
         partition_by = [
             f"src.{FIELD.ID}",
             f"src.{FIELD.SEQNR}",
-            self._source_value_ref()
+            source_value_ref
         ] if self.src_has_states else [
             f"src.{FIELD.ID}",
-            self._source_value_ref()
+            source_value_ref
         ]
 
-        return f"row_number() OVER (PARTITION BY {','.join(partition_by)} ORDER BY {self._source_value_ref()})"
+        return f"row_number() OVER (PARTITION BY {','.join(partition_by)} ORDER BY {source_value_ref})"
 
     def _select_rest_src(self):
         not_in_fields = [FIELD.ID, FIELD.SEQNR] if self.src_has_states else [FIELD.ID]
@@ -598,7 +600,7 @@ SELECT
 FROM (
 SELECT
     {self.comma_join.join(self._select_expressions_dst())},
-    {self._row_number_partition()} AS row_number
+    {self._row_number_partition(f'src.{FIELD.SOURCE_VALUE}')} AS row_number
 FROM {self.dst_entities_alias} dst
 INNER JOIN ({self._select_rest_src()}) src ON {self.and_join.join(self._src_dst_match(f'src.{FIELD.SOURCE_VALUE}'))}
 INNER JOIN {self.relation_table} rel
