@@ -481,6 +481,22 @@ LEFT JOIN (
         result = relater._src_dst_join()
         self.assertEqual(expected, result)
 
+    def test_row_number_partition(self):
+        relater = self._get_relater()
+        relater._source_value_ref = lambda: 'SRC_VALUE_REF'
+        relater.src_has_states = False
+
+        expected = "row_number() OVER (PARTITION BY src._id,SRC_VALUE_REF ORDER BY SRC_VALUE_REF)"
+        self.assertEqual(expected, relater._row_number_partition())
+
+        relater.src_has_states = True
+        expected = "row_number() OVER (PARTITION BY src._id,src.volgnummer,SRC_VALUE_REF ORDER BY SRC_VALUE_REF)"
+        self.assertEqual(expected, relater._row_number_partition())
+
+        expected = "row_number() OVER (PARTITION BY src._id,src.volgnummer,SRC_VALUE_REF_PARAM " \
+                   "ORDER BY SRC_VALUE_REF_PARAM)"
+        self.assertEqual(expected, relater._row_number_partition('SRC_VALUE_REF_PARAM'))
+
     def test_select_rest_src(self):
         relater = self._get_relater()
 
@@ -734,7 +750,7 @@ FULL JOIN (
         relater._join_max_event_ids = lambda: 'JOIN MAX EVENTIDS'
         relater._select_rest_src = lambda: 'REST SRC'
         relater._select_aliases = lambda: ['SELECT_ALIAS1', 'SELECT_ALIAS2']
-        relater._row_number_partition = lambda: 'ROW_NUMBER_PARTITION'
+        relater._row_number_partition = lambda x: 'ROW_NUMBER_PARTITION(' + x + ')' if x else 'ROW_NUMBER_PARTITION'
         relater._src_dst_match = lambda x: ['SRC_DST_MATCH1(' + x + ')', 'SRC_DST_MATCH2(' + x + ')'] if x \
             else ['SRC_DST_MATCH1', 'SRC_DST_MATCH2']
 
@@ -770,7 +786,7 @@ FROM (
 SELECT
     SELECT_EXPRESSION1DST,
     SELECT_EXPRESSION2DST,
-    ROW_NUMBER_PARTITION AS row_number
+    ROW_NUMBER_PARTITION(src.bronwaarde) AS row_number
 FROM dst_entities dst
 INNER JOIN (REST SRC) src ON SRC_DST_MATCH1(src.bronwaarde) AND
     SRC_DST_MATCH2(src.bronwaarde)
@@ -818,7 +834,7 @@ FROM (
 SELECT
     SELECT_EXPRESSION1DST,
     SELECT_EXPRESSION2DST,
-    ROW_NUMBER_PARTITION AS row_number
+    ROW_NUMBER_PARTITION(src.bronwaarde) AS row_number
 FROM dst_entities dst
 INNER JOIN (REST SRC) src ON SRC_DST_MATCH1(src.bronwaarde) AND
     SRC_DST_MATCH2(src.bronwaarde)
