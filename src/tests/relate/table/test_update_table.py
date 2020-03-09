@@ -1017,7 +1017,7 @@ JOIN MAX EVENTIDS
         mock_execute.return_value = [{'a': 1}, {'b': 2}, {'c': 3}]
 
         result = relater.update()
-        mock_execute.assert_called_with(relater._get_query.return_value, stream=True)
+        mock_execute.assert_called_with(relater._get_query.return_value, stream=True, max_row_buffer=25000)
         mock_event_collector.assert_called_with(
             mock_contents_writer.return_value.__enter__.return_value,
             mock_contents_writer.return_value.__enter__.return_value,
