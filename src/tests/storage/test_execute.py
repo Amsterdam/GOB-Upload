@@ -27,7 +27,7 @@ class TestExecute(TestCase):
         handler_instance.get_session.assert_called_once()
 
         session_instance = handler_instance.get_session.return_value.__enter__.return_value
-        session_instance.connection.assert_called_with(execution_options={'stream_results': True})
+        session_instance.connection.assert_called_with(execution_options={'stream_results': True, 'max_row_buffer': 1000})
 
         connection_instance = session_instance.connection.return_value
         connection_instance.execute.assert_has_calls([call('query1'), call('query2')])

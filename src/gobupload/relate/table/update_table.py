@@ -704,7 +704,7 @@ WHERE row_number = 1
     def update(self):
         initial_load = self._is_initial_load()
         query = self._get_query(initial_load)
-        result = _execute(query, stream=True)
+        result = _execute(query, stream=True, max_row_buffer=25000)
 
         with ProgressTicker("Process relate src result", 10000) as progress, \
                 ContentsWriter() as contents_writer, \
