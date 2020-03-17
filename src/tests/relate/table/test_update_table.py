@@ -800,7 +800,7 @@ JOIN MAX EVENTIDS
 WHERE row_number = 1
 """
 
-        result = relater._get_query()
+        result = relater.get_query()
         self.assertEqual(result, expected)
 
     def test_get_query_manyref(self):
@@ -847,7 +847,7 @@ JOIN MAX EVENTIDS
 ) q
 WHERE row_number = 1
 """
-        result = relater._get_query()
+        result = relater.get_query()
         self.assertEqual(result, expected)
 
     def test_get_query_initial_load(self):
@@ -872,7 +872,7 @@ JOIN_DST_GELDIGHEID
 JOIN MAX EVENTIDS
 
 """
-        result = relater._get_query(True)
+        result = relater.get_query(True)
         self.assertEqual(result, expected)
 
     def test_get_modifications(self):
@@ -1012,12 +1012,12 @@ JOIN MAX EVENTIDS
         relater = self._get_relater()
         relater._is_initial_load = MagicMock()
         relater._create_event = MagicMock(side_effect=lambda x: x)
-        relater._get_query = MagicMock()
+        relater.get_query = MagicMock()
         relater._format_relation = MagicMock(side_effect=lambda x: x)
         mock_execute.return_value = [{'a': 1}, {'b': 2}, {'c': 3}]
 
         result = relater.update()
-        mock_execute.assert_called_with(relater._get_query.return_value, stream=True, max_row_buffer=25000)
+        mock_execute.assert_called_with(relater.get_query.return_value, stream=True, max_row_buffer=25000)
         mock_event_collector.assert_called_with(
             mock_contents_writer.return_value.__enter__.return_value,
             mock_contents_writer.return_value.__enter__.return_value,
@@ -1027,7 +1027,7 @@ JOIN MAX EVENTIDS
             call({'b': 2}),
             call({'c': 3}),
         ])
-        relater._get_query.assert_called_with(relater._is_initial_load.return_value)
+        relater.get_query.assert_called_with(relater._is_initial_load.return_value)
 
         self.assertEqual((mock_contents_writer.return_value.__enter__.return_value.filename,
                           mock_contents_writer.return_value.__enter__.return_value.filename), result)
