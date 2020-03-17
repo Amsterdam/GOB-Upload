@@ -564,7 +564,7 @@ FULL JOIN (
 ) rel ON rel.src_id = src.{FIELD.ID} AND {self._source_value_ref()} = rel.{FIELD.SOURCE_VALUE}
 """
 
-    def _get_query(self, initial_load=False):
+    def get_query(self, initial_load=False):
         """Builds and returns the event extraction query
 
         Omits right-hand side of the query when initial_load=True, because it is unnecessary, and excluding everything
@@ -703,7 +703,7 @@ WHERE row_number = 1
 
     def update(self):
         initial_load = self._is_initial_load()
-        query = self._get_query(initial_load)
+        query = self.get_query(initial_load)
         result = _execute(query, stream=True, max_row_buffer=25000)
 
         with ProgressTicker("Process relate src result", 10000) as progress, \
