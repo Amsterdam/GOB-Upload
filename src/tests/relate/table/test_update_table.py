@@ -719,7 +719,6 @@ JOIN max_dst_event ON TRUE
 FULL JOIN (
     SELECT * FROM rel_src_catalog_name_src_collection_name_src_field_name
     WHERE src_id IN (SELECT _id FROM src_entities)
-    AND _date_deleted IS NULL
 ) rel ON rel.src_id = src._id AND src.src_field_name->>'bronwaarde' = rel.bronwaarde
 """, relater._join_rel())
 
@@ -729,10 +728,16 @@ FULL JOIN (
 FULL JOIN (
     SELECT * FROM rel_src_catalog_name_src_collection_name_src_field_name
     WHERE (src_id, src_volgnummer) IN (SELECT _id, volgnummer FROM src_entities)
-    AND _date_deleted IS NULL
 ) rel ON rel.src_id = src._id AND rel.src_volgnummer = src.volgnummer
     AND src.src_field_name->>'bronwaarde' = rel.bronwaarde
 """, relater._join_rel())
+
+    def test_get_where(self):
+        relater = self._get_relater()
+        self.assertEqual(
+            'WHERE rel._date_deleted IS NULL OR src._id IS NOT NULL',
+            relater._get_where()
+        )
 
     def _get_get_query_mocked_relater(self):
         relater = self._get_relater()
@@ -776,6 +781,7 @@ JOIN REL
 JOIN_SRC_GELDIGHEID
 JOIN_DST_GELDIGHEID
 JOIN MAX EVENTIDS
+WHERE CLAUSE
 
 
 UNION ALL
@@ -796,6 +802,7 @@ INNER JOIN rel_src_catalog_name_src_collection_name_src_field_name rel
 JOIN_SRC_GELDIGHEID
 JOIN_DST_GELDIGHEID
 JOIN MAX EVENTIDS
+WHERE CLAUSE
 ) q
 WHERE row_number = 1
 """
@@ -824,6 +831,7 @@ JOIN REL
 JOIN_SRC_GELDIGHEID
 JOIN_DST_GELDIGHEID
 JOIN MAX EVENTIDS
+WHERE CLAUSE
 
 
 UNION ALL
@@ -844,6 +852,7 @@ INNER JOIN rel_src_catalog_name_src_collection_name_src_field_name rel
 JOIN_SRC_GELDIGHEID
 JOIN_DST_GELDIGHEID
 JOIN MAX EVENTIDS
+WHERE CLAUSE
 ) q
 WHERE row_number = 1
 """
@@ -870,6 +879,7 @@ JOIN REL
 JOIN_SRC_GELDIGHEID
 JOIN_DST_GELDIGHEID
 JOIN MAX EVENTIDS
+WHERE CLAUSE
 
 """
         result = relater.get_query(True)
@@ -905,12 +915,13 @@ JOIN MAX EVENTIDS
         relater = self._get_relater()
         relater.dst_has_states = False
 
-        # ADD event
+        # ADD event (rel row not present)
         row = {
             'rel_id': None,
             '_source_id': 'SOURCE ID',
             'a': 'val',
             'b': 'val',
+            'rel_deleted': None,
         }
         event = relater._create_event(row)
         self.assertEqual(mock_add.create_event.return_value, event)
@@ -918,6 +929,24 @@ JOIN MAX EVENTIDS
             '_source_id': 'SOURCE ID',
             'a': 'val',
             'b': 'val',
+        })
+
+        # ADD event (rel row present, but previously deleted)
+        row = {
+            'rel_id': 'some existing rel id',
+            '_source_id': 'SOURCE ID',
+            'a': 'val',
+            'b': 'val',
+            'rel_deleted': 'some date',
+            '_last_event': 'last event'
+        }
+        event = relater._create_event(row)
+        self.assertEqual(mock_add.create_event.return_value, event)
+        mock_add.create_event.assert_called_with('SOURCE ID', 'SOURCE ID', {
+            '_source_id': 'SOURCE ID',
+            'a': 'val',
+            'b': 'val',
+            '_last_event': 'last event'
         })
 
         # DELETE EVENT (src not present)
@@ -929,6 +958,7 @@ JOIN MAX EVENTIDS
             'src_id': None,
             '_last_event': 'last',
             'src_deleted': None,
+            'rel_deleted': None,
         }
         event = relater._create_event(row)
         self.assertEqual(mock_delete.create_event.return_value, event)
@@ -943,6 +973,7 @@ JOIN MAX EVENTIDS
             'src_id': 'src id',
             '_last_event': 'last',
             'src_deleted': True,
+            'rel_deleted': None,
         }
         event = relater._create_event(row)
         self.assertEqual(mock_delete.create_event.return_value, event)
@@ -957,6 +988,7 @@ JOIN MAX EVENTIDS
             'src_id': 'src id',
             'rel__hash': 'DIFFERENT HASH',
             '_last_event': 'last',
+            'rel_deleted': None,
         }
         event = relater._create_event(row)
         self.assertEqual(mock_modify.create_event.return_value, event)
@@ -973,6 +1005,7 @@ JOIN MAX EVENTIDS
             'src_id': 'src id',
             'rel__hash': 'THE HASH',
             '_last_event': 'last',
+            'rel_deleted': None,
         }
         event = relater._create_event(row)
         self.assertEqual(mock_confirm.create_event.return_value, event)

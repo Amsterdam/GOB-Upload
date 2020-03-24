@@ -60,6 +60,7 @@ class RelationTableRelater:
         FIELD.START_VALIDITY,
         FIELD.END_VALIDITY,
         'src_deleted',
+        'rel_deleted',
         'rel_id',
         'rel_dst_id',
         'rel_dst_volgnummer',
@@ -146,6 +147,7 @@ class RelationTableRelater:
             FIELD.LAST_DST_EVENT: f"max_dst_event.{FIELD.LAST_EVENT}",
             FIELD.LAST_EVENT: f"rel.{FIELD.LAST_EVENT}",
             "src_deleted": "NULL::timestamp without time zone",
+            "rel_deleted": f"rel.{FIELD.DATE_DELETED}",
             "rel_id": "rel.id",
             "rel_dst_id": "rel.dst_id",
             "rel_dst_volgnummer": "rel.dst_volgnummer",
@@ -184,6 +186,7 @@ class RelationTableRelater:
             FIELD.LAST_DST_EVENT: f"max_dst_event.{FIELD.LAST_EVENT}",
             FIELD.LAST_EVENT: f"rel.{FIELD.LAST_EVENT}",
             "src_deleted": f"src.{FIELD.DATE_DELETED}",
+            "rel_deleted": f"rel.{FIELD.DATE_DELETED}",
             "rel_id": "rel.id",
             "rel_dst_id": "rel.dst_id",
             "rel_dst_volgnummer": "rel.dst_volgnummer",
@@ -551,7 +554,6 @@ JOIN max_dst_event ON TRUE
 FULL JOIN (
     SELECT * FROM {self.relation_table}
     WHERE (src_id, src_volgnummer) IN (SELECT {FIELD.ID}, {FIELD.SEQNR} FROM {self.src_entities_alias})
-    AND {FIELD.DATE_DELETED} IS NULL
 ) rel ON rel.src_id = src.{FIELD.ID} AND rel.src_volgnummer = src.{FIELD.SEQNR}
     AND {self._source_value_ref()} = rel.{FIELD.SOURCE_VALUE}
 """
@@ -560,9 +562,19 @@ FULL JOIN (
 FULL JOIN (
     SELECT * FROM {self.relation_table}
     WHERE src_id IN (SELECT {FIELD.ID} FROM {self.src_entities_alias})
-    AND {FIELD.DATE_DELETED} IS NULL
 ) rel ON rel.src_id = src.{FIELD.ID} AND {self._source_value_ref()} = rel.{FIELD.SOURCE_VALUE}
 """
+
+    def _get_where(self):
+        """Returns WHERE clause for both sides of the UNION.
+        Only include not-deleted relations or existing sources.
+
+        Reason is that sometimes we do need deleted relations, in case the src is matched with a previously deleted
+        row in the relation table. We will need the last event of that row to re-add that row.
+
+        :return:
+        """
+        return f"WHERE rel.{FIELD.DATE_DELETED} IS NULL OR src.{FIELD.ID} IS NOT NULL"
 
     def get_query(self, initial_load=False):
         """Builds and returns the event extraction query
@@ -583,6 +595,7 @@ LEFT JOIN {self.dst_table_name} dst
 {self._join_src_geldigheid()}
 {self._join_dst_geldigheid()}
 {self._join_max_event_ids()}
+{self._get_where()}
 """
 
         query = f"""
@@ -609,6 +622,7 @@ INNER JOIN {self.relation_table} rel
 {self._join_src_geldigheid()}
 {self._join_dst_geldigheid()}
 {self._join_max_event_ids()}
+{self._get_where()}
 ) q
 WHERE row_number = 1
 """
@@ -646,14 +660,14 @@ WHERE row_number = 1
         if self.dst_has_states:
             compare_fields.append('dst_volgnummer')
 
-        if row['rel_id'] is None:
-            # No relation yet, create ADD
+        if row['rel_id'] is None or row['rel_deleted'] is not None:
+            # No relation yet, or previously deleted relation. Create ADD
             ignore_fields = [
                 'src_deleted',
+                'rel_deleted',
                 'src_last_event',
                 'rel_id',
                 f'rel_{FIELD.HASH}',
-                FIELD.LAST_EVENT,
                 'rel_dst_volgnummer',
             ] + [f"rel_{field}" for field in compare_fields]
 
