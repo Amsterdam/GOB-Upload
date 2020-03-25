@@ -10,6 +10,7 @@ from datetime import date, datetime
 from gobcore.events.import_events import ADD, DELETE, CONFIRM, MODIFY
 from gobcore.message_broker.offline_contents import ContentsWriter
 
+from gobcore.logging.logger import logger
 from gobcore.model import GOBModel
 from gobcore.model.metadata import FIELD
 from gobcore.model.relations import get_relation_name
@@ -24,6 +25,9 @@ from gobupload.compare.event_collector import EventCollector
 EQUALS = 'equals'
 LIES_IN = 'lies_in'
 GOB = 'GOB'
+
+# Maximum number of error messages to report
+_MAX_RELATION_CONFLICTS = 25
 
 
 class RelationTableRelater:
@@ -68,6 +72,7 @@ class RelationTableRelater:
         f'rel_{FIELD.START_VALIDITY}',
         f'rel_{FIELD.END_VALIDITY}',
         f'rel_{FIELD.HASH}',
+        'row_number'
     ]
 
     def __init__(self, src_catalog_name, src_collection_name, src_field_name):
@@ -117,8 +122,10 @@ class RelationTableRelater:
         return self.select_aliases + (['src_volgnummer'] if self.src_has_states else []) \
                   + (['dst_volgnummer'] if self.dst_has_states else [])
 
-    def _build_select_expressions(self, mapping: dict):
+    def _build_select_expressions(self, mapping: dict, exclude_aliases: list=[]):
         aliases = self._select_aliases()
+
+        aliases = [i for i in aliases if i not in exclude_aliases]
 
         assert all([alias in mapping.keys() for alias in aliases]), \
             'Missing key(s): ' + str([alias for alias in aliases if alias not in mapping.keys()])
@@ -158,7 +165,7 @@ class RelationTableRelater:
             FIELD.START_VALIDITY: f"CASE WHEN dst.{FIELD.ID} IS NULL THEN NULL ELSE {start_validity} END",
             FIELD.END_VALIDITY: f"CASE WHEN dst.{FIELD.ID} IS NULL THEN NULL ELSE {end_validity} END",
         }
-        return self._build_select_expressions(mapping)
+        return self._build_select_expressions(mapping, exclude_aliases=["row_number"])
 
     def _select_expressions_src(self):
         """Returns the select expressions for the src query
@@ -196,9 +203,12 @@ class RelationTableRelater:
             f"rel_{FIELD.HASH}": f"rel.{FIELD.HASH}",
             FIELD.START_VALIDITY: f"CASE WHEN dst.{FIELD.ID} IS NULL THEN NULL ELSE {start_validity} END",
             FIELD.END_VALIDITY: f"CASE WHEN dst.{FIELD.ID} IS NULL THEN NULL ELSE {end_validity} END",
+            "row_number": "row_number",
         }
 
-        return self._build_select_expressions(mapping)
+        select_expressions = self._build_select_expressions(mapping)
+
+        return select_expressions
 
     def _get_id(self):
         id_fields = [f"src.{FIELD.ID}"]
@@ -300,8 +310,7 @@ class RelationTableRelater:
 
         join_on += [
             f"src_dst.{FIELD.SOURCE} = src.{FIELD.SOURCE}",
-            f"src_dst.bronwaarde = {self._json_obj_ref()}->>'bronwaarde'",
-            f"src_dst.row_number = 1"
+            f"src_dst.bronwaarde = {self._json_obj_ref()}->>'bronwaarde'"
         ]
 
         return join_on
@@ -624,7 +633,6 @@ INNER JOIN {self.relation_table} rel
 {self._join_max_event_ids()}
 {self._get_where()}
 ) q
-WHERE row_number = 1
 """
         return query
 
@@ -703,6 +711,9 @@ WHERE row_number = 1
             if relation.get(field) and isinstance(relation.get(field), date)
         })
 
+        # Remove row_number from the relation
+        relation.pop('row_number', None)
+
         return relation
 
     def _is_initial_load(self):
@@ -720,6 +731,9 @@ WHERE row_number = 1
         query = self.get_query(initial_load)
         result = _execute(query, stream=True, max_row_buffer=25000)
 
+        errors = 0
+        error_msg = f"Conflicting {self.src_field_name} relations"
+
         with ProgressTicker("Process relate src result", 10000) as progress, \
                 ContentsWriter() as contents_writer, \
                 ContentsWriter() as confirms_writer, \
@@ -729,8 +743,36 @@ WHERE row_number = 1
             confirms = confirms_writer.filename
 
             for row in result:
-                progress.tick()
-                event = self._create_event(self._format_relation(dict(row)))
-                event_collector.collect(event)
+                row = dict(row)
+                # Log conflicting relations
+                if row.get("row_number", 0) > 1:
+                    data = {
+                        f"src{FIELD.ID}": row.get(f"src{FIELD.ID}")
+                    }
+                    data.update({f"src_{FIELD.SEQNR}": row.get(f"src_{FIELD.SEQNR}")}
+                                if self.src_has_states else {})
+
+                    data.update({
+                        "conflict": {
+                            "id": row.get(f"dst{FIELD.ID}"),
+                            "bronwaarde": row.get(FIELD.SOURCE_VALUE),
+                        }
+                    })
+                    data["conflict"].update({f"{FIELD.SEQNR}": row.get(f"dst_{FIELD.SEQNR}")}
+                                            if self.dst_has_states else {})
+
+                    if errors < _MAX_RELATION_CONFLICTS:
+                        logger.warning(error_msg, {
+                            'id': error_msg,
+                            'data': data
+                        })
+                    errors += 1
+                else:
+                    progress.tick()
+                    event = self._create_event(self._format_relation(row))
+                    event_collector.collect(event)
+
+            if errors > 0:
+                logger.warning(f"{error_msg}: {errors} found, {min(errors, _MAX_RELATION_CONFLICTS)} reported")
 
             return filename, confirms
