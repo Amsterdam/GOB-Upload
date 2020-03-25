@@ -1066,6 +1066,7 @@ WHERE CLAUSE
     @patch("gobupload.relate.table.update_table.EventCollector")
     @patch("gobupload.relate.table.update_table.ContentsWriter")
     @patch("gobupload.relate.table.update_table.ProgressTicker", MagicMock())
+    @patch('gobupload.relate.table.update_table._MAX_RELATION_CONFLICTS', 1)
     def test_update_conflicts(self, mock_contents_writer, mock_event_collector, mock_execute, mock_logger):
         relater = self._get_relater()
         relater._is_initial_load = MagicMock()
@@ -1089,12 +1090,19 @@ WHERE CLAUSE
             'dst_id': 2,
             'bronwaarde': "bronwaarde",
             'row_number': 2
+        },
+        {
+            'src_id': 1,
+            'src_volgnummer': 1,
+            'dst_id': 3,
+            'bronwaarde': "bronwaarde",
+            'row_number': 3
         }]
 
-        error_msg = "Conflicting attr relations"
+        conflicts_msg = "Conflicting attr relations"
         
         expected = {
-            "id": error_msg,
+            "id": conflicts_msg,
             "data": {
                 "src_id": 1,
                 "src_volgnummer": 1,
@@ -1107,6 +1115,6 @@ WHERE CLAUSE
 
         result = relater.update()
         mock_logger.warning.assert_has_calls([
-            call(error_msg, expected),
-            call(f"{error_msg}: 1 found, 1 reported"),
+            call(conflicts_msg, expected),
+            call(f"{conflicts_msg}: 2 found, 1 reported"),
         ])

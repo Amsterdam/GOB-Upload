@@ -731,8 +731,8 @@ INNER JOIN {self.relation_table} rel
         query = self.get_query(initial_load)
         result = _execute(query, stream=True, max_row_buffer=25000)
 
-        errors = 0
-        error_msg = f"Conflicting {self.src_field_name} relations"
+        conflicts = 0
+        conflicts_msg = f"Conflicting {self.src_field_name} relations"
 
         with ProgressTicker("Process relate src result", 10000) as progress, \
                 ContentsWriter() as contents_writer, \
@@ -761,18 +761,20 @@ INNER JOIN {self.relation_table} rel
                     data["conflict"].update({f"{FIELD.SEQNR}": row.get(f"dst_{FIELD.SEQNR}")}
                                             if self.dst_has_states else {})
 
-                    if errors < _MAX_RELATION_CONFLICTS:
-                        logger.warning(error_msg, {
-                            'id': error_msg,
+                    if conflicts < _MAX_RELATION_CONFLICTS:
+                        print("LOG WARNING")
+                        logger.warning(conflicts_msg, {
+                            'id': conflicts_msg,
                             'data': data
                         })
-                    errors += 1
+                    conflicts += 1
                 else:
                     progress.tick()
                     event = self._create_event(self._format_relation(row))
                     event_collector.collect(event)
 
-            if errors > 0:
-                logger.warning(f"{error_msg}: {errors} found, {min(errors, _MAX_RELATION_CONFLICTS)} reported")
+            if conflicts > _MAX_RELATION_CONFLICTS:
+                logger.warning(f"{conflicts_msg}: {conflicts} found, "
+                               f"{min(conflicts, _MAX_RELATION_CONFLICTS)} reported")
 
             return filename, confirms
