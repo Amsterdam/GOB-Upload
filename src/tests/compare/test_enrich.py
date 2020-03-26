@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 from collections import namedtuple
 
 from gobupload.storage.handler import GOBStorageHandler
-from gobupload.compare.enrich import Enricher
+from gobupload.compare.enrich import Enricher, _update_last_assigned, _autoid, AutoIdException
 
 
 @patch('gobupload.compare.enrich.logger', MagicMock())
@@ -301,5 +301,60 @@ class TestEnrichAutoid(TestCase):
             enricher.enrich(content)
             self.assertIsNone(content["id"])
 
-    def test_autoid(self):
-        pass
+    def test_update_last_assigned(self):
+        column = 'any column'
+        data = {
+            column: 'ABC'
+        }
+        specs = {
+            'template': '00XX'
+        }
+        assigned = {
+            column: {
+                'last': None
+            }
+        }
+        _update_last_assigned(data, specs, column, assigned)
+        self.assertEqual(assigned[column]['last'], None)
+
+        data = {
+            column: '1'
+        }
+        _update_last_assigned(data, specs, column, assigned)
+        self.assertEqual(assigned[column]['last'], None)
+
+        data = {
+            column: '0024'
+        }
+        _update_last_assigned(data, specs, column, assigned)
+        self.assertEqual(assigned[column]['last'], '0024')
+
+    def test_autoid_conflict(self):
+        storage = None
+        column = 'any column'
+        data = {
+            column: 'ABC'
+        }
+        specs = {
+            'on': 'any column',
+            'template': '00XX'
+        }
+        assigned = {
+            column: {
+                'issued': {},
+                'last': None
+            }
+        }
+        result, _ = _autoid(storage, data, specs, column, assigned)
+        self.assertEqual(result, 'ABC')
+
+        assigned = {
+            column: {
+                'issued': {
+                    'any id': 'ABC'
+                },
+                'last': None
+            }
+        }
+        with self.assertRaises(AutoIdException):
+            result, _ = _autoid(storage, data, specs, column, assigned)
