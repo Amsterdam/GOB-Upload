@@ -277,8 +277,7 @@ class TestRelationTableRelater(TestCase):
         expected = [
             "src_dst.src_id = src._id",
             "src_dst._source = src._source",
-            "src_dst.bronwaarde = json_obj_ref->>'bronwaarde'",
-            "src_dst.row_number = 1",
+            "src_dst.bronwaarde = json_obj_ref->>'bronwaarde'"
         ]
         self.assertEqual(expected, relater._src_dst_join_on())
 
@@ -287,8 +286,7 @@ class TestRelationTableRelater(TestCase):
             "src_dst.src_id = src._id",
             "src_dst.src_volgnummer = src.volgnummer",
             "src_dst._source = src._source",
-            "src_dst.bronwaarde = json_obj_ref->>'bronwaarde'",
-            "src_dst.row_number = 1",
+            "src_dst.bronwaarde = json_obj_ref->>'bronwaarde'"
         ]
         self.assertEqual(expected, relater._src_dst_join_on())
 
@@ -804,7 +802,6 @@ JOIN_DST_GELDIGHEID
 JOIN MAX EVENTIDS
 WHERE CLAUSE
 ) q
-WHERE row_number = 1
 """
 
         result = relater.get_query()
@@ -854,7 +851,6 @@ JOIN_DST_GELDIGHEID
 JOIN MAX EVENTIDS
 WHERE CLAUSE
 ) q
-WHERE row_number = 1
 """
         result = relater.get_query()
         self.assertEqual(result, expected)
@@ -1064,3 +1060,61 @@ WHERE CLAUSE
 
         self.assertEqual((mock_contents_writer.return_value.__enter__.return_value.filename,
                           mock_contents_writer.return_value.__enter__.return_value.filename), result)
+
+    @patch('gobupload.relate.table.update_table.logger')
+    @patch("gobupload.relate.table.update_table._execute")
+    @patch("gobupload.relate.table.update_table.EventCollector")
+    @patch("gobupload.relate.table.update_table.ContentsWriter")
+    @patch("gobupload.relate.table.update_table.ProgressTicker", MagicMock())
+    @patch('gobupload.relate.table.update_table._MAX_RELATION_CONFLICTS', 1)
+    def test_update_conflicts(self, mock_contents_writer, mock_event_collector, mock_execute, mock_logger):
+        relater = self._get_relater()
+        relater._is_initial_load = MagicMock()
+        relater._create_event = MagicMock(side_effect=lambda x: x)
+        relater.get_query = MagicMock()
+        relater._format_relation = MagicMock(side_effect=lambda x: x)
+    
+        relater.src_field_name = "attr"
+        relater.src_has_state = False
+
+        mock_execute.return_value = [{
+            'src_id': 1,
+            'src_volgnummer': 1,
+            'dst_id': 1,
+            'bronwaarde': "bronwaarde",
+            'row_number': 1
+        },
+        {
+            'src_id': 1,
+            'src_volgnummer': 1,
+            'dst_id': 2,
+            'bronwaarde': "bronwaarde",
+            'row_number': 2
+        },
+        {
+            'src_id': 1,
+            'src_volgnummer': 1,
+            'dst_id': 3,
+            'bronwaarde': "bronwaarde",
+            'row_number': 3
+        }]
+
+        conflicts_msg = "Conflicting attr relations"
+        
+        expected = {
+            "id": conflicts_msg,
+            "data": {
+                "src_id": 1,
+                "src_volgnummer": 1,
+                "conflict": {
+                    "id": 2,
+                    "bronwaarde": "bronwaarde"
+                }
+            }
+        }
+
+        result = relater.update()
+        mock_logger.warning.assert_has_calls([
+            call(conflicts_msg, expected),
+            call(f"{conflicts_msg}: 2 found, 1 reported"),
+        ])
