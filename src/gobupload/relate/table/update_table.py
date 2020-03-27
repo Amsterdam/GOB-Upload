@@ -745,7 +745,9 @@ INNER JOIN {self.relation_table} rel
             for row in result:
                 row = dict(row)
                 # Log conflicting relations
-                if row.get("row_number", 0) > 1:
+                # Temporary bug-fix, final fix will be made by Jasper
+                # But otherwise this code would cause the e2e tests to fail
+                if (row.get("row_number") or 0) > 1:
                     data = {
                         f"src{FIELD.ID}": row.get(f"src{FIELD.ID}")
                     }
