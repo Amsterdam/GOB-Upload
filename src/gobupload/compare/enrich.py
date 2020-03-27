@@ -194,6 +194,9 @@ def _autoid(storage, data, specs, column, assigned):
 
     current = _get_current_value(storage, data, specs, column, assigned)
     if current:
+        # Insert current value and adjust last assigned value if required
+        data[column] = current
+        _update_last_assigned(data, specs, column, assigned)
         return current, None
 
     # No value is already stored neither has a value already been issued
