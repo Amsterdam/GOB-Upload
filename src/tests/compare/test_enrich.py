@@ -358,3 +358,28 @@ class TestEnrichAutoid(TestCase):
         }
         with self.assertRaises(AutoIdException):
             result, _ = _autoid(storage, data, specs, column, assigned)
+
+    @patch("gobupload.compare.enrich._get_current_value")
+    @patch("gobupload.compare.enrich._update_last_assigned")
+    def test_autoid_with_current_value(self, mock_update, mock_current_value):
+        storage = None
+        column = 'any column'
+        data = {
+            column: None
+        }
+        specs = {
+            'on': 'any column',
+            'template': '00XX'
+        }
+        assigned = {
+            column: {
+                'issued': {},
+                'last': None
+            }
+        }
+        current_value = "any current value"
+        mock_current_value.return_value = current_value
+        result, _ = _autoid(storage, data, specs, column, assigned)
+        self.assertEqual(result, current_value)
+        self.assertEqual(data[column], current_value)
+        mock_update.assert_called()
