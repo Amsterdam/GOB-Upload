@@ -3,6 +3,7 @@ import os
 from gobcore.logging.logger import logger
 from gobcore.utils import ProgressTicker
 from gobcore.message_broker.offline_contents import ContentsReader
+from gobcore.message_broker.notifications import add_notification, EventNotification
 
 from gobupload.storage.handler import GOBStorageHandler
 from gobupload.update.update_statistics import UpdateStatistics
@@ -87,9 +88,10 @@ def apply(msg):
     storage = GOBStorageHandler()
     combinations = storage.get_source_catalogue_entity_combinations(catalogue=catalogue, entity=entity)
 
+    # Gather statistics of update process
+    stats = UpdateStatistics()
+    last_eventid = None
     for result in combinations:
-        # Gather statistics of update process
-        stats = UpdateStatistics()
         model = f"{result.source} {result.catalogue} {result.entity}"
         storage = GOBStorageHandler(result)
         entity_max_eventid, last_eventid = get_event_ids(storage)
@@ -120,4 +122,9 @@ def apply(msg):
         'warnings': logger.get_warnings(),
         'errors': logger.get_errors()
     }
+
+    # Add a events notification telling what types of event have been applied
+    if stats.applied:
+        add_notification(msg, EventNotification(stats.applied, last_eventid))
+
     return msg
