@@ -3,7 +3,7 @@ import importlib
 
 from unittest import TestCase, mock
 
-
+@mock.patch('gobcore.message_broker.notifications.listen_to_notifications', mock.MagicMock())
 class TestMain(TestCase):
 
     @mock.patch('gobupload.storage.handler.GOBStorageHandler')
