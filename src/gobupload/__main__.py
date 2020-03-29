@@ -25,10 +25,17 @@ from gobupload.relate.table.entrypoint import relate_table_src_message_handler
 
 
 def update_cstore(msg):
+    # Start a dynamic workflow by extending the current job with new steps
+    # Or start a static defined step in the current job
+
+    # Or (not preferred) just extend the current step and log the output attached to the current step
+    from gobcore.logging.logger import logger
+    logger.configure(msg, "CSTORE")
+    logger.info("Start cstore update")
     notification = get_notification(msg)
-    print("Type", notification.type)
-    print("Header", notification.header)
-    print("Contents", notification.contents)
+    logger.info(f"Type: {notification.type}")
+    logger.info(f"Header: {notification.header}")
+    logger.info(f"Contents: {notification.contents}")
 
 
 SERVICEDEFINITION = {
