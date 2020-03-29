@@ -90,11 +90,16 @@ def apply(msg):
 
     # Gather statistics of update process
     stats = UpdateStatistics()
-    last_eventid = None
+    before = None
+    after = None
     for result in combinations:
         model = f"{result.source} {result.catalogue} {result.entity}"
         storage = GOBStorageHandler(result)
+
+        # Track eventId before event application
         entity_max_eventid, last_eventid = get_event_ids(storage)
+        before = min(last_eventid, before or last_eventid)
+
         if is_corrupted(entity_max_eventid, last_eventid):
             logger.error(f"Model {model} is inconsistent! data is more recent than events")
         elif entity_max_eventid == last_eventid:
@@ -107,6 +112,10 @@ def apply(msg):
 
             apply_events(storage, last_events, entity_max_eventid, stats)
             apply_confirm_events(storage, stats, msg)
+
+        # Track eventId after event application
+        entity_max_eventid, last_eventid = get_event_ids(storage)
+        after = max(last_eventid, after or last_eventid)
 
         # Build result message
         results = stats.results()
@@ -125,6 +134,6 @@ def apply(msg):
 
     # Add a events notification telling what types of event have been applied
     if stats.applied:
-        add_notification(msg, EventNotification(stats.applied, last_eventid))
+        add_notification(msg, EventNotification(stats.applied, [before, after]))
 
     return msg
