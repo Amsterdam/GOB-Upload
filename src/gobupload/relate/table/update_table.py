@@ -10,7 +10,6 @@ from datetime import date, datetime
 from gobcore.events.import_events import ADD, DELETE, CONFIRM, MODIFY
 from gobcore.message_broker.offline_contents import ContentsWriter
 
-from gobcore.logging.logger import logger
 from gobcore.model import GOBModel
 from gobcore.model.metadata import FIELD
 from gobcore.model.relations import get_relation_name
@@ -60,10 +59,14 @@ class RelationTableRelater:
         FIELD.SOURCE_VALUE,
         FIELD.LAST_SRC_EVENT,
         FIELD.LAST_DST_EVENT,
-        FIELD.LAST_EVENT,
         FIELD.START_VALIDITY,
         FIELD.END_VALIDITY,
         'src_deleted',
+        'row_number',
+    ]
+
+    select_relation_aliases = [
+        FIELD.LAST_EVENT,
         'rel_deleted',
         'rel_id',
         'rel_dst_id',
@@ -72,7 +75,6 @@ class RelationTableRelater:
         f'rel_{FIELD.START_VALIDITY}',
         f'rel_{FIELD.END_VALIDITY}',
         f'rel_{FIELD.HASH}',
-        'row_number'
     ]
 
     def __init__(self, src_catalog_name, src_collection_name, src_field_name):
@@ -102,6 +104,9 @@ class RelationTableRelater:
         self.relation_table = "rel_" + get_relation_name(self.model, src_catalog_name, src_collection_name,
                                                          src_field_name)
 
+        # Initally don't exclude the relation tables
+        self.exclude_relation_table = False
+
     def _validity_select_expressions(self):
         if self.src_has_states and self.dst_has_states:
             start = f"GREATEST(src_bg.{FIELD.START_VALIDITY}, dst_bg.{FIELD.START_VALIDITY})"
@@ -119,7 +124,8 @@ class RelationTableRelater:
         return start, end
 
     def _select_aliases(self):
-        return self.select_aliases + (['src_volgnummer'] if self.src_has_states else []) \
+        return self.select_aliases + (self.select_relation_aliases if not self.exclude_relation_table else []) \
+                  + (['src_volgnummer'] if self.src_has_states else []) \
                   + (['dst_volgnummer'] if self.dst_has_states else [])
 
     def _build_select_expressions(self, mapping: dict, exclude_aliases: list=[]):
@@ -167,7 +173,7 @@ class RelationTableRelater:
         }
         return self._build_select_expressions(mapping, exclude_aliases=["row_number"])
 
-    def _select_expressions_src(self):
+    def _select_expressions_src(self, exclude_relation_aliases=False):
         """Returns the select expressions for the src query
 
         :return:
@@ -310,8 +316,11 @@ class RelationTableRelater:
 
         join_on += [
             f"src_dst.{FIELD.SOURCE} = src.{FIELD.SOURCE}",
-            f"src_dst.bronwaarde = {self._json_obj_ref()}->>'bronwaarde'"
+            f"src_dst.bronwaarde = {self._json_obj_ref()}->>'bronwaarde'",
         ]
+
+        if not self.exclude_relation_table:
+            join_on.append(f"src_dst.row_number = 1")
 
         return join_on
 
@@ -498,22 +507,35 @@ all_{src_or_dst}_intervals(
         return result
 
     def _with_src_entities(self):
-        return f"""
+        statement = f"""
 {self.src_entities_alias} AS (
-    SELECT * FROM {self.src_table_name} WHERE {FIELD.LAST_EVENT} > (
+    SELECT * FROM {self.src_table_name}"""
+
+        if not self.exclude_relation_table:
+            statement += f""" WHERE {FIELD.LAST_EVENT} > (
         SELECT COALESCE(MAX({FIELD.LAST_SRC_EVENT}), 0) FROM {self.relation_table}
-    )
+    )"""
+
+        statement += """
+)
+"""
+        return statement
+
+    def _with_dst_entities(self):
+        statement = f"""
+{self.dst_entities_alias} AS (
+    SELECT * FROM {self.dst_table_name}"""
+
+        if not self.exclude_relation_table:
+            statement += f""" WHERE {FIELD.LAST_EVENT} > (
+        SELECT COALESCE(MAX({FIELD.LAST_DST_EVENT}), 0) FROM {self.relation_table}
+    )"""
+
+        statement += """
 )
 """
 
-    def _with_dst_entities(self):
-        return f"""
-{self.dst_entities_alias} AS (
-    SELECT * FROM {self.dst_table_name} WHERE {FIELD.LAST_EVENT} > (
-        SELECT COALESCE(MAX({FIELD.LAST_DST_EVENT}), 0) FROM {self.relation_table}
-    )
-)
-"""
+        return statement
 
     def _with_max_src_event(self):
         return f"""
@@ -583,13 +605,24 @@ FULL JOIN (
 
         :return:
         """
-        return f"WHERE rel.{FIELD.DATE_DELETED} IS NULL OR src.{FIELD.ID} IS NOT NULL"
+        return f"WHERE " \
+               + (f"rel.{FIELD.DATE_DELETED} IS NULL OR " if not self.exclude_relation_table else "") \
+               + f"src.{FIELD.ID} IS NOT NULL" \
+               + (f" AND row_number > 1" if self.exclude_relation_table else "")
+
+    def get_conflicts_query(self):
+        self.exclude_relation_table = True
+        return self.get_query()
 
     def get_query(self, initial_load=False):
         """Builds and returns the event extraction query
 
-        Omits right-hand side of the query when initial_load=True, because it is unnecessary, and excluding everything
-        on the right-hand side that is done on the left-hand-side creates a heavy query.
+        Omits right-hand side of the query when initial_load=True, because it
+        is unnecessary, and excluding everything on the right-hand side that is done on the left-hand-side creates
+        a heavy query.
+
+        When self.exclude_relation_table=True, the relation table will not be joined and only conflicts will
+        be returned.
         :return:
         """
 
@@ -600,7 +633,7 @@ FULL JOIN (
 {self._src_dst_join()}
 LEFT JOIN {self.dst_table_name} dst
     ON {self.and_join.join(dst_table_outer_join_on)}
-{self._join_rel()}
+{self._join_rel() if not self.exclude_relation_table else ""}
 {self._join_src_geldigheid()}
 {self._join_dst_geldigheid()}
 {self._join_max_event_ids()}
@@ -614,7 +647,7 @@ SELECT
 FROM {self.src_entities_alias} src
 {joins}
 """
-        if not initial_load:
+        if not initial_load and not self.exclude_relation_table:
             query += f"""
 UNION ALL
 SELECT
@@ -731,9 +764,6 @@ INNER JOIN {self.relation_table} rel
         query = self.get_query(initial_load)
         result = _execute(query, stream=True, max_row_buffer=25000)
 
-        conflicts = 0
-        conflicts_msg = f"Conflicting {self.src_field_name} relations"
-
         with ProgressTicker("Process relate src result", 10000) as progress, \
                 ContentsWriter() as contents_writer, \
                 ContentsWriter() as confirms_writer, \
@@ -743,40 +773,8 @@ INNER JOIN {self.relation_table} rel
             confirms = confirms_writer.filename
 
             for row in result:
-                row = dict(row)
-                # Log conflicting relations
-                # Temporary bug-fix, final fix will be made by Jasper
-                # But otherwise this code would cause the e2e tests to fail
-                if (row.get("row_number") or 0) > 1:
-                    data = {
-                        f"src{FIELD.ID}": row.get(f"src{FIELD.ID}")
-                    }
-                    data.update({f"src_{FIELD.SEQNR}": row.get(f"src_{FIELD.SEQNR}")}
-                                if self.src_has_states else {})
-
-                    data.update({
-                        "conflict": {
-                            "id": row.get(f"dst{FIELD.ID}"),
-                            "bronwaarde": row.get(FIELD.SOURCE_VALUE),
-                        }
-                    })
-                    data["conflict"].update({f"{FIELD.SEQNR}": row.get(f"dst_{FIELD.SEQNR}")}
-                                            if self.dst_has_states else {})
-
-                    if conflicts < _MAX_RELATION_CONFLICTS:
-                        print("LOG WARNING")
-                        logger.warning(conflicts_msg, {
-                            'id': conflicts_msg,
-                            'data': data
-                        })
-                    conflicts += 1
-                else:
-                    progress.tick()
-                    event = self._create_event(self._format_relation(row))
-                    event_collector.collect(event)
-
-            if conflicts > _MAX_RELATION_CONFLICTS:
-                logger.warning(f"{conflicts_msg}: {conflicts} found, "
-                               f"{min(conflicts, _MAX_RELATION_CONFLICTS)} reported")
+                progress.tick()
+                event = self._create_event(self._format_relation(dict(row)))
+                event_collector.collect(event)
 
             return filename, confirms

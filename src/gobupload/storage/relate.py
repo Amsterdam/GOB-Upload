@@ -14,8 +14,8 @@ from gobcore.model.relations import get_relation_name
 from gobcore.sources import GOBSources
 
 from gobupload.relate.exceptions import RelateException
+from gobupload.relate.table.update_table import RelationTableRelater
 from gobupload.storage.execute import _execute, _execute_multiple
-
 
 # Dates compare at start of day
 _START_OF_DAY = datetime.time(0, 0, 0)
@@ -512,6 +512,47 @@ GROUP BY
     _query_missing(dangling, f"{name} dangling destinations")
 
 
+def check_relation_conflicts(catalog_name, collection_name, attribute_name):
+    updater = RelationTableRelater(catalog_name, collection_name, attribute_name)
+    query = updater.get_conflicts_query()
+
+    result = _execute(query, stream=True, max_row_buffer=25000)
+
+    conflicts = 0
+    conflicts_msg = f"Conflicting {attribute_name} relations"
+
+    for row in result:
+        row = dict(row)
+        # Log conflicting relations
+        if (row.get("row_number") or 0) > 1:
+            data = {
+                f"src{FIELD.ID}": row.get(f"src{FIELD.ID}")
+            }
+            data.update({f"src_{FIELD.SEQNR}": row.get(f"src_{FIELD.SEQNR}")}
+                        if updater.src_has_states else {})
+
+            data.update({
+                "conflict": {
+                    "id": row.get(f"dst{FIELD.ID}"),
+                    "bronwaarde": row.get(FIELD.SOURCE_VALUE),
+                }
+            })
+
+            data["conflict"].update({f"{FIELD.SEQNR}": row.get(f"dst_{FIELD.SEQNR}")}
+                                    if updater.dst_has_states else {})
+
+            if conflicts < _MAX_RELATION_CONFLICTS:
+                logger.warning(conflicts_msg, {
+                    'id': conflicts_msg,
+                    'data': data
+                })
+            conflicts += 1
+
+    if conflicts > _MAX_RELATION_CONFLICTS:
+        logger.warning(f"{conflicts_msg}: {conflicts} found, "
+                       f"{min(conflicts, _MAX_RELATION_CONFLICTS)} reported")
+
+
 def _update_match(spec, field, query_type, is_very_many=False):
     if spec['method'] == EQUALS:
         if query_type == JOIN:
@@ -713,7 +754,6 @@ ON
     # Update the source tabel
     updates = _do_relate_update(new_values, src_field_name, src_has_states, dst_has_states, src_table_name, False)
 
-    _check_relate_update(new_values, src_field_name, src_identification)
     return updates
 
 
@@ -848,41 +888,3 @@ def _get_updated_row_count(row_count, chunk_size):
     if row_count > chunk_size:
         raise RelateException(f"Updated row count {row_count} is greater than CHUNK_SIZE {chunk_size}")
     return row_count
-
-
-def _check_relate_update(new_values, src_field_name, src_identification):
-    """
-    If relate update has finished, no new updates should exist anymore
-
-    If any new update still exist, this means that there are multiple values for the
-    same source id and volgnummer
-
-    :param new_values: query to get any new updates
-    :param src_field_name: name of the source field
-    :param src_identification: identification of the source, eg id + volgnummer
-    :return: total number of inconsistencies found
-    """
-    control_query = f"""
-        SELECT
-            {src_identification},
-            {src_field_name}_updated AS relation,
-            src_matchcolumn          AS conflits_with
-        FROM (
-            {new_values}
-        ) new_values
-    """
-
-    errors = 0
-    error_msg = f"Conflicting {src_field_name} relations"
-    for data in _get_data(control_query):
-        if errors < _MAX_RELATION_CONFLICTS:
-            logger.error(error_msg, {
-                'id': error_msg,
-                'data': data
-            })
-        errors += 1
-
-    if errors > 0:
-        logger.warning(f"{error_msg}: {errors} found, {min(errors, _MAX_RELATION_CONFLICTS)} reported")
-
-    return errors
