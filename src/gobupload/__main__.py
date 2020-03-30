@@ -22,7 +22,6 @@ from gobupload.storage.handler import GOBStorageHandler
 
 from gobupload.relate.table.entrypoint import relate_table_src_message_handler
 
-
 SERVICEDEFINITION = {
     'apply': {
         'queue': APPLY_QUEUE,
