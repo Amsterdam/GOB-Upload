@@ -13,7 +13,6 @@ from gobcore.message_broker.config import COMPARE_RESULT_KEY, FULLUPDATE_RESULT_
     CHECK_RELATION_RESULT_KEY, APPLY_RESULT_KEY, RELATE_UPDATE_VIEW_QUEUE, RELATE_UPDATE_VIEW_RESULT_KEY, \
     RELATE_TABLE_RESULT_KEY
 from gobcore.message_broker.messagedriven_service import MessagedrivenService
-from gobcore.message_broker.notifications import listen_to_notifications, get_notification
 
 from gobupload import compare
 from gobupload import relate
@@ -22,20 +21,6 @@ from gobupload import apply
 from gobupload.storage.handler import GOBStorageHandler
 
 from gobupload.relate.table.entrypoint import relate_table_src_message_handler
-
-
-def update_cstore(msg):
-    # Start a dynamic workflow by extending the current job with new steps
-    # Or start a static defined step in the current job
-
-    # Or (not preferred) just extend the current step and log the output attached to the current step
-    from gobcore.logging.logger import logger
-    logger.configure(msg, "CSTORE")
-    logger.info("Start cstore update")
-    notification = get_notification(msg)
-    logger.info(f"Type: {notification.type}")
-    logger.info(f"Header: {notification.header}")
-    logger.info(f"Contents: {notification.contents}")
 
 
 SERVICEDEFINITION = {
@@ -94,10 +79,6 @@ SERVICEDEFINITION = {
             'exchange': WORKFLOW_EXCHANGE,
             'key': RELATE_UPDATE_VIEW_RESULT_KEY
         }
-    },
-    'cstore': {
-        'queue': listen_to_notifications("cstore"),
-        'handler': update_cstore
     }
 }
 
