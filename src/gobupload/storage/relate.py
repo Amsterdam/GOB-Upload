@@ -754,7 +754,6 @@ ON
     # Update the source tabel
     updates = _do_relate_update(new_values, src_field_name, src_has_states, dst_has_states, src_table_name, False)
 
-    _check_relate_update(new_values, src_field_name, src_identification)
     return updates
 
 
@@ -889,41 +888,3 @@ def _get_updated_row_count(row_count, chunk_size):
     if row_count > chunk_size:
         raise RelateException(f"Updated row count {row_count} is greater than CHUNK_SIZE {chunk_size}")
     return row_count
-
-
-def _check_relate_update(new_values, src_field_name, src_identification):
-    """
-    If relate update has finished, no new updates should exist anymore
-
-    If any new update still exist, this means that there are multiple values for the
-    same source id and volgnummer
-
-    :param new_values: query to get any new updates
-    :param src_field_name: name of the source field
-    :param src_identification: identification of the source, eg id + volgnummer
-    :return: total number of inconsistencies found
-    """
-    control_query = f"""
-        SELECT
-            {src_identification},
-            {src_field_name}_updated AS relation,
-            src_matchcolumn          AS conflits_with
-        FROM (
-            {new_values}
-        ) new_values
-    """
-
-    errors = 0
-    error_msg = f"Conflicting {src_field_name} relations"
-    for data in _get_data(control_query):
-        if errors < _MAX_RELATION_CONFLICTS:
-            logger.error(error_msg, {
-                'id': error_msg,
-                'data': data
-            })
-        errors += 1
-
-    if errors > 0:
-        logger.warning(f"{error_msg}: {errors} found, {min(errors, _MAX_RELATION_CONFLICTS)} reported")
-
-    return errors
