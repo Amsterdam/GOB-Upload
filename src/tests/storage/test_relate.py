@@ -7,7 +7,7 @@ from gobcore.sources import GOBSources
 from gobupload.relate.exceptions import RelateException
 from gobupload.storage.relate import update_relations, EQUALS, LIES_IN, JOIN, WHERE, _update_match, \
     _get_data, get_last_change, get_current_relations, RelationUpdater, _query_missing, check_relations, \
-    check_very_many_relations, _check_relate_update, _get_updated_row_count, check_relation_conflicts
+    check_very_many_relations, _get_updated_row_count, check_relation_conflicts
 
 @patch('gobupload.relate.relate.logger', MagicMock())
 class TestRelations(TestCase):
@@ -227,7 +227,6 @@ ORDER BY _source, _id, volgnummer, begin_geldigheid
         self.assertEqual(q, "any query type")
 
     @patch('gobupload.storage.relate.logger', MagicMock())
-    @patch('gobupload.storage.relate._check_relate_update', MagicMock())
     @patch('gobupload.storage.relate.get_relation_name')
     @patch('gobupload.storage.relate._execute')
     @patch('gobupload.storage.relate._get_data')
@@ -375,21 +374,6 @@ JOIN jsonb_array_elements(src.field) AS json_arr_elm ON TRUE
         self.assertEqual(0, update_relations('catalog', 'collection', 'fiel'))
 
         mock_sources.assert_not_called()
-
-    @patch('gobupload.storage.relate.logger', MagicMock())
-    @patch('gobupload.storage.relate._get_data')
-    def test_check_relate_update(self, mock_get_data):
-        def get_data_values():
-            return iter([])
-        mock_get_data.return_value = get_data_values()
-        result = _check_relate_update("any new values", "any src field name", "any src identification")
-        self.assertEqual(result, 0)
-
-        def get_data_values():
-            return iter([{}, {}])
-        mock_get_data.return_value = get_data_values()
-        result = _check_relate_update("any new values", "any src field name", "any src identification")
-        self.assertEqual(result, 2)
 
     def test_get_updated_row_count(self):
         self.assertEqual(_get_updated_row_count(0, 2), 0)
