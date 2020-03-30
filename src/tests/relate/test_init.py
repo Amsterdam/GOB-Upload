@@ -29,6 +29,7 @@ class TestInit(TestCase):
     @patch('gobupload.relate.GOBModel', MagicMock())
     @patch('gobupload.relate.logger', MagicMock())
     @patch('gobupload.relate.check_relations', MagicMock())
+    @patch('gobupload.relate.check_relation_conflicts', MagicMock())
     def test_check_relation(self):
         msg = {
             'header': {

@@ -20,7 +20,8 @@ from gobcore.typesystem.gob_types import VeryManyReference
 
 from gobupload.storage.handler import GOBStorageHandler
 from gobupload.storage.materialized_views import MaterializedViews
-from gobupload.storage.relate import get_last_change, check_relations, check_very_many_relations
+from gobupload.storage.relate import get_last_change, check_relations, check_very_many_relations, \
+                                     check_relation_conflicts
 
 from gobupload.relate.relate import relate_update
 from gobupload.relate.publish import publish_result
@@ -116,6 +117,9 @@ def check_relation(msg):
         check_function(catalog_name, collection_name, attribute_name)
     except Exception as e:
         _log_exception(f"{attribute_name} check FAILED", e)
+
+    logger.info(f"Relation conflicts check started")
+    check_relation_conflicts(catalog_name, collection_name, attribute_name)
 
     logger.info(f"Relate check completed")
 

@@ -90,13 +90,23 @@ class TestRelationTableRelater(TestCase):
     def test_select_aliases(self):
         relater = self._get_relater()
         relater.select_aliases = ['a']
+        relater.select_relation_aliases = ['b']
         relater.src_has_states = False
         relater.dst_has_states = False
 
-        self.assertEqual(['a'], relater._select_aliases())
+        self.assertEqual(['a', 'b'], relater._select_aliases())
 
         relater.src_has_states = True
         relater.dst_has_states = True
+
+        self.assertEqual([
+            'a',
+            'b',
+            'src_volgnummer',
+            'dst_volgnummer',
+        ], relater._select_aliases())
+
+        relater.exclude_relation_table = True
 
         self.assertEqual([
             'a',
@@ -277,11 +287,22 @@ class TestRelationTableRelater(TestCase):
         expected = [
             "src_dst.src_id = src._id",
             "src_dst._source = src._source",
-            "src_dst.bronwaarde = json_obj_ref->>'bronwaarde'"
+            "src_dst.bronwaarde = json_obj_ref->>'bronwaarde'",
+            "src_dst.row_number = 1"
         ]
         self.assertEqual(expected, relater._src_dst_join_on())
 
         relater.src_has_states = True
+        expected = [
+            "src_dst.src_id = src._id",
+            "src_dst.src_volgnummer = src.volgnummer",
+            "src_dst._source = src._source",
+            "src_dst.bronwaarde = json_obj_ref->>'bronwaarde'",
+            "src_dst.row_number = 1"
+        ]
+        self.assertEqual(expected, relater._src_dst_join_on())
+
+        relater.exclude_relation_table = True
         expected = [
             "src_dst.src_id = src._id",
             "src_dst.src_volgnummer = src.volgnummer",
@@ -642,6 +663,14 @@ src_entities AS (
 )
 """
         self.assertEqual(expected, relater._with_src_entities())
+        
+        relater.exclude_relation_table = True
+        expected = f"""
+src_entities AS (
+    SELECT * FROM src_catalog_name_src_collection_name_table
+)
+"""
+        self.assertEqual(expected, relater._with_src_entities())
 
     def test_with_dst_entities(self):
         relater = self._get_relater()
@@ -650,6 +679,14 @@ dst_entities AS (
     SELECT * FROM dst_catalog_name_dst_collection_name_table WHERE _last_event > (
         SELECT COALESCE(MAX(_last_dst_event), 0) FROM rel_src_catalog_name_src_collection_name_src_field_name
     )
+)
+"""
+        self.assertEqual(expected, relater._with_dst_entities())
+        
+        relater.exclude_relation_table = True
+        expected = f"""
+dst_entities AS (
+    SELECT * FROM dst_catalog_name_dst_collection_name_table
 )
 """
         self.assertEqual(expected, relater._with_dst_entities())
@@ -734,6 +771,12 @@ FULL JOIN (
         relater = self._get_relater()
         self.assertEqual(
             'WHERE rel._date_deleted IS NULL OR src._id IS NOT NULL',
+            relater._get_where()
+        )
+        
+        relater.exclude_relation_table = True
+        self.assertEqual(
+            'WHERE src._id IS NOT NULL AND row_number > 1',
             relater._get_where()
         )
 
@@ -855,6 +898,32 @@ WHERE CLAUSE
         result = relater.get_query()
         self.assertEqual(result, expected)
 
+    def test_get_conflicts_query(self):
+        relater = self._get_get_query_mocked_relater()
+        relater.is_many = False
+
+        expected = """
+WITH QUERIES
+SELECT
+    SELECT_EXPRESSION1SRC,
+    SELECT_EXPRESSION2SRC
+FROM src_entities src
+
+
+SRC_DST_JOIN
+LEFT JOIN dst_catalog_name_dst_collection_name_table dst
+    ON DST_TABLE_OUTER_JOIN_ON1 AND
+    DST_TABLE_OUTER_JOIN_ON2
+
+JOIN_SRC_GELDIGHEID
+JOIN_DST_GELDIGHEID
+JOIN MAX EVENTIDS
+WHERE CLAUSE
+
+"""
+        result = relater.get_conflicts_query()
+        self.assertEqual(result, expected)
+
     def test_get_query_initial_load(self):
         relater = self._get_get_query_mocked_relater()
         relater.is_many = False
@@ -880,6 +949,7 @@ WHERE CLAUSE
 """
         result = relater.get_query(True)
         self.assertEqual(result, expected)
+
 
     def test_get_modifications(self):
         relater = self._get_relater()
@@ -1060,61 +1130,3 @@ WHERE CLAUSE
 
         self.assertEqual((mock_contents_writer.return_value.__enter__.return_value.filename,
                           mock_contents_writer.return_value.__enter__.return_value.filename), result)
-
-    @patch('gobupload.relate.table.update_table.logger')
-    @patch("gobupload.relate.table.update_table._execute")
-    @patch("gobupload.relate.table.update_table.EventCollector")
-    @patch("gobupload.relate.table.update_table.ContentsWriter")
-    @patch("gobupload.relate.table.update_table.ProgressTicker", MagicMock())
-    @patch('gobupload.relate.table.update_table._MAX_RELATION_CONFLICTS', 1)
-    def test_update_conflicts(self, mock_contents_writer, mock_event_collector, mock_execute, mock_logger):
-        relater = self._get_relater()
-        relater._is_initial_load = MagicMock()
-        relater._create_event = MagicMock(side_effect=lambda x: x)
-        relater.get_query = MagicMock()
-        relater._format_relation = MagicMock(side_effect=lambda x: x)
-    
-        relater.src_field_name = "attr"
-        relater.src_has_state = False
-
-        mock_execute.return_value = [{
-            'src_id': 1,
-            'src_volgnummer': 1,
-            'dst_id': 1,
-            'bronwaarde': "bronwaarde",
-            'row_number': 1
-        },
-        {
-            'src_id': 1,
-            'src_volgnummer': 1,
-            'dst_id': 2,
-            'bronwaarde': "bronwaarde",
-            'row_number': 2
-        },
-        {
-            'src_id': 1,
-            'src_volgnummer': 1,
-            'dst_id': 3,
-            'bronwaarde': "bronwaarde",
-            'row_number': 3
-        }]
-
-        conflicts_msg = "Conflicting attr relations"
-        
-        expected = {
-            "id": conflicts_msg,
-            "data": {
-                "src_id": 1,
-                "src_volgnummer": 1,
-                "conflict": {
-                    "id": 2,
-                    "bronwaarde": "bronwaarde"
-                }
-            }
-        }
-
-        result = relater.update()
-        mock_logger.warning.assert_has_calls([
-            call(conflicts_msg, expected),
-            call(f"{conflicts_msg}: 2 found, 1 reported"),
-        ])
