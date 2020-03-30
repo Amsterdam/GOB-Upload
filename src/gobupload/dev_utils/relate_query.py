@@ -5,7 +5,7 @@ from gobupload.relate.table.update_table import RelationTableRelater
 
 def run():
     assert len(sys.argv) >= 4, "Missing arguments: relate_query.py " \
-                               "gebieden wijken ligt_in_stadsdeel [ inital/conflicts ]"
+                               "gebieden wijken ligt_in_stadsdeel [ initial/conflicts ]"
 
     catalog = sys.argv[1]
     collection = sys.argv[2]
