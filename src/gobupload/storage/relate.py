@@ -14,8 +14,8 @@ from gobcore.model.relations import get_relation_name
 from gobcore.sources import GOBSources
 
 from gobupload.relate.exceptions import RelateException
+from gobupload.relate.table.update_table import RelationTableRelater
 from gobupload.storage.execute import _execute, _execute_multiple
-
 
 # Dates compare at start of day
 _START_OF_DAY = datetime.time(0, 0, 0)
@@ -510,6 +510,47 @@ GROUP BY
     {group_by}
 """
     _query_missing(dangling, f"{name} dangling destinations")
+
+
+def check_relation_conflicts(catalog_name, collection_name, attribute_name):
+    updater = RelationTableRelater(catalog_name, collection_name, attribute_name)
+    query = updater.get_conflicts_query()
+
+    result = _execute(query, stream=True, max_row_buffer=25000)
+
+    conflicts = 0
+    conflicts_msg = f"Conflicting {attribute_name} relations"
+
+    for row in result:
+        row = dict(row)
+        # Log conflicting relations
+        if (row.get("row_number") or 0) > 1:
+            data = {
+                f"src{FIELD.ID}": row.get(f"src{FIELD.ID}")
+            }
+            data.update({f"src_{FIELD.SEQNR}": row.get(f"src_{FIELD.SEQNR}")}
+                        if updater.src_has_states else {})
+
+            data.update({
+                "conflict": {
+                    "id": row.get(f"dst{FIELD.ID}"),
+                    "bronwaarde": row.get(FIELD.SOURCE_VALUE),
+                }
+            })
+
+            data["conflict"].update({f"{FIELD.SEQNR}": row.get(f"dst_{FIELD.SEQNR}")}
+                                    if updater.dst_has_states else {})
+
+            if conflicts < _MAX_RELATION_CONFLICTS:
+                logger.warning(conflicts_msg, {
+                    'id': conflicts_msg,
+                    'data': data
+                })
+            conflicts += 1
+
+    if conflicts > _MAX_RELATION_CONFLICTS:
+        logger.warning(f"{conflicts_msg}: {conflicts} found, "
+                       f"{min(conflicts, _MAX_RELATION_CONFLICTS)} reported")
 
 
 def _update_match(spec, field, query_type, is_very_many=False):

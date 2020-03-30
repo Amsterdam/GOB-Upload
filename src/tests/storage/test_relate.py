@@ -1,5 +1,5 @@
 from unittest import TestCase, mock
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, call
 
 from gobcore.model import GOBModel
 from gobcore.sources import GOBSources
@@ -7,7 +7,7 @@ from gobcore.sources import GOBSources
 from gobupload.relate.exceptions import RelateException
 from gobupload.storage.relate import update_relations, EQUALS, LIES_IN, JOIN, WHERE, _update_match, \
     _get_data, get_last_change, get_current_relations, RelationUpdater, _query_missing, check_relations, \
-    check_very_many_relations, _check_relate_update, _get_updated_row_count
+    check_very_many_relations, _check_relate_update, _get_updated_row_count, check_relation_conflicts
 
 @patch('gobupload.relate.relate.logger', MagicMock())
 class TestRelations(TestCase):
@@ -144,6 +144,64 @@ ORDER BY _source, _id, volgnummer, begin_geldigheid
             check_very_many_relations("any_catalog", "any_collection", "any_field_name")
         mock_missing.assert_called()
         self.assertEqual(mock_missing.call_count, 2)
+
+    @patch('gobupload.storage.relate.logger')
+    @patch('gobupload.storage.relate._execute')
+    @patch('gobupload.storage.relate.RelationTableRelater')
+    @patch('gobupload.storage.relate._MAX_RELATION_CONFLICTS', 1)
+    def test_check_relation_conflicts(self, mock_relater, mock_execute, mock_logger):
+        relater = mock_relater.return_value
+        relater.dst_has_states = False
+
+        mock_execute.return_value = [{
+            'src_id': 1,
+            'src_volgnummer': 1,
+            'dst_id': 1,
+            'bronwaarde': "bronwaarde",
+            'row_number': 2
+        },
+        {
+            'src_id': 1,
+            'src_volgnummer': 1,
+            'dst_id': 2,
+            'bronwaarde': "bronwaarde",
+            'row_number': 3
+        }]
+
+        check_relation_conflicts("any_catalog", "any_collection", "any_field_name")
+        mock_relater.assert_called_with("any_catalog", "any_collection", "any_field_name")
+
+        conflicts_msg = f"Conflicting any_field_name relations"
+        
+        expected = [{
+            "id": conflicts_msg,
+            "data": {
+                "src_id": 1,
+                "src_volgnummer": 1,
+                "conflict": {
+                    "id": 1,
+                    "bronwaarde": "bronwaarde"
+                }
+            }
+        },
+        {
+            "id": conflicts_msg,
+            "data": {
+                "src_id": 1,
+                "src_volgnummer": 1,
+                "conflict": {
+                    "id": 2,
+                    "bronwaarde": "bronwaarde"
+                }
+            }
+        }]
+
+        mock_logger.warning.assert_has_calls([
+            call(conflicts_msg, expected[0]),
+            call(f"{conflicts_msg}: 2 found, 1 reported"),
+        ])
+
+
 
     def test_update_match(self):
         spec = {
