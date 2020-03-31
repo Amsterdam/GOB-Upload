@@ -518,18 +518,19 @@ LEFT JOIN (
 
     def test_select_rest_src(self):
         relater = self._get_relater()
+        relater._source_value_ref = lambda: "SRC_VAL_REF"
 
         relater.src_has_states = False
         relater.is_many = False
         self.assertEqual(f"""
     SELECT
         src.*,
-        src.src_field_name->>'bronwaarde' bronwaarde
+        SRC_VAL_REF bronwaarde
     FROM src_catalog_name_src_collection_name_table src
     
     WHERE src._date_deleted IS NULL AND (_id) NOT IN (
         SELECT _id FROM src_entities
-    )
+    ) AND SRC_VAL_REF IS NOT NULL
 """, relater._select_rest_src())
 
         relater.src_has_states = True
@@ -537,7 +538,7 @@ LEFT JOIN (
         self.assertEqual(f"""
     SELECT
         src.*,
-        json_arr_elm.item->>'bronwaarde' bronwaarde
+        SRC_VAL_REF bronwaarde
     FROM src_catalog_name_src_collection_name_table src
     JOIN jsonb_array_elements(src.src_field_name) json_arr_elm(item) ON json_arr_elm->>'bronwaarde' IS NOT NULL
     WHERE src._date_deleted IS NULL AND (_id,volgnummer) NOT IN (
@@ -655,19 +656,35 @@ all_dst_intervals(
 
     def test_with_src_entities(self):
         relater = self._get_relater()
+        relater._source_value_ref = lambda: 'SOURCE_VAL_REF'
+        relater.is_many = True
         expected = f"""
 src_entities AS (
-    SELECT * FROM src_catalog_name_src_collection_name_table WHERE _last_event > (
+    SELECT * FROM src_catalog_name_src_collection_name_table src
+    WHERE _last_event > (
         SELECT COALESCE(MAX(_last_src_event), 0) FROM rel_src_catalog_name_src_collection_name_src_field_name
     )
 )
 """
         self.assertEqual(expected, relater._with_src_entities())
-        
+        relater.is_many = False
+
+        expected = f"""
+src_entities AS (
+    SELECT * FROM src_catalog_name_src_collection_name_table src
+    WHERE SOURCE_VAL_REF IS NOT NULL AND _last_event > (
+        SELECT COALESCE(MAX(_last_src_event), 0) FROM rel_src_catalog_name_src_collection_name_src_field_name
+    )
+)
+"""
+        self.assertEqual(expected, relater._with_src_entities())
+        relater.is_many = True
+
         relater.exclude_relation_table = True
         expected = f"""
 src_entities AS (
-    SELECT * FROM src_catalog_name_src_collection_name_table
+    SELECT * FROM src_catalog_name_src_collection_name_table src
+
 )
 """
         self.assertEqual(expected, relater._with_src_entities())

@@ -428,6 +428,7 @@ LEFT JOIN (
 
     def _select_rest_src(self):
         not_in_fields = [FIELD.ID, FIELD.SEQNR] if self.src_has_states else [FIELD.ID]
+        source_value_not_null = f" AND {self._source_value_ref()} IS NOT NULL" if not self.is_many else ""
 
         return f"""
     SELECT
@@ -437,7 +438,7 @@ LEFT JOIN (
     {self._join_array_elements() if self.is_many else ""}
     WHERE src.{FIELD.DATE_DELETED} IS NULL AND ({','.join(not_in_fields)}) NOT IN (
         SELECT {','.join(not_in_fields)} FROM {self.src_entities_alias}
-    )
+    ){source_value_not_null}
 """
 
     def _start_validity_per_seqnr(self, src_or_dst):
@@ -507,16 +508,22 @@ all_{src_or_dst}_intervals(
         return result
 
     def _with_src_entities(self):
-        statement = f"""
-{self.src_entities_alias} AS (
-    SELECT * FROM {self.src_table_name}"""
+        filters = []
+
+        if not self.is_many:
+            filters.append(f"{self._source_value_ref()} IS NOT NULL")
 
         if not self.exclude_relation_table:
-            statement += f""" WHERE {FIELD.LAST_EVENT} > (
+            filters.append(f"""{FIELD.LAST_EVENT} > (
         SELECT COALESCE(MAX({FIELD.LAST_SRC_EVENT}), 0) FROM {self.relation_table}
-    )"""
+    )""")
 
-        statement += """
+        filters_str = f'    WHERE {" AND ".join(filters)}' if filters else ""
+
+        statement = f"""
+{self.src_entities_alias} AS (
+    SELECT * FROM {self.src_table_name} src
+{filters_str}
 )
 """
         return statement
