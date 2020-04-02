@@ -12,6 +12,7 @@ from gobcore.model import GOBModel
 from gobcore.model.metadata import FIELD
 from gobcore.model.relations import get_relation_name
 from gobcore.sources import GOBSources
+from gobcore.quality.issue import QA_CHECK, QA_LEVEL, Issue, log_issue
 
 from gobupload.relate.exceptions import RelateException
 from gobupload.relate.table.update_table import RelationTableRelater
@@ -336,7 +337,7 @@ def _get_select_from(dst_fields, dst_match_fields, src_fields, src_match_fields)
     return select_from
 
 
-def _query_missing(query, items_name, max_warnings=50):
+def _query_missing(query, check, attr, max_warnings=50):
     """
     Query for any missing attributes
 
@@ -351,15 +352,15 @@ def _query_missing(query, items_name, max_warnings=50):
             # Report actual warnings
             count += 1
             if count <= max_warnings:
-                msg = items_name
-                logger.warning(msg, {
-                    'id': msg,
-                    'data': {k.replace('_', ' '): v for k, v in data.items() if v is not None}
-                })
+                data = {k.replace('_', ' '): v for k, v in data.items() if v is not None}
+                issue = Issue(check, data, 'id', 'bronwaarde')
+                issue.set_attribute('attribute', attr)
+                log_issue(logger, QA_LEVEL.WARNING, issue)
         else:
             # Count historic warnings
             historic_count += 1
 
+    items_name = f"{attr} {check['msg']}"
     if count > max_warnings:
         logger.warning(f"{items_name}: {count} actual errors, reported first {max_warnings} only")
     if historic_count > 0:
@@ -425,7 +426,7 @@ WHERE
 GROUP BY
     {select}
 """
-    _query_missing(bronwaarden, f"{name} missing bronwaarden")
+    _query_missing(bronwaarden, QA_CHECK.Sourcevalue_exists, name)
 
     dangling = f"""
 SELECT
@@ -439,7 +440,7 @@ WHERE
 GROUP BY
     {select}
 """
-    _query_missing(dangling, f"{name} dangling destinations")
+    _query_missing(dangling, QA_CHECK.Reference_exists, name)
 
 
 def check_very_many_relations(src_catalog_name, src_collection_name, src_field_name):
@@ -492,7 +493,7 @@ WHERE
 GROUP BY
     {group_by}
 """
-    _query_missing(bronwaarden, f"{name} missing bronwaarden")
+    _query_missing(bronwaarden, QA_CHECK.Sourcevalue_exists, name)
 
     dangling = f"""
 SELECT
@@ -509,7 +510,7 @@ WHERE
 GROUP BY
     {group_by}
 """
-    _query_missing(dangling, f"{name} dangling destinations")
+    _query_missing(dangling, QA_CHECK.Reference_exists, name)
 
 
 def check_relation_conflicts(catalog_name, collection_name, attribute_name):
