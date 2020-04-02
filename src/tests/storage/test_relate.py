@@ -96,17 +96,18 @@ ORDER BY _source, _id, volgnummer, begin_geldigheid
         result = [r for r in _get_data('')]
         self.assertEqual(result, [])
 
+    @patch('gobupload.storage.relate.Issue', mock.MagicMock())
     @patch('gobupload.storage.relate.logger')
+    @patch('gobupload.storage.relate.log_issue')
     @patch('gobupload.storage.relate._get_data')
-    def test_query_missing(self, mock_data, mock_logger):
+    def test_query_missing(self, mock_data, mock_log_issue, mock_logger):
         mock_data.return_value = []
-        _query_missing("any query", "any items name")
+        _query_missing("any query", {'msg': "any items"}, "name")
         mock_data.assert_called_with("any query")
 
-        mock_logger.warning = mock.MagicMock()
         mock_data.return_value = [{"a": "b"}]
-        _query_missing("any query", "any items name")
-        mock_logger.warning.assert_called()
+        _query_missing("any query", {'msg': "any items"}, "name")
+        mock_log_issue.assert_called()
 
     # @patch('gobupload.storage.relate.GOBModel')
     @patch('gobupload.storage.relate._query_missing')
