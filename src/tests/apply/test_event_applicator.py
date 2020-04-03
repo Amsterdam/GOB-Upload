@@ -6,7 +6,7 @@ from unittest.mock import patch, MagicMock
 from tests.fixtures import dict_to_object
 
 from gobupload.storage.handler import GOBStorageHandler
-from gobupload.update.event_applicator import EventApplicator, _get_gob_event
+from gobupload.apply.event_applicator import EventApplicator, _get_gob_event
 
 
 class TestEventApplicator(TestCase):
@@ -73,9 +73,9 @@ class TestEventApplicator(TestCase):
         self.assertEqual(len(applicator.add_events), 0)
         self.storage.bulk_update_confirms.assert_called()
 
-    @patch('gobupload.update.event_applicator.GOBModel')
-    @patch('gobupload.update.event_applicator.GobEvent')
-    @patch('gobupload.update.event_applicator.MessageMetaData')
+    @patch('gobupload.apply.event_applicator.GOBModel')
+    @patch('gobupload.apply.event_applicator.GobEvent')
+    @patch('gobupload.apply.event_applicator.MessageMetaData')
     def test_get_gob_event(self, mock_message_meta_data, mock_gob_event, mock_model):
         mock_model().get_collection.return_value = {
             'version': '0.1'
@@ -98,10 +98,10 @@ class TestEventApplicator(TestCase):
 
         mock_gob_event.assert_called_with(expected_event_msg, expected_meta_data)
 
-    @patch('gobupload.update.event_applicator.GOBMigrations')
-    @patch('gobupload.update.event_applicator.GOBModel')
-    @patch('gobupload.update.event_applicator.GobEvent')
-    @patch('gobupload.update.event_applicator.MessageMetaData')
+    @patch('gobupload.apply.event_applicator.GOBMigrations')
+    @patch('gobupload.apply.event_applicator.GOBModel')
+    @patch('gobupload.apply.event_applicator.GobEvent')
+    @patch('gobupload.apply.event_applicator.MessageMetaData')
     def test_get_gob_event_migration(self, mock_message_meta_data, mock_gob_event, mock_model, mock_migrations):
         target_version = '0.2'
 

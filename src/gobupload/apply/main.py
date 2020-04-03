@@ -7,7 +7,7 @@ from gobcore.message_broker.notifications import add_notification, EventNotifica
 
 from gobupload.storage.handler import GOBStorageHandler
 from gobupload.update.update_statistics import UpdateStatistics
-from gobupload.update.event_applicator import EventApplicator
+from gobupload.apply.event_applicator import EventApplicator
 from gobupload.utils import ActiveGarbageCollection, is_corrupted, get_event_ids
 
 # Trigger VACUUM ANALYZE on database if more than ANALYZE_THRESHOLD of entities are updated. When ANALYZE_THRESHOLD =
