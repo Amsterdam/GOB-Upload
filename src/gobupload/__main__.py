@@ -8,7 +8,7 @@ It writes the storage to apply events to the storage
 import argparse
 
 from gobcore.message_broker.config import WORKFLOW_EXCHANGE, FULLUPDATE_QUEUE, COMPARE_QUEUE, RELATE_QUEUE, \
-    CHECK_RELATION_QUEUE, APPLY_QUEUE, RELATE_TABLE_QUEUE, ISSUE_QUEUE
+    CHECK_RELATION_QUEUE, APPLY_QUEUE, RELATE_TABLE_QUEUE, BASIC_UPLOADS_QUEUE
 from gobcore.message_broker.config import COMPARE_RESULT_KEY, FULLUPDATE_RESULT_KEY, RELATE_RESULT_KEY, \
     CHECK_RELATION_RESULT_KEY, APPLY_RESULT_KEY, RELATE_UPDATE_VIEW_QUEUE, RELATE_UPDATE_VIEW_RESULT_KEY, \
     RELATE_TABLE_RESULT_KEY
@@ -81,7 +81,7 @@ SERVICEDEFINITION = {
         }
     },
     'basic_upload': {
-        'queue': ISSUE_QUEUE,
+        'queue': BASIC_UPLOADS_QUEUE,
         'handler': basic_handler.handle_msg
     },
 }

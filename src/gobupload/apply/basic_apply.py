@@ -2,6 +2,7 @@ from gobcore.events.import_events import CONFIRM
 
 from gobupload.utils import is_corrupted, get_event_ids
 from gobupload.storage.handler import GOBStorageHandler
+
 from gobupload.apply.event_applicator import _get_gob_event
 
 
@@ -10,14 +11,11 @@ class ApplyException(Exception):
 
 
 def apply_unhandled_events(storage: GOBStorageHandler) -> int:
-    print("APPLY ANY UNHANDLED")
-
     # Get max entity last event and max event
     entity_max_eventid, last_eventid = get_event_ids(storage)
     if is_corrupted(entity_max_eventid, last_eventid):
         raise ApplyException(f"Model is inconsistent: entity@{entity_max_eventid} events@{last_eventid}")
     elif entity_max_eventid != last_eventid:
-        print("APPLY UNHANDLED")
         # Apply any unhandled events
         apply_events(storage, entity_max_eventid)
         # Re-get max entity last event and max event
@@ -28,12 +26,9 @@ def apply_unhandled_events(storage: GOBStorageHandler) -> int:
 
 
 def apply_events(storage: GOBStorageHandler, entity_max_eventid: int) -> None:
-    print(f"APPLY EVENTS")
-
     with storage.get_session():
         unhandled_events = storage.get_events_starting_after(entity_max_eventid)
         for event in unhandled_events:
-            print("EVENT", event.action)
             data = event.contents
             gob_event = _get_gob_event(event, data)
             entity = storage.get_entity_for_update(event, data)
@@ -44,7 +39,6 @@ def apply_events(storage: GOBStorageHandler, entity_max_eventid: int) -> None:
 
 
 def apply_confirms(storage: GOBStorageHandler, events, timestamp: str) -> None:
-    print("APPLY CONFIRMS")
     if [event['event'] for event in events if event['event'] != CONFIRM.name]:
         raise ApplyException("Only CONFIRM events are not stored")
 
