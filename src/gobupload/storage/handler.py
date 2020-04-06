@@ -355,9 +355,10 @@ WHERE
         temporary = current + TEMPORARY_TABLE_SUFFIX
 
         fields = self.gob_model.get_functional_key_fields(self.metadata.catalogue, self.metadata.entity)
+        source = self.metadata.source
 
         # Get the result of comparison where data is equal to the current state
-        result = self.engine.execute(queries.get_comparison_query(current, temporary, fields, mode))
+        result = self.engine.execute(queries.get_comparison_query(source, current, temporary, fields, mode))
 
         for row in result:
             yield dict(row)
