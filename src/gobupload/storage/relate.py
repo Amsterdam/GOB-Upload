@@ -434,7 +434,6 @@ ON
 WHERE
     {where}
 """
-    print(query)
     return query
 
 
