@@ -94,6 +94,14 @@ class TestApply(TestCase):
 
         self.mock_storage.apply_confirms.assert_called_with('any confirms', 'any timestamp')
         mock_os.remove.assert_called_with('any filename')
+        self.assertIsNone(msg.get('confirms'))
+
+        msg = {
+            'header': {
+                'timestamp': 'any timestamp'
+            },
+            'confirms': 'any filename'
+        }
 
         # put CONFIRM data in a list
         items = [
@@ -107,6 +115,13 @@ class TestApply(TestCase):
         apply_confirm_events(self.mock_storage, mock_stats, msg)
 
         self.mock_storage.apply_confirms.assert_called_with([{'some key': 'any data'}], 'any timestamp')
+
+        msg = {
+            'header': {
+                'timestamp': 'any timestamp'
+            },
+            'confirms': 'any filename'
+        }
 
         # Assert that only (BULK)CONFIRMS are handled
         items = [

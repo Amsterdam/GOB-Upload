@@ -7,7 +7,7 @@ from gobcore.sources import GOBSources
 from gobupload.relate.exceptions import RelateException
 from gobupload.storage.relate import update_relations, EQUALS, LIES_IN, JOIN, WHERE, _update_match, \
     _get_data, get_last_change, get_current_relations, RelationUpdater, _query_missing, check_relations, \
-    check_very_many_relations, _get_updated_row_count, check_relation_conflicts
+    check_very_many_relations, _get_updated_row_count, check_relation_conflicts, _get_relation_check_query
 
 @patch('gobupload.relate.relate.logger', MagicMock())
 class TestRelations(TestCase):
@@ -96,21 +96,23 @@ ORDER BY _source, _id, volgnummer, begin_geldigheid
         result = [r for r in _get_data('')]
         self.assertEqual(result, [])
 
+    @patch('gobupload.storage.relate.Issue', mock.MagicMock())
     @patch('gobupload.storage.relate.logger')
+    @patch('gobupload.storage.relate.log_issue')
     @patch('gobupload.storage.relate._get_data')
-    def test_query_missing(self, mock_data, mock_logger):
+    def test_query_missing(self, mock_data, mock_log_issue, mock_logger):
         mock_data.return_value = []
-        _query_missing("any query", "any items name")
+        _query_missing("any query", {'msg': "any items"}, "name")
         mock_data.assert_called_with("any query")
 
-        mock_logger.warning = mock.MagicMock()
         mock_data.return_value = [{"a": "b"}]
-        _query_missing("any query", "any items name")
-        mock_logger.warning.assert_called()
+        _query_missing("any query", {'msg': "any items"}, "name")
+        mock_log_issue.assert_called()
 
     # @patch('gobupload.storage.relate.GOBModel')
+    @patch('gobupload.storage.relate._get_relation_check_query')
     @patch('gobupload.storage.relate._query_missing')
-    def test_check_relations(self, mock_missing):
+    def test_check_relations(self, mock_missing, mock_get_query):
         mock_collection = {
             'all_fields': {
                 'any_field_name': {
@@ -122,6 +124,10 @@ ORDER BY _source, _id, volgnummer, begin_geldigheid
              patch.object(GOBModel, 'get_collection', lambda s, a, b: mock_collection), \
              patch.object(GOBModel, 'has_states', lambda s, a, b: True):
             check_relations("any_catalog", "any_collection", "any_field_name")
+
+        mock_get_query.assert_called()
+        self.assertEqual(mock_get_query.call_count, 2)
+
         mock_missing.assert_called()
         self.assertEqual(mock_missing.call_count, 2)
 
@@ -382,3 +388,63 @@ JOIN jsonb_array_elements(src.field) AS json_arr_elm ON TRUE
 
         with self.assertRaises(RelateException):
             _get_updated_row_count(3, 2)
+
+    @patch('gobupload.storage.relate.get_relation_name')
+    def test_get_relation_check_query(self, mock_get_relation_name):
+        mock_collection = {
+            'all_fields': {
+                'any_field_name': {
+                    'type': "any type"
+                }
+            }
+        }
+
+        mock_get_relation_name.return_value = 'cat_col_cat2_col2_field'
+
+        with patch.object(GOBModel, 'get_table_name', lambda s, a, b: a + b), \
+             patch.object(GOBModel, 'get_collection', lambda s, a, b: mock_collection), \
+             patch.object(GOBModel, 'has_states', lambda s, a, b: True):
+
+             # Test missing query
+            result = _get_relation_check_query("missing", "any_catalog", "any_collection", "any_field_name")
+            expect = """
+SELECT
+    src._id as id,
+    src.any_field_name->>'bronwaarde' as bronwaarde,
+    src._expiration_date,
+    src.volgnummer,
+    src.begin_geldigheid,
+    src.eind_geldigheid
+FROM
+    any_catalogany_collection AS src
+JOIN rel_cat_col_cat2_col2_field rel
+ON
+    src._id = rel.src_id AND src.volgnummer = rel.src_volgnummer
+WHERE
+    COALESCE(src._expiration_date, '9999-12-31'::timestamp without time zone) > NOW() AND any_field_name->>'bronwaarde' IS NULL
+"""
+            self.assertEqual(result, expect)
+            
+            # Test dangling query
+            result = _get_relation_check_query("dangling", "any_catalog", "any_collection", "any_field_name")
+            expect = """
+SELECT
+    src._id as id,
+    src.any_field_name->>'bronwaarde' as bronwaarde,
+    src._expiration_date,
+    src.volgnummer,
+    src.begin_geldigheid,
+    src.eind_geldigheid
+FROM
+    any_catalogany_collection AS src
+JOIN rel_cat_col_cat2_col2_field rel
+ON
+    src._id = rel.src_id AND src.volgnummer = rel.src_volgnummer
+WHERE
+    COALESCE(src._expiration_date, '9999-12-31'::timestamp without time zone) > NOW() AND any_field_name->>'bronwaarde' IS NOT NULL AND rel.dst_id IS NULL
+"""
+            self.assertEqual(result, expect)
+
+            # Expect assertionerror on a different query type
+            with self.assertRaises(AssertionError):
+                result = _get_relation_check_query("other", "any_catalog", "any_collection", "any_field_name")

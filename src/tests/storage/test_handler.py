@@ -44,6 +44,7 @@ class TestStorageHandler(unittest.TestCase):
         }
         # Add the hash to the message
         populator = Populator(model, self.msg)
+        self.msg['header']['source'] = 'any source'
         for content in self.msg['contents']:
             populator.populate(content)
 
@@ -290,7 +291,7 @@ WHERE
         temporary = f'{self.msg["header"]["catalogue"]}_{self.msg["header"]["entity"]}_tmp'
 
         fields = ['_source', 'identificatie']
-        query = queries.get_comparison_query(current, temporary, fields)
+        query = queries.get_comparison_query('any source', current, temporary, fields)
 
         diff = self.storage.compare_temporary_data()
         results = [result for result in diff]
