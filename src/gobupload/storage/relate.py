@@ -353,8 +353,11 @@ def _query_missing(query, check, attr, max_warnings=50):
             count += 1
             if count <= max_warnings:
                 data = {k.replace('_', ' '): v for k, v in data.items() if v is not None}
+                # Create an issue for the failing check
+                # The entity that contains the error is data, the id-attribute is named id
+                # The attribute that is in error is called bronwaarde
                 issue = Issue(check, data, 'id', 'bronwaarde')
-                issue.attribute = attr  # Set the name of the attribute that causes the issue
+                issue.attribute = attr  # Set the name of the attribute that has the failing bronwaarde
                 log_issue(logger, QA_LEVEL.WARNING, issue)
         else:
             # Count historic warnings
