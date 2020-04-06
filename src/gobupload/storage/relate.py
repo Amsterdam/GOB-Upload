@@ -370,6 +370,74 @@ def _query_missing(query, check, attr, max_warnings=50):
         logger.info(f"{items_name}: {historic_count} historical errors")
 
 
+def _get_relation_check_query(query_type, src_catalog_name, src_collection_name, src_field_name):
+    assert query_type in ["dangling", "missing"], "Relation check query expects type to be dangling or missing"
+
+    model = GOBModel()
+    src_collection = model.get_collection(src_catalog_name, src_collection_name)
+    src_table_name = model.get_table_name(src_catalog_name, src_collection_name)
+    src_field = src_collection['all_fields'].get(src_field_name)
+    src_has_states = model.has_states(src_catalog_name, src_collection_name)
+
+    is_many = src_field['type'] == "GOB.ManyReference"
+
+    relation_table_name = "rel_" + get_relation_name(model, src_catalog_name, src_collection_name, src_field_name)
+
+    main_select = [f"src.{FIELD.ID} as id",
+                   f"src.{src_field_name}->>'{FIELD.SOURCE_VALUE}' as {FIELD.SOURCE_VALUE}",
+                   f"src.{FIELD.EXPIRATION_DATE}"]
+    select = [FIELD.ID, f"{src_field_name}->>'{FIELD.SOURCE_VALUE}'", FIELD.EXPIRATION_DATE]
+
+    if src_has_states:
+        state_select = [f"src.{FIELD.SEQNR}",
+                        f"src.{FIELD.START_VALIDITY}",
+                        f"src.{FIELD.END_VALIDITY}"]
+        select.extend(state_select)
+        main_select.extend(state_select)
+    select = ",\n    ".join(select)
+    main_select = ",\n    ".join(main_select)
+
+    join_on = ['src._id = rel.src_id']
+    if src_has_states:
+        join_on.extend(['src.volgnummer = rel.src_volgnummer'])
+    join_on = " AND ".join(join_on)
+
+    src = f"""
+(
+SELECT
+    {select},
+    _date_deleted,
+    jsonb_array_elements({src_field_name}) as {src_field_name}
+FROM
+    {src_table_name}
+) AS src
+""" if is_many else f"{src_table_name} AS src"
+
+    where = ["COALESCE(src._expiration_date, '9999-12-31'::timestamp without time zone) > NOW()"]
+
+    # For missing relations check is bronwaarde is empty
+    where.extend([f"{src_field_name}->>'bronwaarde' IS NULL"] if query_type == "missing" else [])
+
+    # For dangling relations check if bronwaarde is filled but no destination is found
+    where.extend([f"{src_field_name}->>'bronwaarde' IS NOT NULL",
+                  "rel.dst_id IS NULL"] if query_type == "dangling" else [])
+
+    where = " AND ".join(where)
+    query = f"""
+SELECT
+    {main_select}
+FROM
+    {src}
+JOIN {relation_table_name} rel
+ON
+    {join_on}
+WHERE
+    {where}
+"""
+    print(query)
+    return query
+
+
 def check_relations(src_catalog_name, src_collection_name, src_field_name):
     """
     Check relations for any dangling relations
@@ -382,68 +450,14 @@ def check_relations(src_catalog_name, src_collection_name, src_field_name):
     :param src_field_name:
     :return: None
     """
-    # Get the source catalog, collection and field for the given names
-    model = GOBModel()
-    src_collection = model.get_collection(src_catalog_name, src_collection_name)
-    src_table_name = model.get_table_name(src_catalog_name, src_collection_name)
-    src_field = src_collection['all_fields'].get(src_field_name)
-    src_has_states = model.has_states(src_catalog_name, src_collection_name)
-
-    is_many = src_field['type'] == "GOB.ManyReference"
-
-    main_select = ["_id as id", f"{src_field_name} ->> 'bronwaarde' as bronwaarde"]
-    select = ["_id", f"{src_field_name} ->> 'bronwaarde'"]
-    if src_has_states:
-        state_select = ["volgnummer", "begin_geldigheid", "eind_geldigheid"]
-        select.extend(state_select)
-        main_select.extend(state_select)
-    select = ",\n    ".join(select)
-    main_select = ",\n    ".join(main_select)
 
     name = f"{src_collection_name} {src_field_name}"
 
-    src = f"""
-(
-SELECT
-    {select},
-    _date_deleted,
-    jsonb_array_elements({src_field_name}) as {src_field_name}
-FROM
-    {src_table_name}
-) AS src
-""" if is_many else src_table_name
+    missing_query = _get_relation_check_query("missing", src_catalog_name, src_collection_name, src_field_name)
+    _query_missing(missing_query, QA_CHECK.Sourcevalue_exists, name)
 
-    # Select all relations without bronwaarde
-    #
-    # ->> 'bronwaarde' IS NULL
-    # is True for all json fields (including empty ones) that have no bronwaarde, or a null value for bronwaarde
-    #
-    bronwaarden = f"""
-SELECT
-    {main_select}
-FROM
-    {src}
-WHERE
-    _date_deleted IS NULL AND
-    {src_field_name} ->> 'bronwaarde' IS NULL
-GROUP BY
-    {select}
-"""
-    _query_missing(bronwaarden, QA_CHECK.Sourcevalue_exists, name)
-
-    dangling = f"""
-SELECT
-    {main_select}
-FROM
-    {src}
-WHERE
-    _date_deleted IS NULL AND
-    {src_field_name} ->> 'bronwaarde' IS NOT NULL AND
-    {src_field_name} ->> 'id' IS NULL
-GROUP BY
-    {select}
-"""
-    _query_missing(dangling, QA_CHECK.Reference_exists, name)
+    dangling_query = _get_relation_check_query("dangling", src_catalog_name, src_collection_name, src_field_name)
+    _query_missing(dangling_query, QA_CHECK.Reference_exists, name)
 
 
 def check_very_many_relations(src_catalog_name, src_collection_name, src_field_name):
