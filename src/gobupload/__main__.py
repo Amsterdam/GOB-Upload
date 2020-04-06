@@ -18,7 +18,6 @@ from gobupload import compare
 from gobupload import relate
 from gobupload import update
 from gobupload import apply
-from gobupload.basic_upload import basic_handler
 from gobupload.storage.handler import GOBStorageHandler
 
 from gobupload.relate.table.entrypoint import relate_table_src_message_handler
