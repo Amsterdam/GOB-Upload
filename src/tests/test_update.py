@@ -7,8 +7,10 @@ from gobcore.exceptions import GOBException
 from gobcore.events.import_events import ADD, DELETE, CONFIRM, MODIFY
 
 # from gobupload.update import full_update, UpdateStatistics, _get_gob_event, _get_event_ids, _store_events, _apply_events
+from gobupload.update import full_update
 from gobupload.update.main import full_update, UpdateStatistics, get_event_ids, _store_events
-from gobupload.apply.event_applicator import _get_gob_event
+from gobupload.apply.main import apply_events
+from gobupload.update.event_applicator import _get_gob_event
 from gobupload.storage.handler import GOBStorageHandler
 from tests import fixtures
 
@@ -44,7 +46,7 @@ class TestUpdate(TestCase):
 
         self.mock_storage.add_events.assert_called_with(message['contents'])
 
-    @patch('gobupload.apply.event_applicator.GobEvent')
+    @patch('gobupload.update.event_applicator.GobEvent')
     @patch('gobupload.update.main.get_event_ids')
     def test_fullupdate_creates_event_and_pops_ids(self, mock_ids, mock_event, mock):
         self.mock_storage.get_last_events.return_value = {}
@@ -63,7 +65,7 @@ class TestUpdate(TestCase):
 
         self.mock_storage.get_events_starting_after.assert_not_called()
 
-    @patch('gobupload.apply.event_applicator.GobEvent')
+    @patch('gobupload.update.event_applicator.GobEvent')
     @patch('gobupload.update.main.get_event_ids')
     def test_fullupdate_not_creates_event_and_pops_ids(self, mock_ids, mock_event, mock):
         mock.return_value = self.mock_storage
@@ -82,7 +84,7 @@ class TestUpdate(TestCase):
         self.mock_storage.add_events.assert_not_called()
         self.mock_storage.get_events_starting_after.assert_not_called()
 
-    @patch('gobupload.apply.event_applicator.GobEvent')
+    @patch('gobupload.update.event_applicator.GobEvent')
     @patch('gobupload.update.main.get_event_ids')
     def test_fullupdate_applies_events(self, mock_ids, mock_event, mock):
         self.mock_storage.get_last_events.return_value = {}
