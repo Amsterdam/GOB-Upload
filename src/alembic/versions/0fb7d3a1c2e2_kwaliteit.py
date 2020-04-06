@@ -1,8 +1,8 @@
 """kwaliteit
 
-Revision ID: 0e76c6a1a0e6
-Revises: b83e1c7228db
-Create Date: 2020-04-06 07:44:07.263407
+Revision ID: 0fb7d3a1c2e2
+Revises: 761becc97407
+Create Date: 2020-04-06 15:09:46.639091
 
 """
 from alembic import op
@@ -11,8 +11,8 @@ import geoalchemy2
 
 
 # revision identifiers, used by Alembic.
-revision = '0e76c6a1a0e6'
-down_revision = 'b83e1c7228db'
+revision = '0fb7d3a1c2e2'
+down_revision = '761becc97407'
 branch_labels = None
 depends_on = None
 
@@ -122,6 +122,32 @@ def upgrade():
     sa.Column('_id', sa.String(), autoincrement=False, nullable=True),
     sa.PrimaryKeyConstraint('_gobid'),
     sa.UniqueConstraint('_id', name='qa_bag_nummeraanduidingen__id_key')
+    )
+    op.create_table('qa_bag_onderzoek',
+    sa.Column('meldingnummer', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('code', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('proces', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('attribuut', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('identificatie', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('volgnummer', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('betwijfelde_waarde', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('onderbouwing', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('voorgestelde_waarde', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('_source', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('_application', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('_source_id', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('_last_event', sa.Integer(), autoincrement=False, nullable=True),
+    sa.Column('_hash', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('_version', sa.String(), autoincrement=False, nullable=True),
+    sa.Column('_date_created', sa.DateTime(), autoincrement=False, nullable=True),
+    sa.Column('_date_confirmed', sa.DateTime(), autoincrement=False, nullable=True),
+    sa.Column('_date_modified', sa.DateTime(), autoincrement=False, nullable=True),
+    sa.Column('_date_deleted', sa.DateTime(), autoincrement=False, nullable=True),
+    sa.Column('_expiration_date', sa.DateTime(), autoincrement=False, nullable=True),
+    sa.Column('_gobid', sa.Integer(), autoincrement=True, nullable=False),
+    sa.Column('_id', sa.String(), autoincrement=False, nullable=True),
+    sa.PrimaryKeyConstraint('_gobid'),
+    sa.UniqueConstraint('_id', name='qa_bag_onderzoek__id_key')
     )
     op.create_table('qa_bag_openbareruimtes',
     sa.Column('meldingnummer', sa.String(), autoincrement=False, nullable=True),
@@ -1262,6 +1288,7 @@ def downgrade():
     op.drop_table('qa_bag_standplaatsen')
     op.drop_table('qa_bag_panden')
     op.drop_table('qa_bag_openbareruimtes')
+    op.drop_table('qa_bag_onderzoek')
     op.drop_table('qa_bag_nummeraanduidingen')
     op.drop_table('qa_bag_ligplaatsen')
     op.drop_table('qa_bag_dossiers')
