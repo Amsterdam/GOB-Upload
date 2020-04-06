@@ -1,7 +1,7 @@
 from gobupload.config import FULL_UPLOAD
 
 
-def get_comparison_query(current, temporary, fields, mode=FULL_UPLOAD):
+def get_comparison_query(source, current, temporary, fields, mode=FULL_UPLOAD):
     # The using part of the statements contains the fnctional identification for the entity:
     # functional source (source), functional id (_id) and a volgnummer if the entity has states
     using = ",".join(fields)
@@ -14,6 +14,7 @@ def get_comparison_query(current, temporary, fields, mode=FULL_UPLOAD):
     return f"""
 SELECT * FROM (
 SELECT
+    {temporary}._source,
     {temporary}._source_id,
     {current}._source_id AS _entity_source_id,
     {temporary}._original_value,
@@ -34,6 +35,7 @@ WHERE (
 )
 UNION ALL
 SELECT
+    {temporary}._source,
     {temporary}._source_id,
     {current}._source_id AS _entity_source_id,
     {temporary}._original_value,
@@ -58,6 +60,6 @@ WHERE (
     {current}._hash
 )
 ) AS Q
-WHERE type != 'SKIP'
+WHERE type != 'SKIP' and _source = '{source}'
 ORDER BY type
 """

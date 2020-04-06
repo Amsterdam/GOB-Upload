@@ -354,7 +354,7 @@ def _query_missing(query, check, attr, max_warnings=50):
             if count <= max_warnings:
                 data = {k.replace('_', ' '): v for k, v in data.items() if v is not None}
                 issue = Issue(check, data, 'id', 'bronwaarde')
-                issue.set_attribute('attribute', attr)
+                issue.attribute = attr
                 log_issue(logger, QA_LEVEL.WARNING, issue)
         else:
             # Count historic warnings

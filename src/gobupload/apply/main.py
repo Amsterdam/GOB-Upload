@@ -70,6 +70,7 @@ def apply_confirm_events(storage, stats, msg):
     if confirms:
         # Remove file after it has been handled (or skipped)
         os.remove(confirms)
+        del msg['confirms']
 
 
 def _should_analyze(stats):
@@ -82,7 +83,7 @@ def apply(msg):
     catalogue = msg['header'].get('catalogue', "")
     entity = msg['header'].get('entity', "")
 
-    logger.configure(msg, "UPDATE MODEL")
+    logger.configure(msg, "UPDATE")
     logger.info(f"Update model {catalogue} {entity}")
 
     storage = GOBStorageHandler()
