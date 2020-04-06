@@ -16,6 +16,7 @@ SELECT * FROM (
 SELECT
     {temporary}._source,
     {temporary}._source_id,
+    {current}._source AS _entity_source,
     {current}._source_id AS _entity_source_id,
     {temporary}._original_value,
     {current}._last_event,
@@ -37,6 +38,7 @@ UNION ALL
 SELECT
     {temporary}._source,
     {temporary}._source_id,
+    {current}._source AS _entity_source,
     {current}._source_id AS _entity_source_id,
     {temporary}._original_value,
     {current}._last_event,
@@ -60,6 +62,6 @@ WHERE (
     {current}._hash
 )
 ) AS Q
-WHERE type != 'SKIP' and _source = '{source}'
+WHERE type != 'SKIP' AND (_source = '{source}' OR _entity_source = '{source}')
 ORDER BY type
 """
