@@ -80,16 +80,23 @@ def _should_analyze(stats):
         sum([value['absolute'] for value in applied_stats.values()]) > 0
 
 
-def apply(msg):
+def _get_source_catalog_entity_combinations(storage, msg):
+    source = msg['header'].get('source')
     catalogue = msg['header'].get('catalogue', "")
     entity = msg['header'].get('entity', "")
+
+    combinations = storage.get_source_catalogue_entity_combinations(catalogue=catalogue, entity=entity)
+    # Apply for all sources if source is None or apply only the specified source
+    return [combination for combination in combinations if source is None or source == combination.source]
+
+
+def apply(msg):
     mode = msg['header'].get('mode', FULL_UPLOAD)
 
     logger.configure(msg, "UPDATE")
-    logger.info(f"Update model {catalogue} {entity}")
 
     storage = GOBStorageHandler()
-    combinations = storage.get_source_catalogue_entity_combinations(catalogue=catalogue, entity=entity)
+    combinations = _get_source_catalog_entity_combinations(storage, msg)
 
     # Gather statistics of update process
     stats = UpdateStatistics()
@@ -97,6 +104,7 @@ def apply(msg):
     after = None
     for result in combinations:
         model = f"{result.source} {result.catalogue} {result.entity}"
+        logger.info(f"Apply events {model}")
         storage = GOBStorageHandler(result)
 
         # Track eventId before event application
@@ -127,7 +135,7 @@ def apply(msg):
             storage.analyze_table()
 
         stats.log()
-        logger.info(f"Update model {model} completed", {'data': results})
+        logger.info(f"Apply events {model} completed", {'data': results})
 
     msg['summary'] = {
         'warnings': logger.get_warnings(),
