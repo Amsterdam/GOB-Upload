@@ -94,6 +94,7 @@ def apply(msg):
     mode = msg['header'].get('mode', FULL_UPLOAD)
 
     logger.configure(msg, "UPDATE")
+    logger.info(f"Apply events")
 
     storage = GOBStorageHandler()
     combinations = _get_source_catalog_entity_combinations(storage, msg)
