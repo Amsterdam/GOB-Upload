@@ -198,3 +198,32 @@ class TestApply(TestCase):
         }
 
         self.assertFalse(_should_analyze(stats))
+
+    @patch("gobupload.apply.main.UpdateStatistics")
+    @patch("gobupload.apply.main._should_analyze")
+    @patch("gobupload.apply.main.get_event_ids", lambda x: (1, 1))
+    @patch("gobupload.apply.main.is_corrupted", lambda x, y: True)
+    def test_apply_trigger_analyze(self, mock_should_analyze, mock_statistics, mock_storage_handler):
+        mock_storage_handler.return_value.get_source_catalogue_entity_combinations.return_value = [type('Res', (), {
+            'source': 'the source',
+            'catalogue': 'the catalogue',
+            'entity': 'the entity',
+        })]
+
+        # Should analyze is True and mode is full
+        msg = {'header': {'mode': 'full'}}
+        mock_should_analyze.return_value = True
+        apply(msg)
+        mock_storage_handler.return_value.analyze_table.assert_called_once()
+        mock_storage_handler.reset_mock()
+
+        # Should analyze is True and mode is not full
+        msg = {'header': {'mode': 'notfull'}}
+        apply(msg)
+        mock_storage_handler.return_value.analyze_table.assert_not_called()
+
+        # Should analyze is False and mode is full
+        msg = {'header': {'mode': 'full'}}
+        mock_should_analyze.return_value = False
+        apply(msg)
+        mock_storage_handler.return_value.analyze_table.assert_not_called()

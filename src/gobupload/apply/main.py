@@ -9,6 +9,7 @@ from gobupload.storage.handler import GOBStorageHandler
 from gobupload.update.update_statistics import UpdateStatistics
 from gobupload.update.event_applicator import EventApplicator
 from gobupload.utils import ActiveGarbageCollection, is_corrupted, get_event_ids
+from gobupload.config import FULL_UPLOAD
 
 # Trigger VACUUM ANALYZE on database if more than ANALYZE_THRESHOLD of entities are updated. When ANALYZE_THRESHOLD =
 # 0.3, this means that if more than 30% of the events update the data (MODIFY's, ADDs, DELETEs), a VACUUM ANALYZE is
@@ -82,6 +83,7 @@ def _should_analyze(stats):
 def apply(msg):
     catalogue = msg['header'].get('catalogue', "")
     entity = msg['header'].get('entity', "")
+    mode = msg['header'].get('mode', FULL_UPLOAD)
 
     logger.configure(msg, "UPDATE")
     logger.info(f"Update model {catalogue} {entity}")
@@ -120,8 +122,7 @@ def apply(msg):
 
         # Build result message
         results = stats.results()
-
-        if _should_analyze(stats):
+        if mode == FULL_UPLOAD and _should_analyze(stats):
             logger.info(f"Running VACUUM ANALYZE on table")
             storage.analyze_table()
 
