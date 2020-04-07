@@ -13,6 +13,8 @@ Use it like this:
 import functools
 import json
 import warnings
+import random
+import string
 
 from sqlalchemy import create_engine, Table, update, exc as sa_exc
 from sqlalchemy.engine.url import URL
@@ -37,9 +39,6 @@ from gobupload.storage.materialized_views import MaterializedViews
 from alembic.runtime import migration
 import alembic.config
 import alembic.script
-
-
-TEMPORARY_TABLE_SUFFIX = '_tmp'
 
 
 def with_session(func):
@@ -276,6 +275,10 @@ WHERE
             except OperationalError as e:
                 print(f"ERROR: Index {name} failed: {e}")
 
+    def _get_tmp_table_name(self, table_name):
+        # Add a random 3 character string to the table name
+        return table_name + "_" + ''.join(random.choice(string.ascii_lowercase) for i in range(3))
+
     def create_temporary_table(self):
         """ Create a new temporary table based on the current table for a collection
 
@@ -286,7 +289,7 @@ WHERE
         """
         self.collection = self.gob_model.get_collection(self.metadata.catalogue, self.metadata.entity)
         table_name = self.gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
-        tmp_table_name = table_name + TEMPORARY_TABLE_SUFFIX
+        tmp_table_name = self._get_tmp_table_name(table_name)
 
         self.fields = self.gob_model.get_functional_key_fields(self.metadata.catalogue, self.metadata.entity)
         self.fields.extend(['_source_id', '_hash'])
@@ -300,6 +303,7 @@ WHERE
         self.tmp_table.create(self.engine)
 
         self.temporary_rows = []
+        return tmp_table_name
 
     def write_temporary_entity(self, entity):
         """
@@ -342,7 +346,7 @@ WHERE
         """
         self._write_temporary_entities()
 
-    def compare_temporary_data(self, mode=FULL_UPLOAD):
+    def compare_temporary_data(self, tmp_table_name, mode=FULL_UPLOAD):
         """ Compare the data in the temporay table to the current state
 
         The created query compares each model field and returns the source_id, last_event
@@ -352,21 +356,26 @@ WHERE
         :return: a list of dicts with source_id, hash, last_event and type
         """
         current = self.gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
-        temporary = current + TEMPORARY_TABLE_SUFFIX
 
         fields = self.gob_model.get_functional_key_fields(self.metadata.catalogue, self.metadata.entity)
         source = self.metadata.source
 
-        # Get the result of comparison where data is equal to the current state
-        result = self.engine.execute(queries.get_comparison_query(source, current, temporary, fields, mode))
+        result = None
+        try:
+            # Get the result of comparison where data is equal to the current state
+            result = self.engine.execute(queries.get_comparison_query(source, current, tmp_table_name, fields, mode))
 
-        for row in result:
-            yield dict(row)
+            for row in result:
+                yield dict(row)
 
-        result.close()
-
-        # Drop the temporary table
-        self.drop_temporary_table(temporary)
+        except Exception as e:
+            raise e
+        finally:
+            # Always cleanup
+            if result:
+                result.close()
+            # Drop the temporary table
+            self.drop_temporary_table(tmp_table_name)
 
     def drop_temporary_table(self, tmp_table_name):
         # Drop the temporary table
