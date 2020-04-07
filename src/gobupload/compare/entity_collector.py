@@ -13,7 +13,7 @@ class EntityCollector:
         :param storage:
         """
         self.storage = storage
-        self.storage.create_temporary_table()
+        self.tmp_table_name = self.storage.create_temporary_table()
 
     def close(self):
         self.storage.close_temporary_table()

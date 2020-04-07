@@ -275,7 +275,7 @@ WHERE
 
         # Make sure the test table already exists
         self.storage.base.metadata.tables = {expected_table: mock_table}
-        self.storage.create_temporary_table()
+        expected_table = self.storage.create_temporary_table()
 
         # Assert the drop function is called
         self.storage.engine.execute.assert_any_call(f"DROP TABLE IF EXISTS {expected_table}")
@@ -293,7 +293,7 @@ WHERE
         fields = ['_source', 'identificatie']
         query = queries.get_comparison_query('any source', current, temporary, fields)
 
-        diff = self.storage.compare_temporary_data()
+        diff = self.storage.compare_temporary_data(temporary)
         results = [result for result in diff]
 
         # Assert the query is performed is deleted
