@@ -44,6 +44,8 @@ def compare(msg):
 
     # Initialize a storage handler for the collection
     storage = GOBStorageHandler(metadata)
+    model = f"{metadata.source} {metadata.catalogue} {metadata.entity}"
+    logger.info(f"Compare {model}")
 
     stats = CompareStatistics()
 
@@ -100,7 +102,7 @@ def compare(msg):
     # Build result message
     results = stats.results()
 
-    logger.info(f"Compare completed", {'data': results})
+    logger.info(f"Compare {model} completed", {'data': results})
 
     results.update({
         'warnings': logger.get_warnings(),

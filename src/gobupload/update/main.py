@@ -66,7 +66,7 @@ def _process_events(storage, events, stats):
 
 
 def full_update(msg):
-    """Apply the events on the current dataset
+    """Store the events for the current dataset
 
     :param msg: the result of the application of the events
     :return: Result message
@@ -79,6 +79,8 @@ def full_update(msg):
     metadata = message.metadata
 
     storage = GOBStorageHandler(metadata)
+    model = f"{metadata.source} {metadata.catalogue} {metadata.entity}"
+    logger.info(f"Store events {model}")
 
     # Get events from message
     events = msg["contents"]
@@ -92,7 +94,7 @@ def full_update(msg):
     results = stats.results()
 
     stats.log()
-    logger.info(f"Update completed", {'data': results})
+    logger.info(f"Store events {model} completed", {'data': results})
 
     results.update({
         'warnings': logger.get_warnings(),
