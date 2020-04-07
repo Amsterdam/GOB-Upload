@@ -389,11 +389,9 @@ def _get_relation_check_query(query_type, src_catalog_name, src_collection_name,
     select = [FIELD.ID, f"{src_field_name}->>'{FIELD.SOURCE_VALUE}'", FIELD.EXPIRATION_DATE]
 
     if src_has_states:
-        state_select = [f"src.{FIELD.SEQNR}",
-                        f"src.{FIELD.START_VALIDITY}",
-                        f"src.{FIELD.END_VALIDITY}"]
+        state_select = [FIELD.SEQNR, FIELD.START_VALIDITY, FIELD.END_VALIDITY]
         select.extend(state_select)
-        main_select.extend(state_select)
+        main_select.extend([f"src.{field}" for field in state_select])
     select = ",\n    ".join(select)
     main_select = ",\n    ".join(main_select)
 
