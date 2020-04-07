@@ -49,6 +49,7 @@ def compare(msg):
 
     stats = CompareStatistics()
 
+    tmp_table_name = None
     with storage.get_session():
         with ProgressTicker("Collect compare events", 10000) as progress:
             # Check any dependencies
@@ -79,6 +80,7 @@ def compare(msg):
                 # Collect entities in a temporary table
                 collector = EntityCollector(storage)
                 collect = collector.collect
+                tmp_table_name = collector.tmp_table_name
 
             for entity in msg["contents"]:
                 progress.tick()
@@ -96,7 +98,7 @@ def compare(msg):
     else:
         # Compare entities from temporary table
         with storage.get_session():
-            diff = storage.compare_temporary_data(mode)
+            diff = storage.compare_temporary_data(tmp_table_name, mode)
             filename, confirms = _process_compare_results(storage, entity_model, diff, stats)
 
     # Build result message
