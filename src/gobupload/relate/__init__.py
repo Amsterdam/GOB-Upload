@@ -23,7 +23,6 @@ from gobupload.storage.materialized_views import MaterializedViews
 from gobupload.storage.relate import get_last_change, check_relations, check_very_many_relations, \
                                      check_relation_conflicts
 
-from gobupload.relate.relate import relate_update
 from gobupload.relate.publish import publish_result
 
 
@@ -246,22 +245,18 @@ def build_relations(msg):
     else:
         logger.info(f"** Relate {catalog_name} {collection_name} {attribute_name}")
 
-        try:
-            relate_update(catalog_name, collection_name, attribute_name)
-            relation_name = get_relation_name(GOBModel(), catalog_name, collection_name, attribute_name)
+        relation_name = get_relation_name(GOBModel(), catalog_name, collection_name, attribute_name)
 
-            msg["header"].update({
-                "catalogue": "rel",
-                "collection": relation_name,
-                "entity": relation_name,
-                "original_catalogue": catalog_name,
-                "original_collection": collection_name,
-                "original_attribute": attribute_name,
-            })
+        msg["header"].update({
+            "catalogue": "rel",
+            "collection": relation_name,
+            "entity": relation_name,
+            "original_catalogue": catalog_name,
+            "original_collection": collection_name,
+            "original_attribute": attribute_name,
+        })
 
-            return msg
-        except Exception as e:
-            _log_exception(f"{attribute_name} update FAILED", e)
+        return msg
 
 
 def _get_materialized_view_by_relation_name(relation_name: str):
