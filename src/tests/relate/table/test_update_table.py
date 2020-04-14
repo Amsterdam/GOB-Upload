@@ -1130,7 +1130,8 @@ WHERE CLAUSE
         relater._create_event = MagicMock(side_effect=lambda x: x)
         relater.get_query = MagicMock()
         relater._format_relation = MagicMock(side_effect=lambda x: x)
-        mock_execute.return_value = [{'a': 1}, {'b': 2}, {'c': 3}]
+        mock_execute.return_value.__iter__.return_value = [{'a': 1}, {'b': 2}, {'c': 3}]
+        mock_execute.return_value.close = MagicMock()
 
         result = relater.update()
         mock_execute.assert_called_with(relater.get_query.return_value, stream=True, max_row_buffer=25000)
@@ -1143,7 +1144,13 @@ WHERE CLAUSE
             call({'b': 2}),
             call({'c': 3}),
         ])
+        mock_execute.return_value.close.assert_called_with()
         relater.get_query.assert_called_with(relater._is_initial_load.return_value)
 
         self.assertEqual((mock_contents_writer.return_value.__enter__.return_value.filename,
                           mock_contents_writer.return_value.__enter__.return_value.filename), result)
+
+        # Assert re-raise exception
+        mock_execute.return_value.__iter__.side_effect = Exception('mocked exception')
+        with self.assertRaises(Exception):
+            result = relater.update()
