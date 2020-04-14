@@ -771,17 +771,23 @@ INNER JOIN {self.relation_table} rel
         query = self.get_query(initial_load)
         result = _execute(query, stream=True, max_row_buffer=25000)
 
-        with ProgressTicker("Process relate src result", 10000) as progress, \
-                ContentsWriter() as contents_writer, \
-                ContentsWriter() as confirms_writer, \
-                EventCollector(contents_writer, confirms_writer) as event_collector:
+        try:
+            with ProgressTicker("Process relate src result", 10000) as progress, \
+                    ContentsWriter() as contents_writer, \
+                    ContentsWriter() as confirms_writer, \
+                    EventCollector(contents_writer, confirms_writer) as event_collector:
 
-            filename = contents_writer.filename
-            confirms = confirms_writer.filename
+                filename = contents_writer.filename
+                confirms = confirms_writer.filename
 
-            for row in result:
-                progress.tick()
-                event = self._create_event(self._format_relation(dict(row)))
-                event_collector.collect(event)
+                for row in result:
+                    progress.tick()
+                    event = self._create_event(self._format_relation(dict(row)))
+                    event_collector.collect(event)
 
-            return filename, confirms
+                result.close()
+
+                return filename, confirms
+        except Exception as e:
+            print(f"Update failed: {str(e)}, Failing query:\n{query}\n")
+            raise e

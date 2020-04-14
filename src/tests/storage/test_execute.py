@@ -36,7 +36,7 @@ class TestExecute(TestCase):
 
     @patch("gobupload.storage.execute._execute_multiple")
     def test_execute(self, mock_execute_multiple):
-        res = _execute('some query', 'TrueOrFalse')
+        res = _execute('some query', 'TrueOrFalse', 123)
 
-        mock_execute_multiple.assert_called_with(['some query'], 'TrueOrFalse')
+        mock_execute_multiple.assert_called_with(['some query'], 'TrueOrFalse', 123)
         self.assertEqual(mock_execute_multiple.return_value, res)
