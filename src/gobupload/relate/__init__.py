@@ -202,9 +202,10 @@ def _split_job(msg: dict):
 
 def build_relations(msg):
     """
-    Build all relations for a catalog and collections as specified in the message
-
-    If no collections are specified then all collections in the catalog will be processed
+    The starting point for the relate process. A relate job will be split into individual relate jobs on
+    attribute level. If there's only a catalog in the message, all collections of that catalog will be related.
+    When a job with an attribute is received the relation name will be added and returned for the actual
+    relate happening in the next step of the process.
 
     :param msg: a message from the broker containing the catalog and collections (optional)
     :return: None
