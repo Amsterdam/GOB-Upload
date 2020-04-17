@@ -548,7 +548,7 @@ LEFT JOIN (
 
     def test_start_validitity_per_seqnr_src(self):
         relater = self._get_relater()
-        expected = """
+        expected_intervals = """
 all_src_intervals(
     _id,
     start_volgnummer,
@@ -580,20 +580,38 @@ all_src_intervals(
         AND src._id = intv._id
         AND src.volgnummer > intv.volgnummer
     WHERE src.begin_geldigheid IS NOT NULL
-), src_volgnummer_begin_geldigheid AS (
+)"""
+        expected_begin_geldigheid = """\
+src_volgnummer_begin_geldigheid AS (
     SELECT
         _id,
         volgnummer,
         MIN(begin_geldigheid) begin_geldigheid
     FROM all_src_intervals
+    WHERE (_id, volgnummer) in (SELECT _id, volgnummer FROM src_entities)
     GROUP BY _id, volgnummer
 )"""
 
-        self.assertEqual(expected, relater._start_validity_per_seqnr('src'))
+        self.assertTrue(expected_intervals in relater._start_validity_per_seqnr('src'))
+        self.assertTrue(expected_begin_geldigheid in relater._start_validity_per_seqnr('src'))
+
+        expected_begin_geldigheid = """\
+src_volgnummer_begin_geldigheid AS (
+    SELECT
+        _id,
+        volgnummer,
+        MIN(begin_geldigheid) begin_geldigheid
+    FROM all_src_intervals
+    WHERE TRUE
+    GROUP BY _id, volgnummer
+)"""
+
+        self.assertTrue(expected_begin_geldigheid in relater._start_validity_per_seqnr('src', initial_load=True))
+
 
     def test_start_validitity_per_seqnr_dst(self):
         relater = self._get_relater()
-        expected = """
+        expected_intervals = """
 all_dst_intervals(
     _id,
     start_volgnummer,
@@ -625,20 +643,25 @@ all_dst_intervals(
         AND dst._id = intv._id
         AND dst.volgnummer > intv.volgnummer
     WHERE dst.begin_geldigheid IS NOT NULL
-), dst_volgnummer_begin_geldigheid AS (
+)"""
+
+        expected_begin_geldigheid = """\
+dst_volgnummer_begin_geldigheid AS (
     SELECT
         _id,
         volgnummer,
         MIN(begin_geldigheid) begin_geldigheid
     FROM all_dst_intervals
+    WHERE (_id, volgnummer) in (SELECT _id, volgnummer FROM dst_entities)
     GROUP BY _id, volgnummer
 )"""
 
-        self.assertEqual(expected, relater._start_validity_per_seqnr('dst'))
+        self.assertTrue(expected_intervals in relater._start_validity_per_seqnr('dst'))
+        self.assertTrue(expected_begin_geldigheid in relater._start_validity_per_seqnr('dst'))
 
     def test_start_validities(self):
         relater = self._get_relater()
-        relater._start_validity_per_seqnr = lambda x: 'VALIDITIES_FOR_' + x.upper()
+        relater._start_validity_per_seqnr = lambda x, y=False: 'VALIDITIES_FOR_' + x.upper()
 
         relater.src_has_states = False
         relater.dst_has_states = False
@@ -659,66 +682,64 @@ all_dst_intervals(
         relater._source_value_ref = lambda: 'SOURCE_VAL_REF'
         relater.is_many = True
         expected = f"""
+-- All changed source entities
 src_entities AS (
     SELECT * FROM src_catalog_name_src_collection_name_table src
     WHERE _last_event > (
         SELECT COALESCE(MAX(_last_src_event), 0) FROM rel_src_catalog_name_src_collection_name_src_field_name
     )
-)
-"""
+)"""
         self.assertEqual(expected, relater._with_src_entities())
         relater.is_many = False
 
         expected = f"""
+-- All changed source entities
 src_entities AS (
     SELECT * FROM src_catalog_name_src_collection_name_table src
     WHERE SOURCE_VAL_REF IS NOT NULL AND _last_event > (
         SELECT COALESCE(MAX(_last_src_event), 0) FROM rel_src_catalog_name_src_collection_name_src_field_name
     )
-)
-"""
+)"""
         self.assertEqual(expected, relater._with_src_entities())
         relater.is_many = True
 
         relater.exclude_relation_table = True
         expected = f"""
+-- All changed source entities
 src_entities AS (
     SELECT * FROM src_catalog_name_src_collection_name_table src
 
-)
-"""
+)"""
         self.assertEqual(expected, relater._with_src_entities())
 
     def test_with_dst_entities(self):
         relater = self._get_relater()
         expected = f"""
+-- All changed destination entities
 dst_entities AS (
     SELECT * FROM dst_catalog_name_dst_collection_name_table WHERE _last_event > (
         SELECT COALESCE(MAX(_last_dst_event), 0) FROM rel_src_catalog_name_src_collection_name_src_field_name
     )
-)
-"""
+)"""
+        print(f"[{relater._with_dst_entities()}]")
+        print(f"[{expected}]")
         self.assertEqual(expected, relater._with_dst_entities())
-        
+
         relater.exclude_relation_table = True
         expected = f"""
+-- All changed destination entities
 dst_entities AS (
     SELECT * FROM dst_catalog_name_dst_collection_name_table
-)
-"""
+)"""
         self.assertEqual(expected, relater._with_dst_entities())
 
     def test_with_max_src_event(self):
         relater = self._get_relater()
-        self.assertEqual("""
-max_src_event AS (SELECT MAX(_last_event) _last_event FROM src_catalog_name_src_collection_name_table)
-""", relater._with_max_src_event())
+        self.assertTrue("max_src_event AS (SELECT MAX(_last_event) _last_event FROM src_catalog_name_src_collection_name_table)" in relater._with_max_src_event())
 
     def test_with_max_dst_event(self):
         relater = self._get_relater()
-        self.assertEqual("""
-max_dst_event AS (SELECT MAX(_last_event) _last_event FROM dst_catalog_name_dst_collection_name_table)
-""", relater._with_max_dst_event())
+        self.assertTrue("max_dst_event AS (SELECT MAX(_last_event) _last_event FROM dst_catalog_name_dst_collection_name_table)" in relater._with_max_dst_event())
 
     def test_with_queries(self):
         relater = self._get_relater()
@@ -726,12 +747,12 @@ max_dst_event AS (SELECT MAX(_last_event) _last_event FROM dst_catalog_name_dst_
         relater._with_dst_entities = lambda: 'DST ENTITIES'
         relater._with_max_src_event = lambda: 'MAX SRC EVENT'
         relater._with_max_dst_event = lambda: 'MAX DST EVENT'
-        relater._start_validities = lambda: []
-        self.assertEqual('WITH SRC ENTITIES,DST ENTITIES,MAX SRC EVENT,MAX DST EVENT', relater._with_queries())
+        relater._start_validities = lambda x: []
+        self.assertTrue('WITH SRC ENTITIES,DST ENTITIES,MAX SRC EVENT,MAX DST EVENT' in relater._with_queries())
 
-        relater._start_validities = lambda: ['START_VALIDITIES1', 'START_VALIDITIES2']
-        self.assertEqual(
-            'WITH RECURSIVE START_VALIDITIES1,START_VALIDITIES2,SRC ENTITIES,DST ENTITIES,MAX SRC EVENT,MAX DST EVENT',
+        relater._start_validities = lambda x: ['START_VALIDITIES1', 'START_VALIDITIES2']
+        self.assertTrue(
+            'WITH RECURSIVE START_VALIDITIES1,START_VALIDITIES2,SRC ENTITIES,DST ENTITIES,MAX SRC EVENT,MAX DST EVENT' in
             relater._with_queries()
         )
 
@@ -807,7 +828,7 @@ FULL JOIN (
         relater._start_validities = lambda: 'SEQNR_BEGIN_GELDIGHEID'
         relater._join_src_geldigheid = lambda: 'JOIN_SRC_GELDIGHEID'
         relater._join_dst_geldigheid = lambda: 'JOIN_DST_GELDIGHEID'
-        relater._with_queries = lambda: 'WITH QUERIES'
+        relater._with_queries = lambda x: 'WITH QUERIES'
         relater._get_where = lambda: 'WHERE CLAUSE'
         relater._join_rel = lambda: 'JOIN REL'
         relater._join_max_event_ids = lambda: 'JOIN MAX EVENTIDS'
