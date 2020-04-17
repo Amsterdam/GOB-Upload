@@ -22,4 +22,4 @@ def _execute_multiple(queries, stream=False, max_row_buffer=1000):
 
 
 def _execute(query, stream=False, max_row_buffer=1000):
-    return _execute_multiple([query], stream)
+    return _execute_multiple([query], stream, max_row_buffer)

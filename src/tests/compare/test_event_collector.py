@@ -28,6 +28,26 @@ class TestEventCollector(TestCase):
         mock_contents_writer.write.assert_called_once()
         mock_contents_writer.write.assert_called_with({"event": 1})
 
+    def test_add_initial(self):
+        with EventCollector(mock_contents_writer, mock_confirms_writer) as ec:
+            ec.collect_initial_add({"event": 1, "_source_id": "source_id"})
+
+        expectation = {
+            'event': 'ADD',
+            'data': {
+                'entity': {
+                    'event': 1,
+                    '_source_id': 'source_id'
+                },
+                '_last_event': None,
+                '_source_id': 'source_id',
+                '_entity_source_id': 'source_id'
+            }
+        }
+
+        mock_contents_writer.write.assert_called_once()
+        mock_contents_writer.write.assert_called_with(expectation)
+
     def test_add_multiple(self):
         with EventCollector(mock_contents_writer, mock_confirms_writer) as ec:
             ec.collect({"event": 1})

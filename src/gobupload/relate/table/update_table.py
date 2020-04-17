@@ -769,7 +769,6 @@ INNER JOIN {self.relation_table} rel
     def update(self):
         initial_load = self._is_initial_load()
         query = self.get_query(initial_load)
-        result = _execute(query, stream=True, max_row_buffer=25000)
 
         with ProgressTicker("Process relate src result", 10000) as progress, \
                 ContentsWriter() as contents_writer, \
@@ -779,9 +778,19 @@ INNER JOIN {self.relation_table} rel
             filename = contents_writer.filename
             confirms = confirms_writer.filename
 
-            for row in result:
-                progress.tick()
-                event = self._create_event(self._format_relation(dict(row)))
-                event_collector.collect(event)
+            try:
+                # Execute the query in a try-except block.
+                # The query is complex and if it fails it is hard to debug
+                # In order to allow debugging, any failing query is reported on stdout
+                # Afterwards the exception is re-raised
+                result = _execute(query, stream=True, max_row_buffer=25000)
+                for row in result:
+                    progress.tick()
+                    event = self._create_event(self._format_relation(dict(row)))
+                    event_collector.collect(event)
+                result.close()
+            except Exception as e:
+                print(f"Update failed: {str(e)}, Failing query:\n{query}\n")
+                raise e
 
             return filename, confirms

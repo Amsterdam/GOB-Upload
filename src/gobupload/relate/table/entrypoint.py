@@ -44,6 +44,8 @@ def relate_table_src_message_handler(msg: dict):
     _check_message(msg)
     header = msg.get('header')
 
+    logger.info(f"Relate table started")
+
     updater = RelationTableRelater(header[CATALOG_KEY], header[COLLECTION_KEY], header[ATTRIBUTE_KEY])
     filename, confirms = updater.update()
 

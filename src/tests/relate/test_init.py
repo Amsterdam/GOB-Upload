@@ -4,11 +4,36 @@ from unittest.mock import MagicMock, patch, call
 from gobcore.exceptions import GOBException
 from gobupload.relate import build_relations, check_relation, _relation_needs_update, _process_references, \
     _log_exception, _split_job, update_materialized_view, _get_materialized_view_by_relation_name, \
-    _get_materialized_view, WORKFLOW_EXCHANGE, WORKFLOW_REQUEST_KEY
+    _get_materialized_view, WORKFLOW_EXCHANGE, WORKFLOW_REQUEST_KEY, _relation_needs_update
 
 mock_logger = MagicMock()
 @patch('gobupload.relate.logger', mock_logger)
 class TestInit(TestCase):
+
+    class MockModel:
+        collections = {
+            'collA': {
+                'attributes': ['attrA', 'attrB', 'attrC']
+            },
+            'colB': {
+                'attributes': [],
+            },
+            'dst_col': {
+                'attributes': ['attr'],
+            }
+        }
+
+        def get_catalog(self, catalog):
+            return {'catalog': ''}
+
+        def get_collection_names(self, catalog):
+            return self.collections.keys()
+
+        def get_collection(self, catalog, collection):
+            return self.collections.get(collection)
+
+        def _extract_references(self, attributes):
+            return attributes
 
     def setUp(self):
         pass
@@ -20,17 +45,36 @@ class TestInit(TestCase):
         result = _relation_needs_update("catalog", "collection", "reference", {"ref": "dst_cat:dst_col"})
         self.assertEqual(result, False)
 
+    @patch("gobupload.relate.get_last_change")
+    @patch("gobupload.relate.get_relation_name", MagicMock())
+    @patch("gobupload.relate.GOBModel")
+    def test_relation_needs_update(self, mock_model, mock_get_last_change):
+        mock_model.return_value = self.MockModel()
+        mock_get_last_change.side_effect = [1,2,3]
+        
+        # No update needed if relations are further than src or dest
+        self.assertEqual(False, _relation_needs_update('catalog', 'collA', 'ref', {'ref': 'dst_cat:dst_col'}))
+
+        # Update needed if relations are behind src or dest
+        mock_get_last_change.side_effect = [3,2,1]
+        self.assertEqual(True, _relation_needs_update('catalog', 'collA', 'ref', {'ref': 'dst_cat:dst_col'}))
+
+        # Return false if dst not found
+        self.assertEqual(False, _relation_needs_update('catalog', 'collA', 'ref', {'ref': 'dst_cat:dst_colB'}))
+
+
     @patch('gobupload.relate._relation_needs_update')
     def test_has_sources(self, mock_needs_update):
         mock_needs_update.return_value = True
         result = _process_references({}, "catalog", "collection", {})
         self.assertEqual(result, [])
 
+    @patch('gobupload.relate._log_exception')
     @patch('gobupload.relate.GOBModel', MagicMock())
     @patch('gobupload.relate.logger', MagicMock())
-    @patch('gobupload.relate.check_relations', MagicMock())
+    @patch('gobupload.relate.check_relations')
     @patch('gobupload.relate.check_relation_conflicts', MagicMock())
-    def test_check_relation(self):
+    def test_check_relation(self, mock_check_relations, _log_exception):
         msg = {
             'header': {
                 'catalogue': 'any catalog',
@@ -43,6 +87,11 @@ class TestInit(TestCase):
             'summary': mock.ANY,
             'contents': None
         })
+        
+        mock_check_relations.side_effect = Exception
+        result = check_relation(msg)
+        
+        _log_exception.assert_called()
 
     def test_log_exception(self):
         mock_logger.error = MagicMock()
@@ -51,28 +100,6 @@ class TestInit(TestCase):
         mock_logger.error.assert_called_with("any msg: any err")
         _log_exception("any msg", "any err", 5)
         mock_logger.error.assert_called_with("any m...")
-
-    class MockModel:
-        collections = {
-            'collA': {
-                'attributes': ['attrA', 'attrB', 'attrC']
-            },
-            'colB': {
-                'attributes': [],
-            }
-        }
-
-        def get_catalog(self, catalog):
-            return {'catalog': ''}
-
-        def get_collection_names(self, catalog):
-            return self.collections.keys()
-
-        def get_collection(self, catalog, collection):
-            return self.collections[collection]
-
-        def _extract_references(self, attributes):
-            return attributes
 
     def _get_split_msg(self, original_msg, catalog, collection, attribute):
         header = {k: v for k, v in original_msg['header'].items()}
@@ -107,6 +134,8 @@ class TestInit(TestCase):
             [{'type': 'GOB.String'}],
             [{'type': 'GOB.Integer'}],
             [{'type': 'GOB.VeryManyReference'}],
+            [{'type': 'GOB.String'}],
+            None
         ]
         msg = {
             'header': {
@@ -121,14 +150,24 @@ class TestInit(TestCase):
         self.assertSplitJobsPublished(mock_connection, [
             self._get_split_msg(msg, 'catalog', 'collA', 'attrA'),
             self._get_split_msg(msg, 'catalog', 'collA', 'attrB'),
+            self._get_split_msg(msg, 'catalog', 'dst_col', 'attr'),
         ])
+        
+        msg = {
+            'header': {
+                'catalogue': 'catalog',
+                'collection': 'dst_col',
+                'jobid': 20,
+                'stepid': 240,
+            }
+        }
+        _split_job(msg)
+        mock_logger.info.assert_called_with("Missing relation specification for catalog dst_col attr. Skipping")
 
     @patch("gobupload.relate.datetime")
     @patch("gobupload.relate.GOBModel")
-    @patch("gobupload.relate.relate_update")
     @patch("gobupload.relate.get_relation_name")
-    def test_build_relations(self, mock_get_relation_name, mock_relate_update, mock_model, mock_datetime):
-        mock_relate_update.return_value = ('the filename', 240)
+    def test_build_relations(self, mock_get_relation_name, mock_model, mock_datetime):
         mock_datetime.datetime.utcnow.return_value.isoformat.return_value = 'DATETIME'
         msg = {
             'header': {
@@ -158,7 +197,6 @@ class TestInit(TestCase):
         }
 
         self.assertEqual(expected_result, result)
-        mock_relate_update.assert_called_with('catalog', 'collection', 'attribute')
         mock_get_relation_name.assert_called_with(mock_model.return_value, 'catalog', 'collection', 'attribute')
 
     @patch("gobupload.relate.datetime")
