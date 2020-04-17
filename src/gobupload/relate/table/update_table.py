@@ -441,7 +441,7 @@ LEFT JOIN (
     ){source_value_not_null}
 """
 
-    def _start_validity_per_seqnr(self, src_or_dst):
+    def _start_validity_per_seqnr(self, src_or_dst, initial_load=False):
         """Generates the recursive WITH queries that find the begin_geldigheid for every volgnummer
 
         Result of this recursive query isa relation src_volgnummer_begin_geldigheid or dst_volgnummer_begin_geldigheid
@@ -453,7 +453,14 @@ LEFT JOIN (
         else:
             table_name = self.dst_table_name
 
+        where_relevant = "TRUE"
+        if not initial_load:
+            changed_entities = self.src_entities_alias if src_or_dst == 'src' else self.dst_entities_alias
+            # Filter the tuples on only the relevant tuples for the update
+            where_relevant = f"(_id, volgnummer) in (SELECT _id, volgnummer FROM {changed_entities})"
+
         return f"""
+-- Find all possible {src_or_dst} intervals: id - seqnr - start - end
 all_{src_or_dst}_intervals(
     {FIELD.ID},
     start_{FIELD.SEQNR},
@@ -485,25 +492,30 @@ all_{src_or_dst}_intervals(
         AND {src_or_dst}.{FIELD.ID} = intv.{FIELD.ID}
         AND {src_or_dst}.{FIELD.SEQNR} > intv.{FIELD.SEQNR}
     WHERE {src_or_dst}.{FIELD.START_VALIDITY} IS NOT NULL
-), {src_or_dst}_volgnummer_begin_geldigheid AS (
+),
+-- Use these intervals to get all {src_or_dst} start validities:  id - seqnr - start validity
+-- Only for the relevant id - seqnr combinations, that is that have changed
+-- Or all combinations if it concerns an initial load
+{src_or_dst}_volgnummer_begin_geldigheid AS (
     SELECT
         {FIELD.ID},
         {FIELD.SEQNR},
         MIN({FIELD.START_VALIDITY}) {FIELD.START_VALIDITY}
     FROM all_{src_or_dst}_intervals
+    WHERE {where_relevant}
     GROUP BY {FIELD.ID}, {FIELD.SEQNR}
 )"""
 
-    def _start_validities(self):
+    def _start_validities(self, initial_load=False):
         """Adds recursive queries to determine the begin_geldigheid for each volgnummer
 
         """
         result = []
         if self.src_has_states:
-            result.append(self._start_validity_per_seqnr('src'))
+            result.append(self._start_validity_per_seqnr('src', initial_load))
 
         if self.dst_has_states:
-            result.append(self._start_validity_per_seqnr('dst'))
+            result.append(self._start_validity_per_seqnr('dst', initial_load))
 
         return result
 
@@ -521,15 +533,16 @@ all_{src_or_dst}_intervals(
         filters_str = f'    WHERE {" AND ".join(filters)}' if filters else ""
 
         statement = f"""
+-- All changed source entities
 {self.src_entities_alias} AS (
     SELECT * FROM {self.src_table_name} src
 {filters_str}
-)
-"""
+)"""
         return statement
 
     def _with_dst_entities(self):
         statement = f"""
+-- All changed destination entities
 {self.dst_entities_alias} AS (
     SELECT * FROM {self.dst_table_name}"""
 
@@ -539,23 +552,22 @@ all_{src_or_dst}_intervals(
     )"""
 
         statement += """
-)
-"""
+)"""
 
         return statement
 
     def _with_max_src_event(self):
         return f"""
-max_src_event AS (SELECT MAX({FIELD.LAST_EVENT}) {FIELD.LAST_EVENT} FROM {self.src_table_name})
-"""
+-- Last event that has updated a source entity
+max_src_event AS (SELECT MAX({FIELD.LAST_EVENT}) {FIELD.LAST_EVENT} FROM {self.src_table_name})"""
 
     def _with_max_dst_event(self):
         return f"""
-max_dst_event AS (SELECT MAX({FIELD.LAST_EVENT}) {FIELD.LAST_EVENT} FROM {self.dst_table_name})
-"""
+-- Last event that has updated a destination entity
+max_dst_event AS (SELECT MAX({FIELD.LAST_EVENT}) {FIELD.LAST_EVENT} FROM {self.dst_table_name})"""
 
-    def _with_queries(self):
-        start_validities = self._start_validities()
+    def _with_queries(self, initial_load=False):
+        start_validities = self._start_validities(initial_load)
         other_withs = [
             self._with_src_entities(),
             self._with_dst_entities(),
@@ -564,7 +576,8 @@ max_dst_event AS (SELECT MAX({FIELD.LAST_EVENT}) {FIELD.LAST_EVENT} FROM {self.d
         ]
 
         return f"WITH{' RECURSIVE' if start_validities else ''} " \
-               f"{','.join(start_validities + other_withs)}"
+               f"{','.join(start_validities + other_withs)}\n" \
+               f"-- END WITH\n"
 
     def _join_geldigheid(self, src_dst):
         """Returns the join with the begin_geldigheid for the given volgnummer for either 'src' or 'dst' (src_bg or
@@ -648,7 +661,7 @@ LEFT JOIN {self.dst_table_name} dst
 """
 
         query = f"""
-{self._with_queries()}
+{self._with_queries(initial_load)}
 SELECT
     {self.comma_join.join(self._select_expressions_src())}
 FROM {self.src_entities_alias} src
