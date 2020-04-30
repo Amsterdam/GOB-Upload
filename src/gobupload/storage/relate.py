@@ -316,7 +316,7 @@ def _query_missing(query, check, attr, max_warnings=50):
 
     items_name = f"{attr} {check['msg']}"
     if count > max_warnings:
-        logger.warning(f"{items_name}: {count} actual errors, reported first {max_warnings} only")
+        logger.data_warning(f"{items_name}: {count} actual errors, reported first {max_warnings} only")
     if historic_count > 0:
         logger.info(f"{items_name}: {historic_count} historical errors")
 
