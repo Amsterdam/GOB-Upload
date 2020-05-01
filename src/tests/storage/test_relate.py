@@ -6,7 +6,7 @@ from gobcore.model import GOBModel
 from gobupload.relate.exceptions import RelateException
 from gobupload.storage.relate import EQUALS, LIES_IN, JOIN, WHERE, \
     _get_data, get_last_change, get_current_relations, RelationUpdater, _query_missing, check_relations, \
-    check_very_many_relations, check_relation_conflicts, _get_relation_check_query
+    check_very_many_relations, check_relation_conflicts, _get_relation_check_query, QA_CHECK, QA_LEVEL
 
 
 class TestRelations(TestCase):
@@ -150,11 +150,13 @@ ORDER BY _source, _id, volgnummer, begin_geldigheid
         mock_missing.assert_called()
         self.assertEqual(mock_missing.call_count, 2)
 
+    @patch('gobupload.storage.relate.Issue')
+    @patch('gobupload.storage.relate.log_issue')
     @patch('gobupload.storage.relate.logger')
     @patch('gobupload.storage.relate._execute')
     @patch('gobupload.storage.relate.RelationTableRelater')
     @patch('gobupload.storage.relate._MAX_RELATION_CONFLICTS', 1)
-    def test_check_relation_conflicts(self, mock_relater, mock_execute, mock_logger):
+    def test_check_relation_conflicts(self, mock_relater, mock_execute, mock_logger, mock_log_issue, mock_issue):
         relater = mock_relater.return_value
         relater.dst_has_states = False
 
@@ -177,32 +179,17 @@ ORDER BY _source, _id, volgnummer, begin_geldigheid
         mock_relater.assert_called_with("any_catalog", "any_collection", "any_field_name")
 
         conflicts_msg = f"Conflicting any_field_name relations"
-        
-        expected = [{
-            "id": conflicts_msg,
-            "data": {
-                "src_id": 1,
-                "src_volgnummer": 1,
-                "conflict": {
-                    "id": 1,
-                    "bronwaarde": "bronwaarde"
-                }
-            }
-        },
-        {
-            "id": conflicts_msg,
-            "data": {
-                "src_id": 1,
-                "src_volgnummer": 1,
-                "conflict": {
-                    "id": 2,
-                    "bronwaarde": "bronwaarde"
-                }
-            }
-        }]
 
-        mock_logger.warning.assert_has_calls([
-            call(conflicts_msg, expected[0]),
+        mock_issue.assert_has_calls([
+            call(QA_CHECK.Unique_destination, {
+                **mock_execute.return_value[0],
+                'volgnummer': mock_execute.return_value[0]['src_volgnummer'],
+            }, 'src_id', 'bronwaarde'),
+        ])
+
+        mock_log_issue.assert_called_with(mock_logger, QA_LEVEL.WARNING, mock_issue.return_value)
+
+        mock_logger.data_warning.assert_has_calls([
             call(f"{conflicts_msg}: 2 found, 1 reported"),
         ])
 

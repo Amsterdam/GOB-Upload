@@ -491,29 +491,14 @@ def check_relation_conflicts(catalog_name, collection_name, attribute_name):
         row = dict(row)
         # Log conflicting relations
         if (row.get("row_number") or 0) > 1:
-            data = {
-                f"src{FIELD.ID}": row.get(f"src{FIELD.ID}")
-            }
-            data.update({f"src_{FIELD.SEQNR}": row.get(f"src_{FIELD.SEQNR}")}
-                        if updater.src_has_states else {})
-
-            data.update({
-                "conflict": {
-                    "id": row.get(f"dst{FIELD.ID}"),
-                    "bronwaarde": row.get(FIELD.SOURCE_VALUE),
-                }
-            })
-
-            data["conflict"].update({f"{FIELD.SEQNR}": row.get(f"dst_{FIELD.SEQNR}")}
-                                    if updater.dst_has_states else {})
 
             if conflicts < _MAX_RELATION_CONFLICTS:
-                logger.warning(conflicts_msg, {
-                    'id': conflicts_msg,
-                    'data': data
-                })
+                row['volgnummer'] = row['src_volgnummer']
+                issue = Issue(QA_CHECK.Unique_destination, row, 'src_id', 'bronwaarde')
+                issue.attribute = attribute_name
+                log_issue(logger, QA_LEVEL.WARNING, issue)
             conflicts += 1
 
     if conflicts > _MAX_RELATION_CONFLICTS:
-        logger.warning(f"{conflicts_msg}: {conflicts} found, "
-                       f"{min(conflicts, _MAX_RELATION_CONFLICTS)} reported")
+        logger.data_warning(f"{conflicts_msg}: {conflicts} found, "
+                            f"{min(conflicts, _MAX_RELATION_CONFLICTS)} reported")
