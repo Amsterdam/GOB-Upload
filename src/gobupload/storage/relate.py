@@ -316,9 +316,9 @@ def _query_missing(query, check, attr, max_warnings=50):
 
     items_name = f"{attr} {check['msg']}"
     if count > max_warnings:
-        logger.warning(f"{items_name}: {count} actual errors, reported first {max_warnings} only")
+        logger.data_warning(f"{items_name}: {count} actual warnings, reported first {max_warnings} only")
     if historic_count > 0:
-        logger.info(f"{items_name}: {historic_count} historical errors")
+        logger.data_info(f"{items_name}: {historic_count} historical errors")
 
 
 def _get_relation_check_query(query_type, src_catalog_name, src_collection_name, src_field_name):
