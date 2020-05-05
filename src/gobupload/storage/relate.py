@@ -493,7 +493,7 @@ def check_relation_conflicts(catalog_name, collection_name, attribute_name):
         if (row.get("row_number") or 0) > 1:
 
             if conflicts < _MAX_RELATION_CONFLICTS:
-                row['volgnummer'] = row['src_volgnummer']
+                row['volgnummer'] = row.get('src_volgnummer')
                 issue = Issue(QA_CHECK.Unique_destination, row, 'src_id', 'bronwaarde')
                 issue.attribute = attribute_name
                 log_issue(logger, QA_LEVEL.WARNING, issue)
