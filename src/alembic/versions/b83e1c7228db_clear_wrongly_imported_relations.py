@@ -29,13 +29,20 @@ def upgrade():
     for relation_name, relation in get_relations(model)['collections'].items():
         table_name = f"rel_{relation_name}"
 
-        res = connection.execute(f"SELECT * FROM {table_name} WHERE bronwaarde IS NULL LIMIT 1")
+        try:
+            # The code uses the current GOBModel
+            # This model is normally more recent that the database
+            # because of the migrations that have still to be processes after this migration
+            # So do not fail on any missing tables
+            res = connection.execute(f"SELECT * FROM {table_name} WHERE bronwaarde IS NULL LIMIT 1")
 
-        if res.fetchall():
-            print(f"{table_name} contains NULL values for bronwaarde. Clearing table and events.")
+            if res.fetchall():
+                print(f"{table_name} contains NULL values for bronwaarde. Clearing table and events.")
 
-            op.execute(f"DELETE FROM events WHERE entity='{relation_name}'")
-            op.execute(f"TRUNCATE {table_name}")
+                op.execute(f"DELETE FROM events WHERE entity='{relation_name}'")
+                op.execute(f"TRUNCATE {table_name}")
+        except Exception:
+            connection.execute(f"ROLLBACK")
 
     # ### end Alembic commands ###
 
