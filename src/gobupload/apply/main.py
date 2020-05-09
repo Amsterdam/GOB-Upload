@@ -28,17 +28,18 @@ def apply_events(storage, last_events, start_after, stats):
     with ActiveGarbageCollection("Apply events"), storage.get_session():
         logger.info(f"Apply events")
 
-        with ProgressTicker("Apply events", 10000) as progress, \
-                EventApplicator(storage, last_events) as event_applicator:
-            unhandled_events = storage.get_events_starting_after(start_after)
+        PROCESS_PER = 10000
+        with ProgressTicker("Apply events", PROCESS_PER) as progress:
+            unhandled_events = storage.get_events_starting_after(start_after, PROCESS_PER)
             while unhandled_events:
-                for event in unhandled_events:
-                    progress.tick()
+                with EventApplicator(storage, last_events) as event_applicator:
+                    for event in unhandled_events:
+                        progress.tick()
 
-                    action, count = event_applicator.apply(event)
-                    stats.add_applied(action, count)
-                    start_after = event.eventid
-                unhandled_events = storage.get_events_starting_after(start_after)
+                        action, count = event_applicator.apply(event)
+                        stats.add_applied(action, count)
+                        start_after = event.eventid
+                unhandled_events = storage.get_events_starting_after(start_after, PROCESS_PER)
 
 
 def apply_confirm_events(storage, stats, msg):
