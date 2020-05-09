@@ -83,7 +83,7 @@ class GOBStorageHandler():
 
     EVENTS_TABLE = "events"
     ALL_TABLES = [EVENTS_TABLE] + gob_model.get_table_names()
-    FORCE_FLUSH_PER = 1000
+    FORCE_FLUSH_PER = 10000
 
     user_name = f"({GOB_DB['username']}@{GOB_DB['host']}:{GOB_DB['port']})"
 
@@ -460,7 +460,7 @@ WHERE
         return None if result is None else result.eventid
 
     @with_session
-    def get_events_starting_after(self, eventid):
+    def get_events_starting_after(self, eventid, count=10000):
         """Return a list of events with eventid starting at eventid
 
         :return: The list of events
@@ -469,7 +469,7 @@ WHERE
             .filter_by(source=self.metadata.source, catalogue=self.metadata.catalogue, entity=self.metadata.entity) \
             .filter(self.DbEvent.eventid > eventid if eventid else True) \
             .order_by(self.DbEvent.eventid.asc()) \
-            .limit(10000) \
+            .limit(count) \
             .all()
 
     @with_session
@@ -622,6 +622,28 @@ WHERE
             entity_query = entity_query.filter_by(_date_deleted=None)
 
         return entity_query.one_or_none()
+
+    @with_session
+    def get_entities(self, source_ids, with_deleted=False):
+        """
+        Get entities with source id contained in the given list of source id's
+
+        :param source_ids: ids of the entities to get
+        :param with_deleted: boolean denoting if entities that are deleted should be considered (default: False)
+        :return:
+        """
+        fields = self.gob_model.get_technical_key_fields(self.metadata.catalogue, self.metadata.entity)
+        value = {
+            "_source": self.metadata.source,
+        }
+        filter = {field: value[field] for field in fields if field != "_source_id"}
+
+        entity_query = self.session.query(self.DbEntity).filter_by(**filter)
+        if not with_deleted:
+            entity_query = entity_query.filter_by(_date_deleted=None)
+
+        attr = getattr(self.DbEntity, "_source_id")
+        return entity_query.filter(attr.in_(source_ids)).all()
 
     def bulk_add_entities(self, events):
         """Adds all applied ADD events to the storage
@@ -778,8 +800,12 @@ VALUES {values}"""
     @with_session
     def _flush_entities(self):
         if self.added_session_entity_cnt >= self.FORCE_FLUSH_PER:
-            self.session.flush()
-            self.added_session_entity_cnt = 0
+            self.force_flush_entities()
+
+    @with_session
+    def force_flush_entities(self):
+        self.session.flush()
+        self.added_session_entity_cnt = 0
 
     def execute(self, statement):
         result = self.engine.execute(statement)

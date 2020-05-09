@@ -5,6 +5,8 @@ from unittest.mock import patch, MagicMock
 
 from tests.fixtures import dict_to_object
 
+from gobcore.exceptions import GOBException
+from gobcore.events import GOB
 from gobupload.storage.handler import GOBStorageHandler
 from gobupload.update.event_applicator import EventApplicator, _get_gob_event
 
@@ -45,7 +47,7 @@ class TestEventApplicator(TestCase):
         event = dict_to_object(self.mock_event)
         applicator.apply(event)
         self.assertEqual(len(applicator.add_events), 0)
-        self.storage.get_entity_for_update.assert_called()
+        self.assertEqual(len(applicator.other_events), 1)
 
     def test_apply_new_add(self):
         self.set_contents({
@@ -137,3 +139,76 @@ class TestEventApplicator(TestCase):
         mock_migrations().migrate_event_data.assert_called_with(event, data, event.catalogue, event.entity, target_version)
 
         mock_gob_event.assert_called_with(expected_event_msg, expected_meta_data)
+
+    def test_add_other_event(self):
+        applicator = EventApplicator(self.storage, {})
+
+        applicator.MAX_OTHER_CHUNK = 3
+        applicator.apply_other_events = MagicMock()
+
+        applicator.add_other_event('any gob event', {'_entity_source_id': 'any entity source 1'})
+        self.assertEqual(applicator.other_events['any entity source 1'], 'any gob event')
+
+        applicator.add_other_event('any gob event', {'_entity_source_id': 'any entity source 2'})
+        applicator.apply_other_events.assert_not_called()
+
+        applicator.add_other_event('any gob event', {'_entity_source_id': 'any entity source 3'})
+        applicator.apply_other_events.assert_called()
+
+    def test_apply_other_events(self):
+        applicator = EventApplicator(self.storage, {})
+        applicator.apply_other_event = MagicMock()
+
+        self.assertEqual(applicator.other_events, {})
+
+        applicator.apply_other_events()
+        self.assertEqual(applicator.other_events, {})
+        self.storage.get_entities.assert_not_called()
+
+        applicator.add_other_event('any gob event', {'_entity_source_id': 'any entity source id'})
+        self.storage.get_entities.return_value = ['any entity']
+
+        applicator.apply_other_events()
+        self.assertEqual(applicator.other_events, {})
+        self.storage.get_entities.assert_called()
+        applicator.apply_other_event.assert_called_with('any entity')
+
+    def test_apply_other_event(self):
+        applicator = EventApplicator(self.storage, {})
+
+        entity = MagicMock()
+        entity._date_deleted = None
+        entity._last_event = None
+
+        gob_event = MagicMock()
+        gob_event.id = 'any event id'
+
+        entity._source_id = 'any source id'
+        applicator.other_events['any source id'] = gob_event
+
+        # Normal action, apply event and set last event id
+        applicator.apply_other_event(entity)
+        gob_event.apply_to.assert_called_with(entity)
+        self.assertEqual(entity._last_event, gob_event.id)
+
+        # Apply NON-ADD event on a deleted entity
+        entity._date_deleted = 'any date deleted'
+        with self.assertRaises(GOBException):
+            applicator.apply_other_event(entity)
+
+        # Apply ADD event on a deleted entity is OK
+        gob_event = MagicMock(spec=GOB.ADD)
+        gob_event.id = 'any event id'
+        entity._last_event = None
+        applicator.other_events['any source id'] = gob_event
+        applicator.apply_other_event(entity)
+        self.assertEqual(entity._last_event, gob_event.id)
+
+        # Do not set last event id for CONFIRM events
+        gob_event = MagicMock(spec=GOB.CONFIRM)
+        gob_event.id = 'any event id'
+        entity._last_event = None
+        entity._date_deleted = None
+        applicator.other_events['any source id'] = gob_event
+        applicator.apply_other_event(entity)
+        self.assertEqual(entity._last_event, None)
