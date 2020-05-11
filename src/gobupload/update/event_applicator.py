@@ -54,7 +54,8 @@ class EventApplicator:
 
     def add_other_event(self, gob_event, data):
         """
-        Add a non-ADD event. If MAX_OTHER_CHUNK events have been buffered then mass-apply the events
+        Add a non-ADD event, or an ADD event on a deleted entity
+        If MAX_OTHER_CHUNK events have been buffered then mass-apply the events
 
         :param gob_event:
         :param data:
@@ -83,7 +84,7 @@ class EventApplicator:
         """
         Apply an event on an entity
 
-        The event van be an:
+        The event can be an:
         - ADD event (reanimation of a DELETED entity)
         - DELETE or MODIFY event
         - CONFIRM event (these event only set the last modified date, not the last event id)
