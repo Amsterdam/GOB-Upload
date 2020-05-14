@@ -207,10 +207,6 @@ def _autoid(storage, data, specs, column, assigned):
     # Get last issued value
     last_value = assigned[column]["last"]
     template = specs["template"]
-    if not last_value:
-        # If no last issued value exist, check the storage for any last value with the same template
-        find_template = re.sub(r'X*$', '%', template)
-        last_value = storage.get_last_column_value(find_template, column)
 
     if last_value:
         # Create an id that follows the last value
