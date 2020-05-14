@@ -26,9 +26,13 @@ class Enricher:
         self.assigned = {}
         for column, specs in self.enrich_spec.items():
             self.assigned[column] = {
-                "last": None,
                 "issued": {}
             }
+
+            # For autoid, always prefill the last value with the last value in the storage
+            if specs["type"] == "autoid":
+                find_template = re.sub(r'X*$', '%', specs["template"])
+                self.assigned[column]["last"] = storage.get_last_column_value(find_template, column)
 
         self.enrichers = {
             "geounion": {"func": _geounion, "description": "Generate geometry from other geometries"},
