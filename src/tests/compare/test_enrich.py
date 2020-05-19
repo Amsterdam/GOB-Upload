@@ -226,6 +226,34 @@ class TestEnrichAutoid(TestCase):
             for content in msg["contents"]:
                 enricher.enrich(content)
 
+    def test_enrich_previously_assigned(self):
+        """
+        It can happen that in an import batch for some records an autoid had previously
+        been assigned. That's why we always store the highest value in the database
+        when the enricher has been initialized.
+        """
+        msg = self.mock_msg
+        msg["header"]["enrich"]["id"]["template"] = "0123X"
+        msg["contents"] = [
+            {"id": None, "code": "0"},
+            {"id": None, "code": "1"},
+            {"id": None, "code": "2"}
+        ]
+        # Create a mock_record for the first entity in the message
+        Record = namedtuple('Record', ['id', 'code'])
+        mock_record = Record(id="01232", code="0")
+        # The first record had been assigned an autoid in a previous run
+        self.mock_storage.get_column_values_for_key_value.side_effect = [[mock_record], None, None]
+        # The database contains records with higher values
+        self.mock_storage.get_last_column_value.return_value = "1234"
+        enricher = Enricher(self.mock_storage, msg)
+        for content in msg["contents"]:
+            enricher.enrich(content)
+
+        self.assertEqual(msg["contents"][0]["id"], "01232")
+        self.assertEqual(msg["contents"][1]["id"], "01235")
+        self.assertEqual(msg["contents"][2]["id"], "01236")
+
     def test_enrich_id_already_filled(self):
         msg = self.mock_msg
         msg["contents"] = [
