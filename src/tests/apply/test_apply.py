@@ -227,3 +227,36 @@ class TestApply(TestCase):
         mock_should_analyze.return_value = False
         apply(msg)
         mock_storage_handler.return_value.analyze_table.assert_not_called()
+
+    @patch("gobupload.apply.main._get_source_catalog_entity_combinations")
+    @patch("gobupload.apply.main.get_event_ids")
+    @patch("gobupload.apply.main.EventNotification")
+    @patch("gobupload.apply.main.UpdateStatistics")
+    @patch("gobupload.apply.main.apply_confirm_events", MagicMock())
+    @patch("gobupload.apply.main.apply_events", MagicMock())
+    @patch("gobupload.apply.main._should_analyze", lambda *args: False)
+    @patch("gobupload.apply.main.is_corrupted", lambda *args: False)
+    def test_apply_notification_eventids(self, mock_statistics, mock_notification, mock_get_event_ids,
+                                         mock_get_combinations, mock_storage_handler):
+        """Tests if the correct before and after event ids are passed in the EventNotification
+
+        :param mock_storage_handler:
+        :return:
+        """
+        mock_statistics().applied = 1
+
+        test_cases = [
+            # (number_of_result_combinations, (n*2 calls to get_event_ids max), before, after)
+            # Each iteration performs 2 calls to get_event_ids. The items in the list are the values that are returned
+            # as the max_eventid for each call.
+            (1, [None, 10404], 0, 10404),
+            (1, [None, None], 0, 0),
+            (3, [20, 100, 40, 120, 10, 150], 10, 150),
+            (2, [20, None, None, 30, 22, 28], 0, 30),
+        ]
+
+        for combinations_cnt, max_eventids, before, after in test_cases:
+            mock_get_combinations.return_value = [MagicMock() for _ in range(combinations_cnt)]
+            mock_get_event_ids.side_effect = [(i, 99999999) for i in max_eventids]
+            apply({'header': {}})
+            mock_notification.assert_called_with(1, [before, after])

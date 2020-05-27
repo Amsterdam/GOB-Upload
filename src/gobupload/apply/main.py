@@ -1,4 +1,5 @@
 import os
+import sys
 
 from gobcore.logging.logger import logger
 from gobcore.utils import ProgressTicker
@@ -111,7 +112,7 @@ def apply(msg):
 
         # Track eventId before event application
         entity_max_eventid, last_eventid = get_event_ids(storage)
-        before = min(last_eventid, before or last_eventid)
+        before = min(entity_max_eventid or 0, before or sys.maxsize)
 
         if is_corrupted(entity_max_eventid, last_eventid):
             logger.error(f"Model {model} is inconsistent! data is more recent than events")
@@ -128,7 +129,7 @@ def apply(msg):
 
         # Track eventId after event application
         entity_max_eventid, last_eventid = get_event_ids(storage)
-        after = max(last_eventid, after or last_eventid)
+        after = max(entity_max_eventid or 0, after or 0)
 
         # Build result message
         results = stats.results()
