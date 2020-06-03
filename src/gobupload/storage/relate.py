@@ -3,7 +3,6 @@ Module contains the storage related logic for GOB Relations
 
 """
 import datetime
-import json
 
 from gobupload.storage.handler import GOBStorageHandler
 
@@ -13,8 +12,8 @@ from gobcore.model.metadata import FIELD
 from gobcore.model.relations import get_relation_name
 from gobcore.quality.issue import QA_CHECK, QA_LEVEL, Issue, log_issue
 
-from gobupload.relate.table.update_table import RelationTableRelater
-from gobupload.storage.execute import _execute, _execute_multiple
+from gobupload.relate.update import Relater
+from gobupload.storage.execute import _execute
 
 # Dates compare at start of day
 _START_OF_DAY = datetime.time(0, 0, 0)
@@ -32,40 +31,6 @@ LIES_IN = "lies_in"   # geometric comparison, eg src.geometrie lies_in dst_geome
 
 # Maximum number of error messages to report
 _MAX_RELATION_CONFLICTS = 25
-
-
-def _get_bronwaarde(field_name, field_type):
-    """
-    Get the bronwaarde for the relation
-
-    :param field_name:
-    :param field_type:
-    :return:
-    """
-    if field_type == "GOB.ManyReference":
-        # bronwaarde is an array
-        return f"ARRAY(SELECT x->>'bronwaarde' FROM jsonb_array_elements(src.{field_name}) as x)"
-    elif field_type == "GOB.Reference":
-        # bronwaarde is a value
-        return f"src.{field_name}->>'bronwaarde'"
-
-
-def _get_match(field, spec):
-    """
-    For single references the match is on equality
-    For multi references the match is on contains
-
-    :param field:
-    :param spec:
-    :return: the match expression
-    """
-    bronwaarde = _get_bronwaarde(spec['field_name'], field['type'])
-    if field['type'] == "GOB.ManyReference":
-        # destination field value in source bronwaarden
-        return f"ANY({bronwaarde})"
-    elif field['type'] == "GOB.Reference":
-        # destination field value = source bronwaarde
-        return bronwaarde
 
 
 def date_to_datetime(value):
@@ -130,28 +95,6 @@ def _get_data(query):
             yield _convert_row(row)
 
 
-def get_last_change(catalog_name, collection_name):
-    """
-    Gets the eventid of the most recent change for the given catalog and collection
-
-    :param catalog_name:
-    :param collection_name:
-    :return:
-    """
-    # Using MAX(eventid) doesn't use the available indexes correctly resulting in a slow query
-    query = f"""
-SELECT eventid
-FROM   events
-WHERE  catalogue = '{catalog_name}' AND
-       entity = '{collection_name}' AND
-       action != 'CONFIRM'
-ORDER BY eventid DESC
-LIMIT 1
-"""
-    last_change = _execute(query).scalar()
-    return 0 if last_change is None else last_change
-
-
 def get_current_relations(catalog_name, collection_name, field_name):
     """
     Get the current relations as an iterable of dictionaries
@@ -185,108 +128,6 @@ ORDER BY {', '.join(order_by)}
     for row in rows:
         row = dict(row)
         yield row
-
-
-class RelationUpdater:
-
-    # Execute updates every update interval queries
-    UPDATE_INTERVAL = 1000
-
-    def __init__(self, catalog_name, collection_name):
-        """
-        Initialize an updater for the given catalog and collection
-
-        :param catalog_name:
-        :param collection_name:
-        """
-        model = GOBModel()
-        self.table_name = model.get_table_name(catalog_name, collection_name)
-        self.queries = []
-
-    def update(self, field_name, row):
-        """
-        Create an update query for the given arguments.
-        Add the query to the list of queries
-        If the number of queries in the list of queries exceeds the update interval execute the queries
-
-        :param field_name:
-        :param row:
-        :return:
-        """
-        query = f"""
-UPDATE {self.table_name}
-SET    {field_name} = $quotedString${json.dumps(row[field_name])}$quotedString$
-WHERE  {FIELD.GOBID} = {row[FIELD.GOBID]}
-"""
-        self.queries.append(query)
-        if len(self.queries) >= RelationUpdater.UPDATE_INTERVAL:
-            self.completed()
-
-    def completed(self):
-        """
-        Execute a list of queries and reinitialize the list of queries
-
-        :return:
-        """
-        if self.queries:
-            _execute_multiple(self.queries)
-        self.queries = []
-
-
-def _geo_resolve(spec, query_type):
-    """
-    Resolve the join or where part of a geometric query
-
-    :param spec: {'source_attribute', 'destination_attribute'}
-    :param query_type: 'join' or 'where' to specify the part of the query to be resolved
-    :return: the where or join query string part
-    """
-    src_geo = f"src.{spec['source_attribute']}"
-    dst_geo = f"dst.{spec['destination_attribute']}"
-    if query_type == JOIN:
-        # In the future this part might depend on the geometric types of the geometries
-        # Currently only surface lies in surface is resolved (eg ligt_in_buurt)
-        resolvers = {
-            LIES_IN: f"ST_Contains({dst_geo}::geometry, ST_PointOnSurface({src_geo}::geometry))"
-            # for points: f"ST_Contains({dst_geo}::geometry, {src_geo}::geometry)"
-        }
-        return resolvers.get(spec["method"])
-    elif query_type == WHERE:
-        # Only take valid geometries into account
-        return f"ST_IsValid({src_geo}) AND ST_IsValid({dst_geo})"
-
-
-def _equals_resolve(spec, src_field, query_type):
-    """
-    Resolve the join or where part of a 'equals' query (eg bronwaarde == code)
-
-    :param spec: {'destination_attribute'}
-    :param src_field:
-    :param query_type: 'join' or 'where' to specify the part of the query to be resolved
-    :return: the where or join query string part
-    """
-    if query_type == JOIN:
-        return f"dst.{spec['destination_attribute']} = {_get_match(src_field, spec)}"
-    elif query_type == WHERE:
-        return f"{_get_bronwaarde(spec['field_name'], src_field['type'])} IS NOT NULL"
-
-
-def _resolve_match(spec, src_field, query_type):
-    """
-    Resolve the join or where part of a relation query
-
-    :param spec: {'destination_attribute'}
-    :param src_field:
-    :param query_type: 'join' or 'where' to specify the part of the query to be resolved
-    :return: the where or join query string part
-    """
-    assert query_type in [JOIN, WHERE], f"Error: unknown query part type {query_type}"
-    assert spec["method"] in [EQUALS, LIES_IN], f"Error: unknown match type {spec['method']}"
-
-    if spec["method"] == EQUALS:
-        return _equals_resolve(spec, src_field, query_type)
-    elif spec["method"] == LIES_IN:  # geometric
-        return _geo_resolve(spec, query_type)
 
 
 def _query_missing(query, check, attr, max_warnings=50):
@@ -479,7 +320,7 @@ GROUP BY
 
 
 def check_relation_conflicts(catalog_name, collection_name, attribute_name):
-    updater = RelationTableRelater(catalog_name, collection_name, attribute_name)
+    updater = Relater(catalog_name, collection_name, attribute_name)
     query = updater.get_conflicts_query()
 
     result = _execute(query, stream=True, max_row_buffer=25000)

@@ -7,11 +7,10 @@ It writes the storage to apply events to the storage
 """
 import argparse
 
-from gobcore.message_broker.config import WORKFLOW_EXCHANGE, FULLUPDATE_QUEUE, COMPARE_QUEUE, RELATE_QUEUE, \
-    CHECK_RELATION_QUEUE, APPLY_QUEUE, RELATE_TABLE_QUEUE
-from gobcore.message_broker.config import COMPARE_RESULT_KEY, FULLUPDATE_RESULT_KEY, RELATE_RESULT_KEY, \
-    CHECK_RELATION_RESULT_KEY, APPLY_RESULT_KEY, RELATE_UPDATE_VIEW_QUEUE, RELATE_UPDATE_VIEW_RESULT_KEY, \
-    RELATE_TABLE_RESULT_KEY
+from gobcore.message_broker.config import WORKFLOW_EXCHANGE, FULLUPDATE_QUEUE, COMPARE_QUEUE, APPLY_QUEUE, \
+    RELATE_PREPARE_QUEUE, RELATE_PROCESS_QUEUE, RELATE_CHECK_QUEUE, RELATE_UPDATE_VIEW_QUEUE
+from gobcore.message_broker.config import COMPARE_RESULT_KEY, FULLUPDATE_RESULT_KEY, APPLY_RESULT_KEY, \
+    RELATE_PREPARE_RESULT_KEY, RELATE_PROCESS_RESULT_KEY, RELATE_CHECK_RESULT_KEY, RELATE_UPDATE_VIEW_RESULT_KEY
 from gobcore.message_broker.messagedriven_service import MessagedrivenService
 
 from gobupload import compare
@@ -19,8 +18,6 @@ from gobupload import relate
 from gobupload import update
 from gobupload import apply
 from gobupload.storage.handler import GOBStorageHandler
-
-from gobupload.relate.table.entrypoint import relate_table_src_message_handler
 
 SERVICEDEFINITION = {
     'apply': {
@@ -47,31 +44,31 @@ SERVICEDEFINITION = {
             'key': FULLUPDATE_RESULT_KEY,
         }
     },
-    'relate': {
-        'queue': RELATE_QUEUE,
-        'handler': relate.build_relations,
+    'relate_prepare': {
+        'queue': RELATE_PREPARE_QUEUE,
+        'handler': relate.prepare_relate,
         'report': {
             'exchange': WORKFLOW_EXCHANGE,
-            'key': RELATE_RESULT_KEY,
+            'key': RELATE_PREPARE_RESULT_KEY,
         }
     },
-    'relate_table': {
-        'queue': RELATE_TABLE_QUEUE,
-        'handler': relate_table_src_message_handler,
+    'relate_process': {
+        'queue': RELATE_PROCESS_QUEUE,
+        'handler': relate.process_relate,
         'report': {
             'exchange': WORKFLOW_EXCHANGE,
-            'key': RELATE_TABLE_RESULT_KEY,
+            'key': RELATE_PROCESS_RESULT_KEY,
         }
     },
-    'check_relation': {
-        'queue': CHECK_RELATION_QUEUE,
+    'relate_check': {
+        'queue': RELATE_CHECK_QUEUE,
         'handler': relate.check_relation,
         'report': {
             'exchange': WORKFLOW_EXCHANGE,
-            'key': CHECK_RELATION_RESULT_KEY,
+            'key': RELATE_CHECK_RESULT_KEY,
         }
     },
-    'update_view': {
+    'relate_update_view': {
         'queue': RELATE_UPDATE_VIEW_QUEUE,
         'handler': relate.update_materialized_view,
         'report': {

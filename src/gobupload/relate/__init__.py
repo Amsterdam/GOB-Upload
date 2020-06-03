@@ -9,83 +9,26 @@ Publishes the relation as import messages
 import datetime
 
 from gobcore.exceptions import GOBException
-from gobcore.model import GOBModel
-from gobcore.sources import GOBSources
 from gobcore.logging.logger import logger
-from gobcore.model.relations import get_relation_name
 from gobcore.message_broker.config import CONNECTION_PARAMS, WORKFLOW_EXCHANGE, WORKFLOW_REQUEST_KEY
 from gobcore.message_broker.message_broker import Connection as MessageBrokerConnection
+from gobcore.model import GOBModel
+from gobcore.model.relations import get_relation_name
+from gobcore.sources import GOBSources
 from gobcore.typesystem import fully_qualified_type_name
 from gobcore.typesystem.gob_types import VeryManyReference
 
+from gobupload.relate.update import Relater
+from gobupload.relate.publish import publish_result
 from gobupload.storage.handler import GOBStorageHandler
 from gobupload.storage.materialized_views import MaterializedViews
-from gobupload.storage.relate import get_last_change, check_relations, check_very_many_relations, \
+from gobupload.storage.relate import check_relations, check_very_many_relations, \
                                      check_relation_conflicts
 
-from gobupload.relate.publish import publish_result
-
-
-def _relation_needs_update(catalog_name, collection_name, reference_name, reference):
-    """
-    Tells if a relation needs to be updated
-
-    A message is printed on stdout for debug purposes
-
-    :param catalog_name:
-    :param collection_name:
-    :param reference_name:
-    :param reference:
-    :return:
-    """
-    model = GOBModel()
-    display_name = f"{catalog_name}:{collection_name} {reference_name}"
-
-    dst_catalog_name, dst_collection_name = reference['ref'].split(':')
-
-    dst_catalog = model.get_catalog(dst_catalog_name)
-    if not dst_catalog:
-        print(f"{display_name} skipped, destination catalog missing")
-        return False
-
-    dst_collection = model.get_collection(dst_catalog_name, dst_collection_name)
-    if not dst_collection:
-        print(f"{display_name} skipped, destination collection missing")
-        return False
-
-    relation_name = get_relation_name(model, catalog_name, collection_name, reference_name)
-
-    last_src_change = get_last_change(catalog_name, collection_name)
-    last_dst_change = get_last_change(dst_catalog_name, dst_collection_name)
-    last_rel_change = get_last_change("rel", relation_name)
-
-    if last_rel_change > max(last_src_change, last_dst_change):
-        print(f"{display_name} skipped, relations already up-to-date")
-        return False
-
-    return True
-
-
-def _process_references(msg, catalog_name, collection_name, references):
-    """
-    Process references in the given catalog and collection
-
-    Apply the results on the current entities and publish the results as import messages
-
-    :param msg:
-    :param catalog_name:
-    :param collection_name:
-    :param references:
-    :return:
-    """
-    logger.info(f"Start relate {catalog_name} {collection_name}")
-
-    return [{
-        'catalogue': catalog_name,
-        'entity': collection_name,
-        'reference_name': reference_name,
-        'reference': reference
-    } for reference_name, reference in references.items()]
+CATALOG_KEY = 'original_catalogue'
+COLLECTION_KEY = 'original_collection'
+ATTRIBUTE_KEY = 'original_attribute'
+RELATE_VERSION = '0.1'
 
 
 def check_relation(msg):
@@ -200,15 +143,15 @@ def _split_job(msg: dict):
                 connection.publish(WORKFLOW_EXCHANGE, WORKFLOW_REQUEST_KEY, split_msg)
 
 
-def build_relations(msg):
+def prepare_relate(msg):
     """
     The starting point for the relate process. A relate job will be split into individual relate jobs on
     attribute level. If there's only a catalog in the message, all collections of that catalog will be related.
-    When a job with an attribute is received the relation name will be added and returned for the actual
-    relate happening in the next step of the process.
+    When a job which has been split is received the relation name will be added and the job will be forwarded
+    to the next step of the relate process where the relations are being made.
 
     :param msg: a message from the broker containing the catalog and collections (optional)
-    :return: None
+    :return: the result message of the relate preparation step
     """
     header = msg.get('header', {})
     catalog_name = header.get('catalogue')
@@ -237,6 +180,7 @@ def build_relations(msg):
     logger.configure(msg, "RELATE")
 
     if not catalog_name or not collection_name or not attribute_name:
+        # A job will be splitted when catalog, collection or attribute are not provided
         logger.info("Splitting relate job")
 
         _split_job(msg)
@@ -244,6 +188,7 @@ def build_relations(msg):
 
         return publish_result(msg, [])
     else:
+        # If the job has all attributes, add the relation name and forward to the next step in the relate process
         logger.info(f"** Relate {catalog_name} {collection_name} {attribute_name}")
 
         relation_name = get_relation_name(GOBModel(), catalog_name, collection_name, attribute_name)
@@ -284,6 +229,74 @@ def _get_materialized_view(catalog_name: str, collection_name: str, attribute_na
     except Exception as e:
         logger.error(str(e))
         raise GOBException(f"Could not get materialized view for {catalog_name} {collection_name}.")
+
+
+def _check_message(msg: dict):
+    required = [CATALOG_KEY, COLLECTION_KEY, ATTRIBUTE_KEY]
+
+    header = msg.get('header', {})
+
+    for key in required:
+        if not header.get(key):
+            raise GOBException(f"Missing {key} attribute in header")
+
+    model = GOBModel()
+    sources = GOBSources()
+
+    if not model.get_catalog(header[CATALOG_KEY]):
+        raise GOBException(f"Invalid catalog name {header[CATALOG_KEY]}")
+
+    if not model.get_collection(header[CATALOG_KEY], header[COLLECTION_KEY]):
+        raise GOBException(f"Invalid catalog/collection combination: {header[CATALOG_KEY]}/{header[COLLECTION_KEY]}")
+
+    if not sources.get_field_relations(header[CATALOG_KEY], header[COLLECTION_KEY], header[ATTRIBUTE_KEY]):
+        raise GOBException(f"Missing relation specification for {header[CATALOG_KEY]} {header[COLLECTION_KEY]} "
+                           f"{header[ATTRIBUTE_KEY]}")
+
+
+def process_relate(msg: dict):
+    """
+    This function starts the actual relate process. The message is checked for completeness and the Relater
+    builds the new or updated relations and returns the result the be compared as if it was the result
+    of an import job.
+
+    :param msg: a message from the broker containing the catalog and collections (optional)
+    :return: the result message of the relate process
+    """
+    logger.configure(msg, "RELATE SRC")
+
+    _check_message(msg)
+    header = msg.get('header')
+
+    logger.info(f"Relate table started")
+
+    updater = Relater(header[CATALOG_KEY], header[COLLECTION_KEY], header[ATTRIBUTE_KEY])
+    filename, confirms = updater.update()
+
+    logger.info(f"Relate table completed")
+
+    relation_name = get_relation_name(GOBModel(), header[CATALOG_KEY], header[COLLECTION_KEY], header[ATTRIBUTE_KEY])
+
+    result_msg = {
+        "header": {
+            **msg["header"],
+            "catalogue": "rel",
+            "collection": relation_name,
+            "entity": relation_name,
+            "source": "GOB",
+            "application": "GOB",
+            "version": RELATE_VERSION,
+            "timestamp": msg.get("timestamp", datetime.datetime.utcnow().isoformat()),
+        },
+        "summary": {
+            "warnings": logger.get_warnings(),
+            "errors": logger.get_errors(),
+        },
+        "contents_ref": filename,
+        "confirms": confirms,
+    }
+
+    return result_msg
 
 
 def update_materialized_view(msg):
