@@ -1,6 +1,6 @@
 import sys
 
-from gobupload.relate.table.update_table import RelationTableRelater
+from gobupload.relate.update import Relater
 
 
 def run():
@@ -13,7 +13,7 @@ def run():
     initial = False if len(sys.argv) == 4 else sys.argv[4].lower() == 'initial'
     check_conflicts = False if len(sys.argv) == 4 else sys.argv[4].lower() == 'conflicts'
 
-    relater = RelationTableRelater(catalog, collection, attribute)
+    relater = Relater(catalog, collection, attribute)
 
     print(relater.get_conflicts_query() if check_conflicts else relater.get_query(initial))
 
