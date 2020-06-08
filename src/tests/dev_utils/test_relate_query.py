@@ -7,7 +7,7 @@ from gobupload.dev_utils.relate_query import run
 class TestRelateQuery(TestCase):
 
     @patch("builtins.print")
-    @patch("gobupload.dev_utils.relate_query.RelationTableRelater")
+    @patch("gobupload.dev_utils.relate_query.Relater")
     @patch("gobupload.dev_utils.relate_query.sys")
     def test_run(self, mock_sys, mock_relater, mock_print):
 

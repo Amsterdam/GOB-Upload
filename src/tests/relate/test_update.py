@@ -3,7 +3,7 @@ from unittest.mock import patch, MagicMock, call
 
 from gobcore.model.metadata import FIELD
 from datetime import date, datetime
-from gobupload.relate.table.update_table import RelationTableRelater, RelateException
+from gobupload.relate.update import Relater, RelateException
 
 
 class MockModel:
@@ -34,13 +34,13 @@ class MockSources:
         return ['specs']
 
 
-@patch("gobupload.relate.table.update_table.RelationTableRelater.model", MockModel())
-@patch("gobupload.relate.table.update_table.RelationTableRelater.sources", MockSources())
-@patch("gobupload.relate.table.update_table.get_relation_name", lambda m, cat, col, field: f"{cat}_{col}_{field}")
-class TestRelationTableRelater(TestCase):
+@patch("gobupload.relate.update.Relater.model", MockModel())
+@patch("gobupload.relate.update.Relater.sources", MockSources())
+@patch("gobupload.relate.update.get_relation_name", lambda m, cat, col, field: f"{cat}_{col}_{field}")
+class TestRelater(TestCase):
 
     def _get_relater(self):
-        return RelationTableRelater('src_catalog_name', 'src_collection_name', 'src_field_name')
+        return Relater('src_catalog_name', 'src_collection_name', 'src_field_name')
 
     def test_init(self):
         e = self._get_relater()
@@ -57,12 +57,12 @@ class TestRelationTableRelater(TestCase):
         self.assertEqual(False, e.is_many)
         self.assertEqual('rel_src_catalog_name_src_collection_name_src_field_name', e.relation_table)
 
-        with patch('gobupload.relate.table.update_table.RelationTableRelater.sources.get_field_relations',
+        with patch('gobupload.relate.update.Relater.sources.get_field_relations',
                    lambda cat, col, field: None):
             with self.assertRaises(RelateException):
                 self._get_relater()
 
-        with patch('gobupload.relate.table.update_table.RelationTableRelater.model.get_collection',
+        with patch('gobupload.relate.update.Relater.model.get_collection',
                    lambda cat, col: {'all_fields': {
                        'src_field_name': {
                            'type': 'GOB.ManyReference',
@@ -811,7 +811,7 @@ FULL JOIN (
             'WHERE rel._date_deleted IS NULL OR src._id IS NOT NULL',
             relater._get_where()
         )
-        
+
         relater.exclude_relation_table = True
         self.assertEqual(
             'WHERE src._id IS NOT NULL AND row_number > 1',
@@ -1011,10 +1011,10 @@ WHERE CLAUSE
             }
         ], relater._get_modifications(row, ['a', 'b', 'c']))
 
-    @patch('gobupload.relate.table.update_table.ADD')
-    @patch('gobupload.relate.table.update_table.MODIFY')
-    @patch('gobupload.relate.table.update_table.DELETE')
-    @patch('gobupload.relate.table.update_table.CONFIRM')
+    @patch('gobupload.relate.update.ADD')
+    @patch('gobupload.relate.update.MODIFY')
+    @patch('gobupload.relate.update.DELETE')
+    @patch('gobupload.relate.update.CONFIRM')
     def test_create_event(self, mock_confirm, mock_delete, mock_modify, mock_add):
         relater = self._get_relater()
         relater.dst_has_states = False
@@ -1131,7 +1131,7 @@ WHERE CLAUSE
         updater = self._get_relater()
         self.assertEqual(expected_result, [updater._format_relation(relation) for relation in rows])
 
-    @patch("gobupload.relate.table.update_table._execute")
+    @patch("gobupload.relate.update._execute")
     def test_is_initial_load(self, mock_execute):
         relater = self._get_relater()
 
@@ -1141,10 +1141,10 @@ WHERE CLAUSE
         mock_execute.return_value = iter([1])
         self.assertFalse(relater._is_initial_load())
 
-    @patch("gobupload.relate.table.update_table._execute")
-    @patch("gobupload.relate.table.update_table.EventCollector")
-    @patch("gobupload.relate.table.update_table.ContentsWriter")
-    @patch("gobupload.relate.table.update_table.ProgressTicker", MagicMock())
+    @patch("gobupload.relate.update._execute")
+    @patch("gobupload.relate.update.EventCollector")
+    @patch("gobupload.relate.update.ContentsWriter")
+    @patch("gobupload.relate.update.ProgressTicker", MagicMock())
     def test_update(self, mock_contents_writer, mock_event_collector, mock_execute):
         relater = self._get_relater()
         relater._is_initial_load = MagicMock()

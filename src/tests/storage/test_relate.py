@@ -5,7 +5,7 @@ from gobcore.model import GOBModel
 
 from gobupload.relate.exceptions import RelateException
 from gobupload.storage.relate import EQUALS, LIES_IN, JOIN, WHERE, \
-    _get_data, get_last_change, get_current_relations, RelationUpdater, _query_missing, check_relations, \
+    _get_data, get_current_relations, _query_missing, check_relations, \
     check_very_many_relations, check_relation_conflicts, _get_relation_check_query, QA_CHECK, QA_LEVEL
 
 
@@ -16,35 +16,6 @@ class TestRelations(TestCase):
 
     def tearDown(self):
         pass
-
-    @patch('gobupload.storage.relate._execute')
-    def test_last_change(self, mock_execute):
-        result = get_last_change("catalog", "collection")
-        # self.assertEqual(result, "")
-        mock_execute.assert_called_with("""
-SELECT eventid
-FROM   events
-WHERE  catalogue = 'catalog' AND
-       entity = 'collection' AND
-       action != 'CONFIRM'
-ORDER BY eventid DESC
-LIMIT 1
-""")
-
-    @patch('gobupload.storage.relate._execute_multiple')
-    def test_relation_updater(self, _execute_multiple):
-        updater = RelationUpdater("catalog", "collection")
-        updater.update("field", {"field": "field", "_gobid": "_gobid"})
-        self.assertEqual(updater.queries, ["""
-UPDATE catalog_collection
-SET    field = $quotedString$"field"$quotedString$
-WHERE  _gobid = _gobid
-"""
-        ])
-        RelationUpdater.UPDATE_INTERVAL = 1
-        updater.update("field", {"field": "field", "_gobid": "_gobid"})
-        _execute_multiple.assert_called()
-
 
     @patch('gobupload.storage.relate._execute')
     def test_current_relations(self, mock_execute):
@@ -154,7 +125,7 @@ ORDER BY _source, _id, volgnummer, begin_geldigheid
     @patch('gobupload.storage.relate.log_issue')
     @patch('gobupload.storage.relate.logger')
     @patch('gobupload.storage.relate._execute')
-    @patch('gobupload.storage.relate.RelationTableRelater')
+    @patch('gobupload.storage.relate.Relater')
     @patch('gobupload.storage.relate._MAX_RELATION_CONFLICTS', 1)
     def test_check_relation_conflicts(self, mock_relater, mock_execute, mock_logger, mock_log_issue, mock_issue):
         relater = mock_relater.return_value
@@ -228,7 +199,7 @@ WHERE
     COALESCE(src._expiration_date, '9999-12-31'::timestamp without time zone) > NOW() AND any_field_name->>'bronwaarde' IS NULL
 """
             self.assertEqual(result, expect)
-            
+
             # Test dangling query
             result = _get_relation_check_query("dangling", "any_catalog", "any_collection", "any_field_name")
             expect = """
@@ -304,7 +275,7 @@ WHERE
     COALESCE(src._expiration_date, '9999-12-31'::timestamp without time zone) > NOW() AND any_field_name->>'bronwaarde' IS NULL
 """
             self.assertEqual(result, expect)
-            
+
             # Test dangling query
             result = _get_relation_check_query("dangling", "any_catalog", "any_collection", "any_field_name")
             expect = """

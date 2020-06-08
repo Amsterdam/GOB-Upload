@@ -29,7 +29,7 @@ GOB = 'GOB'
 _MAX_RELATION_CONFLICTS = 25
 
 
-class RelationTableRelater:
+class Relater:
     model = GOBModel()
     sources = GOBSources()
 
