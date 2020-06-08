@@ -20,7 +20,7 @@ def run():
 
 if __name__ == "__main__":
     """
-    python -m gobupload.dev_utils.relate_query gebieden wijken ligt_in_stadsdeel [ inital/conflicts ]
+    python -m gobupload.dev_utils.relate_query gebieden wijken ligt_in_stadsdeel [ initial/conflicts ]
 
     Prints the update_table relate query. Prints the full query by default, but prints the query for the initial import
     when the fourth parameter is set to 'initial'. (The initial query omits the unnecessary second part of the UNION).
