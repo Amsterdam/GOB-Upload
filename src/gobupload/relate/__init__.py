@@ -45,7 +45,7 @@ def check_relation(msg):
 
     model = GOBModel()
 
-    logger.configure(msg, "RELATE")
+    logger.configure(msg, "RELATE_CHECK")
     logger.info(f"Relate check started")
 
     collection = model.get_collection(catalog_name, collection_name)
