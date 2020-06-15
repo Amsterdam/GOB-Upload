@@ -1,7 +1,19 @@
 """
 See README.md in this directory for explanation of this file.
 
+Side notes on this code (JK):
+There are some checks in the multiple_allowed code that always compares the source of the relation with something to
+decide whether or not to filter on a field (for example the row_number check, or the join on src_dst (that will include
+a comparison with dst_id, dst_volgnummer only if multiple_allowed is True for a source. For other sources this check is
+neglected). In theory we could simplify the generated query here when for all sources the value for multiple_allowed
+is consistent. However, I don't expect that to have any huge impact on the query performance, but it does keep the code
+in this class cleaner and more understandable. I would only opt for this query simplification (and thus more complex
+code here) if we encounter performance issues with the relate query that are clearly caused by those clauses (after
+proper investigation). However, as all this filtering is done on intermediate results and the larger query path itself
+shouldn't change between the two variations and the exclusions performed in these steps are minimal, I don't expect any
+issues there, and thus I opted for more straightforward code.
 """
+
 import hashlib
 import json
 
@@ -94,7 +106,12 @@ class Relater:
         self.src_has_states = self.model.has_states(self.src_catalog_name, self.src_collection_name)
         self.dst_has_states = self.model.has_states(self.dst_catalog_name, self.dst_collection_name)
 
-        self.relation_specs = self.sources.get_field_relations(src_catalog_name, src_collection_name, src_field_name)
+        # Copy relation specs and set default for multiple_allowed
+        self.relation_specs = [{
+            **spec,
+            'multiple_allowed': spec.get('multiple_allowed', False)
+        } for spec in self.sources.get_field_relations(src_catalog_name, src_collection_name, src_field_name)]
+
         if not self.relation_specs:
             raise RelateException("Missing relation specification for " +
                                   f"{src_catalog_name} {src_collection_name} {src_field_name} " +
@@ -142,20 +159,20 @@ class Relater:
         start_validity, end_validity = self._validity_select_expressions()
 
         mapping = {
-            FIELD.VERSION: f"rel.{FIELD.VERSION}",
-            FIELD.APPLICATION: f"rel.{FIELD.APPLICATION}",
-            FIELD.SOURCE_ID: f"rel.{FIELD.SOURCE_ID}",
-            FIELD.SOURCE: f"rel.{FIELD.SOURCE}",
+            FIELD.VERSION: f"src.{FIELD.VERSION}",
+            FIELD.APPLICATION: f"src.{FIELD.APPLICATION}",
+            FIELD.SOURCE_ID: self._get_id_for_dst(),
+            FIELD.SOURCE: f"'{GOB}'",
             FIELD.EXPIRATION_DATE: f"LEAST(src.{FIELD.EXPIRATION_DATE}, dst.{FIELD.EXPIRATION_DATE})",
-            "id": f"rel.id",
-            "derivation": "rel.derivation",
-            "src_source": "rel.src_source",
-            "src_id": "rel.src_id",
-            "src_volgnummer": "rel.src_volgnummer",
+            "id": self._get_id_for_dst(),
+            "derivation": self._get_derivation(),
+            "src_source": f"src.{FIELD.SOURCE}",
+            "src_id": f"src.{FIELD.ID}",
+            "src_volgnummer": f"src.{FIELD.SEQNR}",
             "dst_source": f"CASE WHEN dst.{FIELD.DATE_DELETED} IS NULL THEN dst.{FIELD.SOURCE} ELSE NULL END",
             "dst_id": f"CASE WHEN dst.{FIELD.DATE_DELETED} IS NULL THEN dst.{FIELD.ID} ELSE NULL END",
             "dst_volgnummer": f"CASE WHEN dst.{FIELD.DATE_DELETED} IS NULL THEN dst.{FIELD.SEQNR} ELSE NULL END",
-            FIELD.SOURCE_VALUE: f"rel.{FIELD.SOURCE_VALUE}",
+            FIELD.SOURCE_VALUE: f"src.{FIELD.SOURCE_VALUE}",
             FIELD.LAST_SRC_EVENT: f"max_src_event.{FIELD.LAST_EVENT}",
             FIELD.LAST_DST_EVENT: f"max_dst_event.{FIELD.LAST_EVENT}",
             FIELD.LAST_EVENT: f"rel.{FIELD.LAST_EVENT}",
@@ -216,7 +233,35 @@ class Relater:
 
         return select_expressions
 
-    def _get_id(self):
+    def _select_expressions_rel_delete(self):
+        mapping = {alias: 'NULL' for alias in self._select_aliases()}
+        mapping.update({
+            FIELD.LAST_EVENT: f"rel.{FIELD.LAST_EVENT}",
+            'rel_id': 'rel.id',
+            'rel_dst_id': 'rel.dst_id',
+            'rel_dst_volgnummer': 'rel.dst_volgnummer',
+            f"rel_{FIELD.EXPIRATION_DATE}": f"rel.{FIELD.EXPIRATION_DATE}",
+            f"rel_{FIELD.START_VALIDITY}": f"rel.{FIELD.START_VALIDITY}",
+            f"rel_{FIELD.END_VALIDITY}": f"rel.{FIELD.END_VALIDITY}",
+            f"rel_{FIELD.HASH}": f"rel.{FIELD.HASH}",
+        })
+
+        return self._build_select_expressions(mapping)
+
+    def _get_id_for_spec(self, spec: dict, src_value_ref=None):
+        """Creates ID for source specification.
+
+        Default ID is: [src_id](.[src_volgnummer]).[src_source].[bronwaarde]
+
+        If multiple_allowed is set to true for given source specification, the destination is added, so that this
+        row is uniquely identifiable in the relation table.
+
+        With multiple_allowed: [src_id](.[src_volgnummer]).[src_source].[bronwaarde].[dst_id](.[dst_volgnummer]
+
+        :param spec:
+        :return:
+        """
+        src_value_ref = src_value_ref or self._source_value_ref()
         id_fields = [f"src.{FIELD.ID}"]
 
         if self.src_has_states:
@@ -224,9 +269,27 @@ class Relater:
 
         id_fields += [
             f"src.{FIELD.SOURCE}",
-            f"({self._source_value_ref()})"
+            f"({src_value_ref})"
         ]
+
+        if spec['multiple_allowed']:
+            id_fields += [f"dst.{FIELD.ID}"]
+
+            if self.dst_has_states:
+                id_fields += [f"dst.{FIELD.SEQNR}"]
+
         return " || '.' || ".join(id_fields)
+
+    def _get_id_for_dst(self):
+        return self._get_id('src.bronwaarde')
+
+    def _get_id(self, src_value_ref=None):
+        # Switch per source. Different sources have different multiple_allowed values
+        whens = [f"WHEN src.{FIELD.APPLICATION} = '{spec['source']}' THEN {self._get_id_for_spec(spec, src_value_ref)}"
+                 for spec in self.relation_specs]
+
+        newline = '\n'
+        return f"CASE {newline.join(whens)}\nEND"
 
     def _get_derivation(self):
         """Returns CASE statement for derivation in select expressions.
@@ -264,8 +327,11 @@ class Relater:
         return f'{self.json_join_alias}.item' if self.is_many else f'src.{self.src_field_name}'
 
     def _relate_match(self, spec, source_value_ref=None):
-        source_value_ref = source_value_ref if source_value_ref is not None \
-            else f"{self._json_obj_ref()}->>'bronwaarde'"
+        if spec.get('source_attribute'):
+            # source_attribute is defined, use it instead of bronwaarde
+            source_value_ref = f"src.{spec['source_attribute']}"
+        elif not source_value_ref:
+            source_value_ref = f"{self._json_obj_ref()}->>'bronwaarde'"
 
         if spec['method'] == EQUALS:
             return f"dst.{spec['destination_attribute']} = {source_value_ref}"
@@ -320,7 +386,16 @@ class Relater:
         ]
 
         if not self.exclude_relation_table:
-            join_on.append(f"src_dst.row_number = 1")
+            # Add check for row_number for all sources that don't have multiple_allowed set.
+            ors = []
+            for spec in self.relation_specs:
+                or_ = f"src.{FIELD.APPLICATION} = '{spec['source']}'"
+                if not spec['multiple_allowed']:
+                    or_ += " AND src_dst.row_number = 1"
+
+                ors.append(or_)
+
+            join_on.append(f"(({') OR ('.join(ors)}))")
 
         return join_on
 
@@ -599,7 +674,24 @@ JOIN max_src_event ON TRUE
 JOIN max_dst_event ON TRUE
 """
 
+    def _join_rel_dst_clause(self):
+        dst_join_clause = f"rel.dst_id = dst.{FIELD.ID}" + (f" AND rel.dst_volgnummer = dst.{FIELD.SEQNR}"
+                                                            if self.dst_has_states else "")
+        ors = []
+        # Implement conditions
+        for spec in self.relation_specs:
+
+            if spec['multiple_allowed']:
+                or_ = f"src.{FIELD.APPLICATION} = '{spec['source']}' AND {dst_join_clause}"
+            else:
+                or_ = f"src.{FIELD.APPLICATION} = '{spec['source']}'"
+            ors.append(or_)
+
+        return f" AND (({') OR ('.join(ors)}))"
+
     def _join_rel(self):
+        dst_join = self._join_rel_dst_clause()
+
         if self.src_has_states:
             return f"""
 FULL JOIN (
@@ -607,6 +699,7 @@ FULL JOIN (
     WHERE (src_id, src_volgnummer) IN (SELECT {FIELD.ID}, {FIELD.SEQNR} FROM {self.src_entities_alias})
 ) rel ON rel.src_id = src.{FIELD.ID} AND rel.src_volgnummer = src.{FIELD.SEQNR}
     AND {self._source_value_ref()} = rel.{FIELD.SOURCE_VALUE}
+    {dst_join}
 """
         else:
             return f"""
@@ -614,6 +707,7 @@ FULL JOIN (
     SELECT * FROM {self.relation_table}
     WHERE src_id IN (SELECT {FIELD.ID} FROM {self.src_entities_alias})
 ) rel ON rel.src_id = src.{FIELD.ID} AND {self._source_value_ref()} = rel.{FIELD.SOURCE_VALUE}
+    {dst_join}
 """
 
     def _get_where(self):
@@ -625,14 +719,54 @@ FULL JOIN (
 
         :return:
         """
-        return f"WHERE " \
+        has_multiple_allowed_source = any([spec['multiple_allowed'] for spec in self.relation_specs])
+        return f"WHERE (" \
                + (f"rel.{FIELD.DATE_DELETED} IS NULL OR " if not self.exclude_relation_table else "") \
-               + f"src.{FIELD.ID} IS NOT NULL" \
-               + (f" AND row_number > 1" if self.exclude_relation_table else "")
+               + f"src.{FIELD.ID} IS NOT NULL)" \
+               + f" AND dst.{FIELD.DATE_DELETED} IS NULL" \
+               + (f" AND row_number > 1" if self.exclude_relation_table else "") \
+               + (f" AND {self._multiple_allowed_where()}" if has_multiple_allowed_source else "")
+
+    def _multiple_allowed_where(self):
+        """If any of the sources for this relation has multiple_allowed set to true, add this extra where-clause
+
+        :return:
+        """
+        ors = []
+
+        for spec in self.relation_specs:
+            ors.append(
+                f"src.{FIELD.APPLICATION} = '{spec['source']}'" +
+                (f' AND dst.{FIELD.ID} IS NOT NULL' if spec['multiple_allowed'] else '')
+            )
+
+        return f"(({') OR ('.join(ors)}))"
 
     def get_conflicts_query(self):
         self.exclude_relation_table = True
         return self.get_query()
+
+    def _union_deleted_relations(self, src_or_dst: str):
+        assert src_or_dst in ('src', 'dst'), f"src_or_dst should be 'src' or 'dst', not '{src_or_dst}'"
+
+        src_or_dst_entities_alias = self.src_entities_alias if src_or_dst == 'src' else self.dst_entities_alias
+        src_or_dst_has_states = self.src_has_states if src_or_dst == 'src' else self.dst_has_states
+
+        in_src_or_dst_entities = f"{src_or_dst}_id IN (SELECT {FIELD.ID} FROM {src_or_dst_entities_alias})" \
+            if not src_or_dst_has_states \
+            else f"({src_or_dst}_id, {src_or_dst}_volgnummer) IN (SELECT {FIELD.ID}, {FIELD.SEQNR} " \
+                 f"FROM {src_or_dst_entities_alias})"
+
+        return f"""
+UNION ALL
+-- Add all relations for entities in {src_or_dst_entities_alias} that should be deleted
+-- These are all current relations that are referenced by {src_or_dst_entities_alias} but are not in {src_or_dst}_side
+-- anymore.
+SELECT {self.comma_join.join(self._select_expressions_rel_delete())}
+FROM {self.relation_table} rel
+WHERE {in_src_or_dst_entities} AND rel.id NOT IN (SELECT rel_id FROM {src_or_dst}_side WHERE rel_id IS NOT NULL)
+    AND rel.{FIELD.DATE_DELETED} IS NULL
+"""
 
     def get_query(self, initial_load=False):
         """Builds and returns the event extraction query
@@ -648,45 +782,63 @@ FULL JOIN (
 
         dst_table_outer_join_on = self._dst_table_outer_join_on()
 
-        joins = f"""
-{self._join_array_elements() if self.is_many else ""}
-{self._src_dst_join()}
-LEFT JOIN {self.dst_table_name} dst
-    ON {self.and_join.join(dst_table_outer_join_on)}
-{self._join_rel() if not self.exclude_relation_table else ""}
-{self._join_src_geldigheid()}
-{self._join_dst_geldigheid()}
-{self._join_max_event_ids()}
-{self._get_where()}
-"""
+        relate_dst_side = not initial_load and not self.exclude_relation_table
 
         query = f"""
-{self._with_queries(initial_load)}
-SELECT
-    {self.comma_join.join(self._select_expressions_src())}
-FROM {self.src_entities_alias} src
-{joins}
+{self._with_queries(initial_load)},
+src_side AS (
+    -- Relate all changed src entities
+    SELECT
+        {self.comma_join.join(self._select_expressions_src())}
+    FROM {self.src_entities_alias} src
+    {self._join_array_elements() if self.is_many else ""}
+    {self._src_dst_join()}
+    LEFT JOIN {self.dst_table_name} dst
+        ON {self.and_join.join(dst_table_outer_join_on)}
+    {self._join_rel() if not self.exclude_relation_table else ""}
+    {self._join_src_geldigheid()}
+    {self._join_dst_geldigheid()}
+    {self._join_max_event_ids()}
+    {self._get_where()}
+)
 """
-        if not initial_load and not self.exclude_relation_table:
-            query += f"""
+
+        if relate_dst_side:
+            query += f""",
+dst_side AS (
+    -- Relate all changed dst entities, but exclude relations that are also related in src_side
+    SELECT
+        {self.comma_join.join(self._select_aliases())}
+    FROM (
+    SELECT
+        {self.comma_join.join(self._select_expressions_dst())},
+        {self._row_number_partition(f'src.{FIELD.SOURCE_VALUE}')} AS row_number
+    FROM {self.dst_entities_alias} dst
+    INNER JOIN ({self._select_rest_src()}) src
+        ON {self.and_join.join(self._src_dst_match(f'src.{FIELD.SOURCE_VALUE}'))}
+    FULL JOIN {self.relation_table} rel
+        ON rel.src_id=src.{FIELD.ID} {f'AND rel.src_volgnummer = src.{FIELD.SEQNR}' if self.src_has_states else ''}
+        AND rel.src_source = src.{FIELD.SOURCE} AND rel.{FIELD.SOURCE_VALUE} = src.{FIELD.SOURCE_VALUE}
+        {self._join_rel_dst_clause()}
+    {self._join_src_geldigheid()}
+    {self._join_dst_geldigheid()}
+    {self._join_max_event_ids()}
+    {self._get_where()}
+    ) q
+)
+"""
+
+        query += f"""
+-- All relations for changed src entities
+SELECT * FROM src_side
+""" + (f"""
+{self._union_deleted_relations('src') if not self.exclude_relation_table else ''}
 UNION ALL
-SELECT
-    {self.comma_join.join(self._select_aliases())}
-FROM (
-SELECT
-    {self.comma_join.join(self._select_expressions_dst())},
-    {self._row_number_partition(f'src.{FIELD.SOURCE_VALUE}')} AS row_number
-FROM {self.dst_entities_alias} dst
-INNER JOIN ({self._select_rest_src()}) src ON {self.and_join.join(self._src_dst_match(f'src.{FIELD.SOURCE_VALUE}'))}
-INNER JOIN {self.relation_table} rel
-    ON rel.src_id=src.{FIELD.ID} {f'AND rel.src_volgnummer = src.{FIELD.SEQNR}' if self.src_has_states else ''}
-    AND rel.src_source = src.{FIELD.SOURCE} AND rel.{FIELD.SOURCE_VALUE} = src.{FIELD.SOURCE_VALUE}
-{self._join_src_geldigheid()}
-{self._join_dst_geldigheid()}
-{self._join_max_event_ids()}
-{self._get_where()}
-) q
-"""
+-- All relations for changed dst entities
+SELECT * FROM dst_side
+{self._union_deleted_relations('dst')}
+""" if relate_dst_side else "")
+
         return query
 
     def _get_modifications(self, row: dict, compare_fields: list):

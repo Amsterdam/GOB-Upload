@@ -31,7 +31,12 @@ class MockModel:
 
 class MockSources:
     def get_field_relations(self, *args):
-        return ['specs']
+        return [{
+            'source': 'sourceA'
+        }, {
+            'source': 'sourceB',
+            'multiple_allowed': True
+        }]
 
 
 @patch("gobupload.relate.update.Relater.model", MockModel())
@@ -53,12 +58,18 @@ class TestRelater(TestCase):
         self.assertEqual('dst_catalog_name_dst_collection_name_table', e.dst_table_name)
         self.assertEqual(True, e.src_has_states)
         self.assertEqual(False, e.dst_has_states)
-        self.assertEqual(MockSources().get_field_relations(), e.relation_specs)
+        self.assertEqual([{
+            'source': 'sourceA',
+            'multiple_allowed': False,
+        }, {
+            'source': 'sourceB',
+            'multiple_allowed': True,
+        }], e.relation_specs)
         self.assertEqual(False, e.is_many)
         self.assertEqual('rel_src_catalog_name_src_collection_name_src_field_name', e.relation_table)
 
         with patch('gobupload.relate.update.Relater.sources.get_field_relations',
-                   lambda cat, col, field: None):
+                   lambda cat, col, field: []):
             with self.assertRaises(RelateException):
                 self._get_relater()
 
@@ -147,7 +158,7 @@ class TestRelater(TestCase):
 
     def test_select_expressions_dst(self):
         relater = self._get_relater()
-        relater._get_id = lambda: 'ID'
+        relater._get_id = lambda _: 'ID'
         relater._get_derivation = lambda: 'DERIVATION'
         relater._source_value_ref = lambda: 'SOURCE VALUE'
         relater._build_select_expressions = MagicMock()
@@ -155,16 +166,66 @@ class TestRelater(TestCase):
         result = relater._select_expressions_dst()
         self.assertEqual(relater._build_select_expressions.return_value, result)
 
+    def test_select_expressions_rel_delete(self):
+        relater = self._get_relater()
+        res = relater._select_expressions_rel_delete()
+        expected = ['NULL AS _version',
+                    'NULL AS _application',
+                    'NULL AS _source_id',
+                    'NULL AS _source',
+                    'NULL AS _expiration_date',
+                    'NULL AS id',
+                    'NULL AS derivation',
+                    'NULL AS src_source',
+                    'NULL AS src_id',
+                    'NULL AS dst_source',
+                    'NULL AS dst_id',
+                    'NULL AS bronwaarde',
+                    'NULL AS _last_src_event',
+                    'NULL AS _last_dst_event',
+                    'NULL AS begin_geldigheid',
+                    'NULL AS eind_geldigheid',
+                    'NULL AS src_deleted',
+                    'NULL AS row_number',
+                    'rel._last_event AS _last_event',
+                    'NULL AS rel_deleted',
+                    'rel.id AS rel_id',
+                    'rel.dst_id AS rel_dst_id',
+                    'rel.dst_volgnummer AS rel_dst_volgnummer',
+                    'rel._expiration_date AS rel__expiration_date',
+                    'rel.begin_geldigheid AS rel_begin_geldigheid',
+                    'rel.eind_geldigheid AS rel_eind_geldigheid',
+                    'rel._hash AS rel__hash',
+                    'NULL AS src_volgnummer']
+
+        self.assertEqual(expected, res)
+
     def test_get_id(self):
         relater = self._get_relater()
         relater._source_value_ref = MagicMock(return_value='BRONWAARDE')
 
-        no_src_states = "src._id || '.' || src._source || '.' || (BRONWAARDE)"
-        with_src_states = "src._id || '.' || src.volgnummer || '.' || src._source || '.' || (BRONWAARDE)"
+        no_src_states = f"""CASE WHEN src._application = 'sourceA' THEN src._id || '.' || src._source || '.' || (BRONWAARDE)
+WHEN src._application = 'sourceB' THEN src._id || '.' || src._source || '.' || (BRONWAARDE) || '.' || dst._id
+END"""
+        with_src_states = f"""CASE WHEN src._application = 'sourceA' THEN src._id || '.' || src.volgnummer || '.' || src._source || '.' || (BRONWAARDE)
+WHEN src._application = 'sourceB' THEN src._id || '.' || src.volgnummer || '.' || src._source || '.' || (BRONWAARDE) || '.' || dst._id
+END"""
         relater.src_has_states = False
         self.assertEqual(no_src_states, relater._get_id())
         relater.src_has_states = True
         self.assertEqual(with_src_states, relater._get_id())
+
+        with_src_val_ref = f"""CASE WHEN src._application = 'sourceA' THEN src._id || '.' || src.volgnummer || '.' || src._source || '.' || (the src value ref)
+WHEN src._application = 'sourceB' THEN src._id || '.' || src.volgnummer || '.' || src._source || '.' || (the src value ref) || '.' || dst._id
+END"""
+        self.assertEqual(with_src_val_ref, relater._get_id('the src value ref'))
+
+    def test_get_id_for_dst(self):
+        relater = self._get_relater()
+        relater._get_id = MagicMock()
+
+        self.assertEqual(relater._get_id.return_value, relater._get_id_for_dst())
+        relater._get_id.assert_called_with('src.bronwaarde')
 
     def test_get_derivation(self):
         relater = self._get_relater()
@@ -231,6 +292,12 @@ class TestRelater(TestCase):
         spec['method'] = 'lies_in'
         self.assertEqual(relater._geo_resolve.return_value, relater._relate_match(spec))
 
+        # Test with source_attribute set
+        spec['source_attribute'] = 'src_attr'
+        spec['method'] = 'equals'
+        expected = "dst.dst_attr = src.src_attr"
+        self.assertEqual(expected, relater._relate_match(spec))
+
     def test_src_dst_match(self):
         relater = self._get_relater()
         relater.src_has_states = False
@@ -288,7 +355,7 @@ class TestRelater(TestCase):
             "src_dst.src_id = src._id",
             "src_dst._source = src._source",
             "src_dst.bronwaarde = json_obj_ref->>'bronwaarde'",
-            "src_dst.row_number = 1"
+            "((src._application = 'sourceA' AND src_dst.row_number = 1) OR (src._application = 'sourceB'))"
         ]
         self.assertEqual(expected, relater._src_dst_join_on())
 
@@ -298,7 +365,7 @@ class TestRelater(TestCase):
             "src_dst.src_volgnummer = src.volgnummer",
             "src_dst._source = src._source",
             "src_dst.bronwaarde = json_obj_ref->>'bronwaarde'",
-            "src_dst.row_number = 1"
+            "((src._application = 'sourceA' AND src_dst.row_number = 1) OR (src._application = 'sourceB'))"
         ]
         self.assertEqual(expected, relater._src_dst_join_on())
 
@@ -608,7 +675,6 @@ src_volgnummer_begin_geldigheid AS (
 
         self.assertTrue(expected_begin_geldigheid in relater._start_validity_per_seqnr('src', initial_load=True))
 
-
     def test_start_validitity_per_seqnr_dst(self):
         relater = self._get_relater()
         expected_intervals = """
@@ -735,11 +801,13 @@ dst_entities AS (
 
     def test_with_max_src_event(self):
         relater = self._get_relater()
-        self.assertTrue("max_src_event AS (SELECT MAX(_last_event) _last_event FROM src_catalog_name_src_collection_name_table)" in relater._with_max_src_event())
+        self.assertTrue(
+            "max_src_event AS (SELECT MAX(_last_event) _last_event FROM src_catalog_name_src_collection_name_table)" in relater._with_max_src_event())
 
     def test_with_max_dst_event(self):
         relater = self._get_relater()
-        self.assertTrue("max_dst_event AS (SELECT MAX(_last_event) _last_event FROM dst_catalog_name_dst_collection_name_table)" in relater._with_max_dst_event())
+        self.assertTrue(
+            "max_dst_event AS (SELECT MAX(_last_event) _last_event FROM dst_catalog_name_dst_collection_name_table)" in relater._with_max_dst_event())
 
     def test_with_queries(self):
         relater = self._get_relater()
@@ -793,6 +861,7 @@ FULL JOIN (
     SELECT * FROM rel_src_catalog_name_src_collection_name_src_field_name
     WHERE src_id IN (SELECT _id FROM src_entities)
 ) rel ON rel.src_id = src._id AND src.src_field_name->>'bronwaarde' = rel.bronwaarde
+     AND ((src._application = 'sourceA') OR (src._application = 'sourceB' AND rel.dst_id = dst._id))
 """, relater._join_rel())
 
         relater.src_has_states = True
@@ -803,18 +872,21 @@ FULL JOIN (
     WHERE (src_id, src_volgnummer) IN (SELECT _id, volgnummer FROM src_entities)
 ) rel ON rel.src_id = src._id AND rel.src_volgnummer = src.volgnummer
     AND src.src_field_name->>'bronwaarde' = rel.bronwaarde
+     AND ((src._application = 'sourceA') OR (src._application = 'sourceB' AND rel.dst_id = dst._id))
 """, relater._join_rel())
 
     def test_get_where(self):
         relater = self._get_relater()
         self.assertEqual(
-            'WHERE rel._date_deleted IS NULL OR src._id IS NOT NULL',
+            "WHERE (rel._date_deleted IS NULL OR src._id IS NOT NULL) AND dst._date_deleted IS NULL AND "
+            "((src._application = 'sourceA') OR (src._application = 'sourceB' AND dst._id IS NOT NULL))",
             relater._get_where()
         )
 
         relater.exclude_relation_table = True
         self.assertEqual(
-            'WHERE src._id IS NOT NULL AND row_number > 1',
+            "WHERE (src._id IS NOT NULL) AND dst._date_deleted IS NULL AND row_number > 1 AND "
+            "((src._application = 'sourceA') OR (src._application = 'sourceB' AND dst._id IS NOT NULL))",
             relater._get_where()
         )
 
@@ -837,6 +909,7 @@ FULL JOIN (
         relater._row_number_partition = lambda x: 'ROW_NUMBER_PARTITION(' + x + ')' if x else 'ROW_NUMBER_PARTITION'
         relater._src_dst_match = lambda x: ['SRC_DST_MATCH1(' + x + ')', 'SRC_DST_MATCH2(' + x + ')'] if x \
             else ['SRC_DST_MATCH1', 'SRC_DST_MATCH2']
+        relater._union_deleted_relations = lambda src_or_dst: 'UNION_DELETED_' + src_or_dst
 
         return relater
 
@@ -845,44 +918,58 @@ FULL JOIN (
         relater.is_many = False
 
         expected = """
-WITH QUERIES
-SELECT
-    SELECT_EXPRESSION1SRC,
+WITH QUERIES,
+src_side AS (
+    -- Relate all changed src entities
+    SELECT
+        SELECT_EXPRESSION1SRC,
     SELECT_EXPRESSION2SRC
-FROM src_entities src
-
-
-SRC_DST_JOIN
-LEFT JOIN dst_catalog_name_dst_collection_name_table dst
-    ON DST_TABLE_OUTER_JOIN_ON1 AND
+    FROM src_entities src
+    
+    SRC_DST_JOIN
+    LEFT JOIN dst_catalog_name_dst_collection_name_table dst
+        ON DST_TABLE_OUTER_JOIN_ON1 AND
     DST_TABLE_OUTER_JOIN_ON2
-JOIN REL
-JOIN_SRC_GELDIGHEID
-JOIN_DST_GELDIGHEID
-JOIN MAX EVENTIDS
-WHERE CLAUSE
-
-
-UNION ALL
-SELECT
-    SELECT_ALIAS1,
+    JOIN REL
+    JOIN_SRC_GELDIGHEID
+    JOIN_DST_GELDIGHEID
+    JOIN MAX EVENTIDS
+    WHERE CLAUSE
+)
+,
+dst_side AS (
+    -- Relate all changed dst entities, but exclude relations that are also related in src_side
+    SELECT
+        SELECT_ALIAS1,
     SELECT_ALIAS2
-FROM (
-SELECT
-    SELECT_EXPRESSION1DST,
+    FROM (
+    SELECT
+        SELECT_EXPRESSION1DST,
     SELECT_EXPRESSION2DST,
-    ROW_NUMBER_PARTITION(src.bronwaarde) AS row_number
-FROM dst_entities dst
-INNER JOIN (REST SRC) src ON SRC_DST_MATCH1(src.bronwaarde) AND
+        ROW_NUMBER_PARTITION(src.bronwaarde) AS row_number
+    FROM dst_entities dst
+    INNER JOIN (REST SRC) src
+        ON SRC_DST_MATCH1(src.bronwaarde) AND
     SRC_DST_MATCH2(src.bronwaarde)
-INNER JOIN rel_src_catalog_name_src_collection_name_src_field_name rel
-    ON rel.src_id=src._id AND rel.src_volgnummer = src.volgnummer
-    AND rel.src_source = src._source AND rel.bronwaarde = src.bronwaarde
-JOIN_SRC_GELDIGHEID
-JOIN_DST_GELDIGHEID
-JOIN MAX EVENTIDS
-WHERE CLAUSE
-) q
+    FULL JOIN rel_src_catalog_name_src_collection_name_src_field_name rel
+        ON rel.src_id=src._id AND rel.src_volgnummer = src.volgnummer
+        AND rel.src_source = src._source AND rel.bronwaarde = src.bronwaarde
+         AND ((src._application = 'sourceA') OR (src._application = 'sourceB' AND rel.dst_id = dst._id))
+    JOIN_SRC_GELDIGHEID
+    JOIN_DST_GELDIGHEID
+    JOIN MAX EVENTIDS
+    WHERE CLAUSE
+    ) q
+)
+
+-- All relations for changed src entities
+SELECT * FROM src_side
+
+UNION_DELETED_src
+UNION ALL
+-- All relations for changed dst entities
+SELECT * FROM dst_side
+UNION_DELETED_dst
 """
 
         result = relater.get_query()
@@ -894,44 +981,58 @@ WHERE CLAUSE
         self.maxDiff = None
 
         expected = """
-WITH QUERIES
-SELECT
-    SELECT_EXPRESSION1SRC,
+WITH QUERIES,
+src_side AS (
+    -- Relate all changed src entities
+    SELECT
+        SELECT_EXPRESSION1SRC,
     SELECT_EXPRESSION2SRC
-FROM src_entities src
-
-ARRAY_ELEMENTS
-SRC_DST_JOIN
-LEFT JOIN dst_catalog_name_dst_collection_name_table dst
-    ON DST_TABLE_OUTER_JOIN_ON1 AND
+    FROM src_entities src
+    ARRAY_ELEMENTS
+    SRC_DST_JOIN
+    LEFT JOIN dst_catalog_name_dst_collection_name_table dst
+        ON DST_TABLE_OUTER_JOIN_ON1 AND
     DST_TABLE_OUTER_JOIN_ON2
-JOIN REL
-JOIN_SRC_GELDIGHEID
-JOIN_DST_GELDIGHEID
-JOIN MAX EVENTIDS
-WHERE CLAUSE
-
-
-UNION ALL
-SELECT
-    SELECT_ALIAS1,
+    JOIN REL
+    JOIN_SRC_GELDIGHEID
+    JOIN_DST_GELDIGHEID
+    JOIN MAX EVENTIDS
+    WHERE CLAUSE
+)
+,
+dst_side AS (
+    -- Relate all changed dst entities, but exclude relations that are also related in src_side
+    SELECT
+        SELECT_ALIAS1,
     SELECT_ALIAS2
-FROM (
-SELECT
-    SELECT_EXPRESSION1DST,
+    FROM (
+    SELECT
+        SELECT_EXPRESSION1DST,
     SELECT_EXPRESSION2DST,
-    ROW_NUMBER_PARTITION(src.bronwaarde) AS row_number
-FROM dst_entities dst
-INNER JOIN (REST SRC) src ON SRC_DST_MATCH1(src.bronwaarde) AND
+        ROW_NUMBER_PARTITION(src.bronwaarde) AS row_number
+    FROM dst_entities dst
+    INNER JOIN (REST SRC) src
+        ON SRC_DST_MATCH1(src.bronwaarde) AND
     SRC_DST_MATCH2(src.bronwaarde)
-INNER JOIN rel_src_catalog_name_src_collection_name_src_field_name rel
-    ON rel.src_id=src._id AND rel.src_volgnummer = src.volgnummer
-    AND rel.src_source = src._source AND rel.bronwaarde = src.bronwaarde
-JOIN_SRC_GELDIGHEID
-JOIN_DST_GELDIGHEID
-JOIN MAX EVENTIDS
-WHERE CLAUSE
-) q
+    FULL JOIN rel_src_catalog_name_src_collection_name_src_field_name rel
+        ON rel.src_id=src._id AND rel.src_volgnummer = src.volgnummer
+        AND rel.src_source = src._source AND rel.bronwaarde = src.bronwaarde
+         AND ((src._application = 'sourceA') OR (src._application = 'sourceB' AND rel.dst_id = dst._id))
+    JOIN_SRC_GELDIGHEID
+    JOIN_DST_GELDIGHEID
+    JOIN MAX EVENTIDS
+    WHERE CLAUSE
+    ) q
+)
+
+-- All relations for changed src entities
+SELECT * FROM src_side
+
+UNION_DELETED_src
+UNION ALL
+-- All relations for changed dst entities
+SELECT * FROM dst_side
+UNION_DELETED_dst
 """
         result = relater.get_query()
         self.assertEqual(result, expected)
@@ -941,53 +1042,88 @@ WHERE CLAUSE
         relater.is_many = False
 
         expected = """
-WITH QUERIES
-SELECT
-    SELECT_EXPRESSION1SRC,
+WITH QUERIES,
+src_side AS (
+    -- Relate all changed src entities
+    SELECT
+        SELECT_EXPRESSION1SRC,
     SELECT_EXPRESSION2SRC
-FROM src_entities src
-
-
-SRC_DST_JOIN
-LEFT JOIN dst_catalog_name_dst_collection_name_table dst
-    ON DST_TABLE_OUTER_JOIN_ON1 AND
+    FROM src_entities src
+    
+    SRC_DST_JOIN
+    LEFT JOIN dst_catalog_name_dst_collection_name_table dst
+        ON DST_TABLE_OUTER_JOIN_ON1 AND
     DST_TABLE_OUTER_JOIN_ON2
+    
+    JOIN_SRC_GELDIGHEID
+    JOIN_DST_GELDIGHEID
+    JOIN MAX EVENTIDS
+    WHERE CLAUSE
+)
 
-JOIN_SRC_GELDIGHEID
-JOIN_DST_GELDIGHEID
-JOIN MAX EVENTIDS
-WHERE CLAUSE
-
+-- All relations for changed src entities
+SELECT * FROM src_side
 """
         result = relater.get_conflicts_query()
         self.assertEqual(result, expected)
+
+    def test_union_deleted_relations(self):
+        relater = self._get_relater()
+        relater._select_expressions_rel_delete = lambda: ['EXPRESSION1', 'EXPRESSION2']
+
+        self.assertEqual("""
+UNION ALL
+-- Add all relations for entities in src_entities that should be deleted
+-- These are all current relations that are referenced by src_entities but are not in src_side
+-- anymore.
+SELECT EXPRESSION1,
+    EXPRESSION2
+FROM rel_src_catalog_name_src_collection_name_src_field_name rel
+WHERE (src_id, src_volgnummer) IN (SELECT _id, volgnummer FROM src_entities) AND rel.id NOT IN (SELECT rel_id FROM src_side WHERE rel_id IS NOT NULL)
+    AND rel._date_deleted IS NULL
+""", relater._union_deleted_relations('src'))
+
+        self.assertEqual("""
+UNION ALL
+-- Add all relations for entities in dst_entities that should be deleted
+-- These are all current relations that are referenced by dst_entities but are not in dst_side
+-- anymore.
+SELECT EXPRESSION1,
+    EXPRESSION2
+FROM rel_src_catalog_name_src_collection_name_src_field_name rel
+WHERE dst_id IN (SELECT _id FROM dst_entities) AND rel.id NOT IN (SELECT rel_id FROM dst_side WHERE rel_id IS NOT NULL)
+    AND rel._date_deleted IS NULL
+""", relater._union_deleted_relations('dst'))
 
     def test_get_query_initial_load(self):
         relater = self._get_get_query_mocked_relater()
         relater.is_many = False
 
         expected = """
-WITH QUERIES
-SELECT
-    SELECT_EXPRESSION1SRC,
+WITH QUERIES,
+src_side AS (
+    -- Relate all changed src entities
+    SELECT
+        SELECT_EXPRESSION1SRC,
     SELECT_EXPRESSION2SRC
-FROM src_entities src
-
-
-SRC_DST_JOIN
-LEFT JOIN dst_catalog_name_dst_collection_name_table dst
-    ON DST_TABLE_OUTER_JOIN_ON1 AND
+    FROM src_entities src
+    
+    SRC_DST_JOIN
+    LEFT JOIN dst_catalog_name_dst_collection_name_table dst
+        ON DST_TABLE_OUTER_JOIN_ON1 AND
     DST_TABLE_OUTER_JOIN_ON2
-JOIN REL
-JOIN_SRC_GELDIGHEID
-JOIN_DST_GELDIGHEID
-JOIN MAX EVENTIDS
-WHERE CLAUSE
+    JOIN REL
+    JOIN_SRC_GELDIGHEID
+    JOIN_DST_GELDIGHEID
+    JOIN MAX EVENTIDS
+    WHERE CLAUSE
+)
 
+-- All relations for changed src entities
+SELECT * FROM src_side
 """
         result = relater.get_query(True)
         self.assertEqual(result, expected)
-
 
     def test_get_modifications(self):
         relater = self._get_relater()
