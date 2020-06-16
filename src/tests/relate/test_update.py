@@ -885,8 +885,9 @@ FULL JOIN (
 
         relater.exclude_relation_table = True
         self.assertEqual(
-            "WHERE (src._id IS NOT NULL) AND dst._date_deleted IS NULL AND row_number > 1 AND "
-            "((src._application = 'sourceA') OR (src._application = 'sourceB' AND dst._id IS NOT NULL))",
+            "WHERE (src._id IS NOT NULL) AND dst._date_deleted IS NULL "
+            "AND ((src._application = 'sourceA') AND row_number > 1) "
+            "AND ((src._application = 'sourceA') OR (src._application = 'sourceB' AND dst._id IS NOT NULL))",
             relater._get_where()
         )
 

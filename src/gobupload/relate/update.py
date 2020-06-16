@@ -710,6 +710,18 @@ FULL JOIN (
     {dst_join}
 """
 
+    def _filter_conflicts(self):
+        """Returns row_number check per source. Skip sources that have multiple_allowed set to True.
+        Only used in the conflicts query.
+
+        :return:
+        """
+        ors = [f"src.{FIELD.APPLICATION} = '{spec['source']}'"
+               for spec in self.relation_specs
+               if not spec['multiple_allowed']]
+
+        return f"(({') OR ('.join(ors)}) AND row_number > 1)" if ors else 'FALSE'
+
     def _get_where(self):
         """Returns WHERE clause for both sides of the UNION.
         Only include not-deleted relations or existing sources.
@@ -724,7 +736,7 @@ FULL JOIN (
                + (f"rel.{FIELD.DATE_DELETED} IS NULL OR " if not self.exclude_relation_table else "") \
                + f"src.{FIELD.ID} IS NOT NULL)" \
                + f" AND dst.{FIELD.DATE_DELETED} IS NULL" \
-               + (f" AND row_number > 1" if self.exclude_relation_table else "") \
+               + (f" AND {self._filter_conflicts()}" if self.exclude_relation_table else "") \
                + (f" AND {self._multiple_allowed_where()}" if has_multiple_allowed_source else "")
 
     def _multiple_allowed_where(self):
