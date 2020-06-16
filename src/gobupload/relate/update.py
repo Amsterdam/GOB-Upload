@@ -19,6 +19,7 @@ import json
 
 from datetime import date, datetime
 
+from gobcore.exceptions import GOBException
 from gobcore.events.import_events import ADD, DELETE, CONFIRM, MODIFY
 from gobcore.message_broker.offline_contents import ContentsWriter
 
@@ -943,7 +944,28 @@ SELECT * FROM dst_side
             return True
         return False
 
+    def _check_preconditions(self):
+        """Checks if all applications in the src table are defined in GOBSources.
+
+        Relate can't reliably happen if that is not the case.
+        :return:
+        """
+
+        applications = [spec['source'] for spec in self.relation_specs]
+
+        result = _execute(f"SELECT DISTINCT {FIELD.APPLICATION} FROM {self.src_table_name}")
+        src_table_applications = [row[0] for row in result]
+
+        difference = set(src_table_applications) - set(applications)
+
+        if difference:
+            raise GOBException(f"Can't relate {self.src_catalog_name} {self.src_collection_name} "
+                               f"{self.src_field_name} because the src table contains values for "
+                               f"{FIELD.APPLICATION} that are not defined in GOBSources: {','.join(difference)}")
+
     def update(self):
+        self._check_preconditions()
+
         initial_load = self._is_initial_load()
         query = self.get_query(initial_load)
 

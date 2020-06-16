@@ -2,6 +2,7 @@ from unittest import TestCase
 from unittest.mock import patch, MagicMock, call
 
 from gobcore.model.metadata import FIELD
+from gobcore.exceptions import GOBException
 from datetime import date, datetime
 from gobupload.relate.update import Relater, RelateException
 
@@ -1279,6 +1280,35 @@ SELECT * FROM src_side
         self.assertFalse(relater._is_initial_load())
 
     @patch("gobupload.relate.update._execute")
+    def test_check_preconditions(self, mock_execute):
+        relater = self._get_relater()
+        relater.src_table_name = 'src_table'
+        relater.src_catalog_name = 'src_catalog'
+        relater.src_collection_name = 'src_collection'
+        relater.src_field_name = 'src_field'
+        relater.relation_specs = [{'source': 'applicationA'}, {'source': 'applicationB'}]
+
+        mock_execute.return_value = [('applicationA',), ('applicationB',)]
+
+        # No Exceptions are thrown
+        relater._check_preconditions()
+        mock_execute.assert_called_with('SELECT DISTINCT _application FROM src_table')
+
+        # No Exceptions. Gobsources and src table don't match, but everything we need is defined -> Not all sources
+        # have to be present in the src table
+        mock_execute.return_value = [('applicationA',)]
+        relater._check_preconditions()
+
+        # Empty table. OK.
+        mock_execute.return_value = []
+        relater._check_preconditions()
+
+        # applicationC is not defined in gobsources
+        mock_execute.return_value = [('applicationC',)]
+        with self.assertRaises(GOBException):
+            relater._check_preconditions()
+
+    @patch("gobupload.relate.update._execute")
     @patch("gobupload.relate.update.EventCollector")
     @patch("gobupload.relate.update.ContentsWriter")
     @patch("gobupload.relate.update.ProgressTicker", MagicMock())
@@ -1288,6 +1318,7 @@ SELECT * FROM src_side
         relater._create_event = MagicMock(side_effect=lambda x: x)
         relater.get_query = MagicMock()
         relater._format_relation = MagicMock(side_effect=lambda x: x)
+        relater._check_preconditions = MagicMock()
         mock_execute.return_value.__iter__.return_value = [{'a': 1}, {'b': 2}, {'c': 3}]
         mock_execute.return_value.close = MagicMock()
 
@@ -1307,8 +1338,18 @@ SELECT * FROM src_side
 
         self.assertEqual((mock_contents_writer.return_value.__enter__.return_value.filename,
                           mock_contents_writer.return_value.__enter__.return_value.filename), result)
-
         # Assert re-raise exception
         mock_execute.return_value.__iter__.side_effect = Exception('mocked exception')
         with self.assertRaises(Exception):
             result = relater.update()
+
+    def test_update_failing_precondition(self):
+        relater = self._get_relater()
+        relater._get_query = MagicMock()
+        relater._check_preconditions = MagicMock(side_effect=Exception)
+
+        with self.assertRaises(Exception):
+            relater.update()
+
+            # Make sure nothing is done yet. Check for preconditions is done first.
+            relater._get_query.assert_not_called()
