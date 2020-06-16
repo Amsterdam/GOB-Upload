@@ -213,3 +213,30 @@ then checks all remaining *A* with the updated *B*. Note that the first
 query results in a list of (events on) *ArB*. By excluding the already
 evaluated *A* in the second query, we prevent duplicate *ArB* (and we
 can safely use UNION ALL).
+
+# multiple_allowed and none_allowed
+In gobsources (GOB-Core) relations can be defined with boolean parameters `multiple_allowed` and/or 
+`none_allowed`. The default value for these parameters is `false`. This means that in GOB, for every source value
+(bronwaarde) defined in a relation attribute, there should be one and only one destination object.
+If there is no source value defined, no matching relation for the source value could be found, or when 
+multiple matching relations for the source value are found, the 'check relations' job will log these as data warnings.
+However, with `multiple_allowed` and `none_allowed` this behaviour can be changed.
+
+The `none_allowed` parameter only changes the behaviour of the 'check relations' job; missing source values or no
+matching relations won't be logged. In other words; this relation is allowed to be undefined.
+
+The `multiple_allowed` parameter changes both the behaviour of the 'check relations' job, as well as the behaviour of
+the relate job. For 'normal' relations, where `multiple_allowed = false`, a row is added to the relation table for
+every source value, with a unique identifier generated from the src id, src volgnummer, source and source value. However,
+when multiple matching relations are allowed for one source value, this identifier is no longer unique. For relations
+where `multiple_allowed = true`, we add the dst id and dst volgnummer to this id. This changes the normal relate
+process. For example:
+- When `multiple_allowed = false`, we only return the first match when multiple matches are found. When
+`multiple_allowed = true`, we return everything.
+- When joining the relation table with the relate result, for `multiple_allowed = true` relations we need to match on
+dst id and dst volgnummer as well.
+
+To support the `multiple_allowed` functionality, the deleted relations are not derived from the join with the
+relation table anymore; because we can't know which ID's are present in the relation table for `multiple_allowed`
+relations, we need to query for these relations separately. Hence the two UNIONS that query the relation table while
+excluding the relations already found.
