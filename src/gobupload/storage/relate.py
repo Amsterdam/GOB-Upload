@@ -11,6 +11,7 @@ from gobcore.model import GOBModel
 from gobcore.model.metadata import FIELD
 from gobcore.model.relations import get_relation_name
 from gobcore.quality.issue import QA_CHECK, QA_LEVEL, Issue, log_issue
+from gobcore.sources import GOBSources
 
 from gobupload.relate.update import Relater
 from gobupload.storage.execute import _execute
@@ -162,7 +163,8 @@ def _query_missing(query, check, attr, max_warnings=50):
         logger.data_info(f"{items_name}: {historic_count} historical errors")
 
 
-def _get_relation_check_query(query_type, src_catalog_name, src_collection_name, src_field_name):
+def _get_relation_check_query(query_type, src_catalog_name, src_collection_name, src_field_name,
+                              filter_applications: list):
     assert query_type in ["dangling", "missing"], "Relation check query expects type to be dangling or missing"
 
     model = GOBModel()
@@ -212,6 +214,10 @@ FROM
     where.extend([f"{src_field_name}->>'bronwaarde' IS NOT NULL",
                   "rel.dst_id IS NULL"] if query_type == "dangling" else [])
 
+    if filter_applications:
+        ors = [f"src.{FIELD.APPLICATION} = '{application}'" for application in filter_applications]
+        where.append(f"({' OR '.join(ors)})")
+
     where = " AND ".join(where)
     query = f"""
 SELECT
@@ -242,10 +248,25 @@ def check_relations(src_catalog_name, src_collection_name, src_field_name):
 
     name = f"{src_collection_name} {src_field_name}"
 
-    missing_query = _get_relation_check_query("missing", src_catalog_name, src_collection_name, src_field_name)
+    # Only include sources where not none_allowed
+    sources = GOBSources().get_field_relations(src_catalog_name, src_collection_name, src_field_name)
+    check_sources = [source['source'] for source in sources if not source.get('none_allowed', False)]
+
+    if not check_sources:
+        logger.info(f"All sources for {src_catalog_name} {src_collection_name} {src_field_name} allow empty "
+                    f"relations. Skipping check.")
+        return
+
+    # Only filter on sources when necessary (i.e. when there are multiple sources with different values for
+    # none_allowed)
+    check_sources = check_sources if len(sources) != len(check_sources) else None
+    missing_query = _get_relation_check_query("missing", src_catalog_name, src_collection_name, src_field_name,
+                                              check_sources)
     _query_missing(missing_query, QA_CHECK.Sourcevalue_exists, name)
 
-    dangling_query = _get_relation_check_query("dangling", src_catalog_name, src_collection_name, src_field_name)
+    dangling_query = _get_relation_check_query("dangling", src_catalog_name, src_collection_name, src_field_name,
+                                               check_sources)
+
     _query_missing(dangling_query, QA_CHECK.Reference_exists, name)
 
 

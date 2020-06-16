@@ -82,7 +82,9 @@ ORDER BY _source, _id, volgnummer, begin_geldigheid
     # @patch('gobupload.storage.relate.GOBModel')
     @patch('gobupload.storage.relate._get_relation_check_query')
     @patch('gobupload.storage.relate._query_missing')
-    def test_check_relations(self, mock_missing, mock_get_query):
+    @patch('gobupload.storage.relate.GOBSources.get_field_relations')
+    @patch('gobupload.storage.relate.logger')
+    def test_check_relations(self, mock_logger, mock_get_field_relations, mock_missing, mock_get_query):
         mock_collection = {
             'all_fields': {
                 'any_field_name': {
@@ -90,16 +92,53 @@ ORDER BY _source, _id, volgnummer, begin_geldigheid
                 }
             }
         }
+        catalog = 'any_catalog'
+        collection = 'any_collection'
+        field_name = 'any_field_name'
+        mock_get_field_relations.return_value = [{'source': 'sourceA'}]
         with patch.object(GOBModel, 'get_table_name', lambda s, a, b: a + b), \
              patch.object(GOBModel, 'get_collection', lambda s, a, b: mock_collection), \
              patch.object(GOBModel, 'has_states', lambda s, a, b: True):
-            check_relations("any_catalog", "any_collection", "any_field_name")
 
-        mock_get_query.assert_called()
-        self.assertEqual(mock_get_query.call_count, 2)
+            # Test base case: no sources with none_allowed.
+            check_relations(catalog, collection, field_name)
 
-        mock_missing.assert_called()
-        self.assertEqual(mock_missing.call_count, 2)
+            mock_get_query.assert_called()
+            mock_get_query.assert_called_with('dangling', catalog, collection, field_name, None)
+            self.assertEqual(mock_get_query.call_count, 2)
+
+            mock_missing.assert_called()
+            self.assertEqual(mock_missing.call_count, 2)
+            mock_logger.info.assert_not_called()
+
+            # Test case: all sources with none_allowed
+            mock_get_query.reset_mock()
+            mock_missing.reset_mock()
+            mock_get_field_relations.return_value = [{'source': 'sourceA', 'none_allowed': True}]
+
+            check_relations(catalog, collection, field_name)
+
+            mock_logger.info.assert_called_once()
+            mock_missing.assert_not_called()
+
+            # Test case: hybrid
+            mock_get_query.reset_mock()
+            mock_missing.reset_mock()
+            mock_logger.reset_mock()
+            mock_get_field_relations.return_value = [
+                {'source': 'sourceA', 'none_allowed': True},
+                {'source': 'sourceB', 'none_allowed': False},
+                {'source': 'sourceC'},
+            ]
+
+            check_relations(catalog, collection, field_name)
+            mock_get_query.assert_called_with('dangling', catalog, collection, field_name, ['sourceB', 'sourceC'])
+
+            self.assertEqual(mock_get_query.call_count, 2)
+
+            mock_missing.assert_called()
+            self.assertEqual(mock_missing.call_count, 2)
+            mock_logger.info.assert_not_called()
 
     @patch('gobupload.storage.relate.get_relation_name')
     @patch('gobupload.storage.relate._query_missing')
@@ -181,7 +220,7 @@ ORDER BY _source, _id, volgnummer, begin_geldigheid
              patch.object(GOBModel, 'has_states', lambda s, a, b: True):
 
              # Test missing query
-            result = _get_relation_check_query("missing", "any_catalog", "any_collection", "any_field_name")
+            result = _get_relation_check_query("missing", "any_catalog", "any_collection", "any_field_name", [])
             expect = """
 SELECT
     src._id as id,
@@ -201,7 +240,7 @@ WHERE
             self.assertEqual(result, expect)
 
             # Test dangling query
-            result = _get_relation_check_query("dangling", "any_catalog", "any_collection", "any_field_name")
+            result = _get_relation_check_query("dangling", "any_catalog", "any_collection", "any_field_name", None)
             expect = """
 SELECT
     src._id as id,
@@ -222,7 +261,7 @@ WHERE
 
             # Expect assertionerror on a different query type
             with self.assertRaises(AssertionError):
-                result = _get_relation_check_query("other", "any_catalog", "any_collection", "any_field_name")
+                result = _get_relation_check_query("other", "any_catalog", "any_collection", "any_field_name", [])
 
 
     @patch('gobupload.storage.relate.get_relation_name')
@@ -243,7 +282,7 @@ WHERE
              patch.object(GOBModel, 'has_states', lambda s, a, b: True):
 
              # Test missing query
-            result = _get_relation_check_query("missing", "any_catalog", "any_collection", "any_field_name")
+            result = _get_relation_check_query("missing", "any_catalog", "any_collection", "any_field_name", None)
             expect = """
 SELECT
     src._id as id,
@@ -276,8 +315,8 @@ WHERE
 """
             self.assertEqual(result, expect)
 
-            # Test dangling query
-            result = _get_relation_check_query("dangling", "any_catalog", "any_collection", "any_field_name")
+            # Test dangling query with applications
+            result = _get_relation_check_query("dangling", "any_catalog", "any_collection", "any_field_name", ['applicationA', 'applicationB'])
             expect = """
 SELECT
     src._id as id,
@@ -306,6 +345,6 @@ JOIN rel_cat_col_cat2_col2_field rel
 ON
     src._id = rel.src_id AND src.volgnummer = rel.src_volgnummer
 WHERE
-    COALESCE(src._expiration_date, '9999-12-31'::timestamp without time zone) > NOW() AND any_field_name->>'bronwaarde' IS NOT NULL AND rel.dst_id IS NULL
+    COALESCE(src._expiration_date, '9999-12-31'::timestamp without time zone) > NOW() AND any_field_name->>'bronwaarde' IS NOT NULL AND rel.dst_id IS NULL AND (src._application = 'applicationA' OR src._application = 'applicationB')
 """
             self.assertEqual(result, expect)
