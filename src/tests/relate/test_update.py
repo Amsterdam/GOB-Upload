@@ -858,7 +858,7 @@ JOIN max_dst_event ON TRUE
         relater.src_has_states = False
 
         self.assertEqual(f"""
-FULL JOIN (
+LEFT JOIN (
     SELECT * FROM rel_src_catalog_name_src_collection_name_src_field_name
     WHERE src_id IN (SELECT _id FROM src_entities)
 ) rel ON rel.src_id = src._id AND src.src_field_name->>'bronwaarde' = rel.bronwaarde
@@ -868,7 +868,7 @@ FULL JOIN (
         relater.src_has_states = True
 
         self.assertEqual(f"""
-FULL JOIN (
+LEFT JOIN (
     SELECT * FROM rel_src_catalog_name_src_collection_name_src_field_name
     WHERE (src_id, src_volgnummer) IN (SELECT _id, volgnummer FROM src_entities)
 ) rel ON rel.src_id = src._id AND rel.src_volgnummer = src.volgnummer
@@ -953,7 +953,7 @@ dst_side AS (
     INNER JOIN (REST SRC) src
         ON SRC_DST_MATCH1(src.bronwaarde) AND
     SRC_DST_MATCH2(src.bronwaarde)
-    FULL JOIN rel_src_catalog_name_src_collection_name_src_field_name rel
+    LEFT JOIN rel_src_catalog_name_src_collection_name_src_field_name rel
         ON rel.src_id=src._id AND rel.src_volgnummer = src.volgnummer
         AND rel.src_source = src._source AND rel.bronwaarde = src.bronwaarde
          AND ((src._application = 'sourceA') OR (src._application = 'sourceB' AND rel.dst_id = dst._id))
@@ -1016,7 +1016,7 @@ dst_side AS (
     INNER JOIN (REST SRC) src
         ON SRC_DST_MATCH1(src.bronwaarde) AND
     SRC_DST_MATCH2(src.bronwaarde)
-    FULL JOIN rel_src_catalog_name_src_collection_name_src_field_name rel
+    LEFT JOIN rel_src_catalog_name_src_collection_name_src_field_name rel
         ON rel.src_id=src._id AND rel.src_volgnummer = src.volgnummer
         AND rel.src_source = src._source AND rel.bronwaarde = src.bronwaarde
          AND ((src._application = 'sourceA') OR (src._application = 'sourceB' AND rel.dst_id = dst._id))
