@@ -695,7 +695,7 @@ JOIN max_dst_event ON TRUE
 
         if self.src_has_states:
             return f"""
-FULL JOIN (
+LEFT JOIN (
     SELECT * FROM {self.relation_table}
     WHERE (src_id, src_volgnummer) IN (SELECT {FIELD.ID}, {FIELD.SEQNR} FROM {self.src_entities_alias})
 ) rel ON rel.src_id = src.{FIELD.ID} AND rel.src_volgnummer = src.{FIELD.SEQNR}
@@ -704,7 +704,7 @@ FULL JOIN (
 """
         else:
             return f"""
-FULL JOIN (
+LEFT JOIN (
     SELECT * FROM {self.relation_table}
     WHERE src_id IN (SELECT {FIELD.ID} FROM {self.src_entities_alias})
 ) rel ON rel.src_id = src.{FIELD.ID} AND {self._source_value_ref()} = rel.{FIELD.SOURCE_VALUE}
@@ -829,7 +829,7 @@ dst_side AS (
     FROM {self.dst_entities_alias} dst
     INNER JOIN ({self._select_rest_src()}) src
         ON {self.and_join.join(self._src_dst_match(f'src.{FIELD.SOURCE_VALUE}'))}
-    FULL JOIN {self.relation_table} rel
+    LEFT JOIN {self.relation_table} rel
         ON rel.src_id=src.{FIELD.ID} {f'AND rel.src_volgnummer = src.{FIELD.SEQNR}' if self.src_has_states else ''}
         AND rel.src_source = src.{FIELD.SOURCE} AND rel.{FIELD.SOURCE_VALUE} = src.{FIELD.SOURCE_VALUE}
         {self._join_rel_dst_clause()}
