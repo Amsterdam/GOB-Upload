@@ -40,31 +40,45 @@ class TestApply(TestCase):
 
         stats.add_applied.assert_called()
 
+    @patch('gobupload.apply.main.add_notification')
+    @patch('gobupload.apply.main.EventNotification')
     @patch('gobupload.apply.main.logger', MagicMock())
     @patch('gobupload.apply.main.apply_events')
-    def test_apply_none(self, mock_apply, mock):
+    def test_apply_none(self, mock_apply, mock_event_notification, mock_add_notification, mock):
         mock.return_value = self.mock_storage
         self.mock_storage.get_source_catalogue_entity_combinations.return_value = []
 
         result = apply({'header': {}})
 
-        self.assertEqual(result, {'header': {}, 'summary': {'errors': ANY, 'warnings': ANY}})
+        expected_result_msg = {'header': {}, 'summary': {'errors': ANY, 'warnings': ANY}}
+        self.assertEqual(result, expected_result_msg)
         mock_apply.assert_not_called()
 
+        # Even if none are applied, still trigger notification
+        mock_add_notification.assert_called_with(expected_result_msg, mock_event_notification())
+
+    @patch('gobupload.apply.main.add_notification')
+    @patch('gobupload.apply.main.EventNotification')
     @patch('gobupload.apply.main.ContentsReader', MagicMock())
     @patch('gobupload.apply.main.logger', MagicMock())
     @patch('gobupload.apply.main.get_event_ids', lambda s: (1, 2))
     @patch('gobupload.apply.main.apply_events')
-    def test_apply(self, mock_apply, mock):
+    def test_apply(self, mock_apply, mock_event_notification, mock_add_notification, mock):
         mock.return_value = self.mock_storage
         combination = MockCombination("any source", "any catalogue", "any entity")
         self.mock_storage.get_source_catalogue_entity_combinations.return_value = [combination]
 
         result = apply({'header': {}})
 
-        self.assertEqual(result, {'header': {}, 'summary': {'errors': ANY, 'warnings': ANY}})
+        result_msg = {'header': {}, 'summary': {'errors': ANY, 'warnings': ANY}}
+
+        self.assertEqual(result, result_msg)
         mock_apply.assert_called()
 
+        mock_event_notification.assert_called_with({}, [1, 1])
+        mock_add_notification.assert_called_with(result_msg, mock_event_notification())
+
+    @patch('gobupload.apply.main.add_notification', MagicMock())
     @patch('gobupload.apply.main.os')
     @patch('gobupload.apply.main.ContentsReader')
     def test_apply_confirm_events(self, mock_contents_reader, mock_os, mock):
@@ -142,8 +156,7 @@ class TestApply(TestCase):
         mock_os.remove.assert_not_called()
 
 
-
-
+    @patch('gobupload.apply.main.add_notification', MagicMock())
     @patch('gobupload.apply.main.logger', MagicMock())
     @patch('gobupload.apply.main.get_event_ids', lambda s: (2, 1))
     @patch('gobupload.apply.main.apply_events')
@@ -157,6 +170,7 @@ class TestApply(TestCase):
         self.assertEqual(result, {'header': {}, 'summary': {'errors': ANY, 'warnings': ANY}})
         mock_apply.assert_not_called()
 
+    @patch('gobupload.apply.main.add_notification', MagicMock())
     @patch('gobupload.apply.main.ContentsReader', MagicMock())
     @patch('gobupload.apply.main.logger', MagicMock())
     @patch('gobupload.apply.main.get_event_ids', lambda s: (1, 1))
