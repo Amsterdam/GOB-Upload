@@ -146,7 +146,6 @@ def apply(msg):
     }
 
     # Add a events notification telling what types of event have been applied
-    if stats.applied:
-        add_notification(msg, EventNotification(stats.applied, [before, after]))
+    add_notification(msg, EventNotification(stats.applied, [before, after]))
 
     return msg
