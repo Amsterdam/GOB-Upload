@@ -33,22 +33,25 @@ class MockModel:
 class MockSources:
     def get_field_relations(self, *args):
         return [{
-            'source': 'sourceA'
+            'source': 'applicationA'
         }, {
-            'source': 'sourceB',
+            'source': 'applicationB',
             'multiple_allowed': True
         }]
 
 
 @patch("gobupload.relate.update.Relater.model", MockModel())
 @patch("gobupload.relate.update.Relater.sources", MockSources())
+@patch("gobupload.relate.update._execute")
 @patch("gobupload.relate.update.get_relation_name", lambda m, cat, col, field: f"{cat}_{col}_{field}")
-class TestRelater(TestCase):
+class TestRelaterInit(TestCase):
 
     def _get_relater(self):
         return Relater('src_catalog_name', 'src_collection_name', 'src_field_name')
 
-    def test_init(self):
+    def test_init(self, mock_execute):
+        mock_execute.return_value = [('applicationA',)]
+
         e = self._get_relater()
 
         self.assertEqual('src_catalog_name', e.src_catalog_name)
@@ -60,14 +63,13 @@ class TestRelater(TestCase):
         self.assertEqual(True, e.src_has_states)
         self.assertEqual(False, e.dst_has_states)
         self.assertEqual([{
-            'source': 'sourceA',
+            # applicationB should be filtered out
+            'source': 'applicationA',
             'multiple_allowed': False,
-        }, {
-            'source': 'sourceB',
-            'multiple_allowed': True,
         }], e.relation_specs)
         self.assertEqual(False, e.is_many)
         self.assertEqual('rel_src_catalog_name_src_collection_name_src_field_name', e.relation_table)
+        mock_execute.assert_called_with("SELECT DISTINCT _application FROM src_catalog_name_src_collection_name_table")
 
         with patch('gobupload.relate.update.Relater.sources.get_field_relations',
                    lambda cat, col, field: []):
@@ -82,6 +84,15 @@ class TestRelater(TestCase):
                        }}}):
             e = self._get_relater()
             self.assertEqual(True, e.is_many)
+
+@patch("gobupload.relate.update.Relater.model", MockModel())
+@patch("gobupload.relate.update.Relater.sources", MockSources())
+@patch("gobupload.relate.update.Relater._get_applications_in_src", lambda *args: ['applicationA', 'applicationB'])
+@patch("gobupload.relate.update.get_relation_name", lambda m, cat, col, field: f"{cat}_{col}_{field}")
+class TestRelater(TestCase):
+
+    def _get_relater(self):
+        return Relater('src_catalog_name', 'src_collection_name', 'src_field_name')
 
     def test_validity_select_expressions(self):
         test_cases = [
@@ -205,21 +216,31 @@ class TestRelater(TestCase):
         relater = self._get_relater()
         relater._source_value_ref = MagicMock(return_value='BRONWAARDE')
 
-        no_src_states = f"""CASE WHEN src._application = 'sourceA' THEN src._id || '.' || src._source || '.' || (BRONWAARDE)
-WHEN src._application = 'sourceB' THEN src._id || '.' || src._source || '.' || (BRONWAARDE) || '.' || dst._id
+        no_src_states = f"""CASE WHEN src._application = 'applicationA' THEN src._id || '.' || src._source || '.' || (BRONWAARDE)
+WHEN src._application = 'applicationB' THEN src._id || '.' || src._source || '.' || (BRONWAARDE) || '.' || dst._id
 END"""
-        with_src_states = f"""CASE WHEN src._application = 'sourceA' THEN src._id || '.' || src.volgnummer || '.' || src._source || '.' || (BRONWAARDE)
-WHEN src._application = 'sourceB' THEN src._id || '.' || src.volgnummer || '.' || src._source || '.' || (BRONWAARDE) || '.' || dst._id
+        with_src_states = f"""CASE WHEN src._application = 'applicationA' THEN src._id || '.' || src.volgnummer || '.' || src._source || '.' || (BRONWAARDE)
+WHEN src._application = 'applicationB' THEN src._id || '.' || src.volgnummer || '.' || src._source || '.' || (BRONWAARDE) || '.' || dst._id
 END"""
         relater.src_has_states = False
         self.assertEqual(no_src_states, relater._get_id())
         relater.src_has_states = True
         self.assertEqual(with_src_states, relater._get_id())
 
-        with_src_val_ref = f"""CASE WHEN src._application = 'sourceA' THEN src._id || '.' || src.volgnummer || '.' || src._source || '.' || (the src value ref)
-WHEN src._application = 'sourceB' THEN src._id || '.' || src.volgnummer || '.' || src._source || '.' || (the src value ref) || '.' || dst._id
+        with_src_val_ref = f"""CASE WHEN src._application = 'applicationA' THEN src._id || '.' || src.volgnummer || '.' || src._source || '.' || (the src value ref)
+WHEN src._application = 'applicationB' THEN src._id || '.' || src.volgnummer || '.' || src._source || '.' || (the src value ref) || '.' || dst._id
 END"""
         self.assertEqual(with_src_val_ref, relater._get_id('the src value ref'))
+
+        # No specs, NULL
+        relater.relation_specs = []
+        self.assertEqual('NULL', relater._get_id())
+
+        # No CASE statement, just taking the first because only one relation spec
+        relater.relation_specs = [{
+            'multiple_allowed': False,
+        }]
+        self.assertEqual("src._id || '.' || src.volgnummer || '.' || src._source || '.' || (BRONWAARDE)", relater._get_id())
 
     def test_get_id_for_dst(self):
         relater = self._get_relater()
@@ -240,6 +261,16 @@ END"""
                    "        WHEN 'B' THEN 'attrB'\n" \
                    "    END"
         self.assertEqual(expected, relater._get_derivation())
+
+        # No specs, NULL
+        relater.relation_specs = []
+        self.assertEqual('NULL', relater._get_derivation())
+
+        # No CASE statement, just taking the first because only one relation spec
+        relater.relation_specs = [{
+            'destination_attribute': 'attrA'
+        }]
+        self.assertEqual("'attrA'", relater._get_derivation())
 
     def test_source_value_ref(self):
         relater = self._get_relater()
@@ -329,6 +360,16 @@ END"""
         ]
         self.assertEqual(expected, relater._src_dst_match('src_val_ref'))
 
+        # Simplified version, only one application, should leave out the OR
+        relater.relation_specs = [{'source': 'source1'}]
+        relater.dst_has_states = False
+        relater.src_has_states = False
+        expected = [
+            'relate_match(source1,src_val_ref)'
+        ]
+        self.assertEqual(expected, relater._src_dst_match('src_val_ref'))
+
+
     def test_table_outer_join_on(self):
         relater = self._get_relater()
         relater.dst_has_states = False
@@ -356,7 +397,7 @@ END"""
             "src_dst.src_id = src._id",
             "src_dst._source = src._source",
             "src_dst.bronwaarde = json_obj_ref->>'bronwaarde'",
-            "((src._application = 'sourceA' AND src_dst.row_number = 1) OR (src._application = 'sourceB'))"
+            "((src._application = 'applicationA' AND src_dst.row_number = 1) OR (src._application = 'applicationB'))"
         ]
         self.assertEqual(expected, relater._src_dst_join_on())
 
@@ -366,7 +407,7 @@ END"""
             "src_dst.src_volgnummer = src.volgnummer",
             "src_dst._source = src._source",
             "src_dst.bronwaarde = json_obj_ref->>'bronwaarde'",
-            "((src._application = 'sourceA' AND src_dst.row_number = 1) OR (src._application = 'sourceB'))"
+            "((src._application = 'applicationA' AND src_dst.row_number = 1) OR (src._application = 'applicationB'))"
         ]
         self.assertEqual(expected, relater._src_dst_join_on())
 
@@ -430,11 +471,11 @@ END"""
     def test_valid_geo_src_check(self):
         relater = self._get_relater()
         relater.relation_specs = [
-            {'source': 'sourceA', 'source_attribute': 'attrA'},
-            {'source': 'sourceB', 'source_attribute': 'attrB'},
+            {'source': 'applicationA', 'source_attribute': 'attrA'},
+            {'source': 'applicationB', 'source_attribute': 'attrB'},
         ]
-        expected = "(_application = 'sourceA' AND ST_IsValid(attrA)) OR\n    " \
-                   "(_application = 'sourceB' AND ST_IsValid(attrB))"
+        expected = "((src._application = 'applicationA' AND ST_IsValid(attrA)) OR " \
+                   "(src._application = 'applicationB' AND ST_IsValid(attrB)))"
         self.assertEqual(expected, relater._valid_geo_src_check())
 
     def test_join_array_elements(self):
@@ -476,8 +517,8 @@ LEFT JOIN (
     
     
     LEFT JOIN dst_catalog_name_dst_collection_name_table dst ON DST_TABLE_INNER_JOIN_ON1 AND
-    DST_TABLE_INNER_JOIN_ON2
-    AND dst._date_deleted IS NULL
+    DST_TABLE_INNER_JOIN_ON2 AND
+    dst._date_deleted IS NULL
     GROUP BY SRC_DST_GROUP_BY1,
     SRC_DST_GROUP_BY2
 ) src_dst ON SRC_DST_JOIN_ON1 AND
@@ -503,8 +544,8 @@ LEFT JOIN (
     
     ARRAY_ELEMENTS
     LEFT JOIN dst_catalog_name_dst_collection_name_table dst ON DST_TABLE_INNER_JOIN_ON1 AND
-    DST_TABLE_INNER_JOIN_ON2
-    AND dst._date_deleted IS NULL
+    DST_TABLE_INNER_JOIN_ON2 AND
+    dst._date_deleted IS NULL
     GROUP BY SRC_DST_GROUP_BY1,
     SRC_DST_GROUP_BY2
 ) src_dst ON SRC_DST_JOIN_ON1 AND
@@ -530,8 +571,8 @@ LEFT JOIN (
     JOIN (SELECT * FROM src_catalog_name_src_collection_name_table WHERE (CHECK_VALID_GEO_SRC)) valid_src ON src._gobid = valid_src._gobid
     
     LEFT JOIN dst_catalog_name_dst_collection_name_table dst ON DST_TABLE_INNER_JOIN_ON1 AND
-    DST_TABLE_INNER_JOIN_ON2
-    AND dst._date_deleted IS NULL
+    DST_TABLE_INNER_JOIN_ON2 AND
+    dst._date_deleted IS NULL
     GROUP BY SRC_DST_GROUP_BY1,
     SRC_DST_GROUP_BY2
 ) src_dst ON SRC_DST_JOIN_ON1 AND
@@ -557,8 +598,8 @@ LEFT JOIN (
     JOIN (SELECT * FROM src_catalog_name_src_collection_name_table WHERE (CHECK_VALID_GEO_SRC)) valid_src ON src._gobid = valid_src._gobid
     ARRAY_ELEMENTS
     LEFT JOIN dst_catalog_name_dst_collection_name_table dst ON DST_TABLE_INNER_JOIN_ON1 AND
-    DST_TABLE_INNER_JOIN_ON2
-    AND dst._date_deleted IS NULL
+    DST_TABLE_INNER_JOIN_ON2 AND
+    dst._date_deleted IS NULL
     GROUP BY SRC_DST_GROUP_BY1,
     SRC_DST_GROUP_BY2
 ) src_dst ON SRC_DST_JOIN_ON1 AND
@@ -788,8 +829,6 @@ dst_entities AS (
         SELECT COALESCE(MAX(_last_dst_event), 0) FROM rel_src_catalog_name_src_collection_name_src_field_name
     )
 )"""
-        print(f"[{relater._with_dst_entities()}]")
-        print(f"[{expected}]")
         self.assertEqual(expected, relater._with_dst_entities())
 
         relater.exclude_relation_table = True
@@ -862,7 +901,7 @@ LEFT JOIN (
     SELECT * FROM rel_src_catalog_name_src_collection_name_src_field_name
     WHERE src_id IN (SELECT _id FROM src_entities)
 ) rel ON rel.src_id = src._id AND src.src_field_name->>'bronwaarde' = rel.bronwaarde
-     AND ((src._application = 'sourceA') OR (src._application = 'sourceB' AND rel.dst_id = dst._id))
+     AND ((src._application = 'applicationA') OR (src._application = 'applicationB' AND rel.dst_id = dst._id))
 """, relater._join_rel())
 
         relater.src_has_states = True
@@ -873,24 +912,53 @@ LEFT JOIN (
     WHERE (src_id, src_volgnummer) IN (SELECT _id, volgnummer FROM src_entities)
 ) rel ON rel.src_id = src._id AND rel.src_volgnummer = src.volgnummer
     AND src.src_field_name->>'bronwaarde' = rel.bronwaarde
-     AND ((src._application = 'sourceA') OR (src._application = 'sourceB' AND rel.dst_id = dst._id))
+     AND ((src._application = 'applicationA') OR (src._application = 'applicationB' AND rel.dst_id = dst._id))
 """, relater._join_rel())
 
     def test_get_where(self):
         relater = self._get_relater()
         self.assertEqual(
             "WHERE (rel._date_deleted IS NULL OR src._id IS NOT NULL) AND dst._date_deleted IS NULL AND "
-            "((src._application = 'sourceA') OR (src._application = 'sourceB' AND dst._id IS NOT NULL))",
+            "((src._application = 'applicationA') OR (src._application = 'applicationB' AND dst._id IS NOT NULL))",
             relater._get_where()
         )
 
         relater.exclude_relation_table = True
         self.assertEqual(
             "WHERE (src._id IS NOT NULL) AND dst._date_deleted IS NULL "
-            "AND ((src._application = 'sourceA') AND row_number > 1) "
-            "AND ((src._application = 'sourceA') OR (src._application = 'sourceB' AND dst._id IS NOT NULL))",
+            "AND ((src._application = 'applicationA' AND row_number > 1)) "
+            "AND ((src._application = 'applicationA') OR (src._application = 'applicationB' AND dst._id IS NOT NULL))",
             relater._get_where()
         )
+
+    def test_switch_for_specs(self):
+        relater = self._get_relater()
+        relater.relation_specs = [
+            {'some_attr': 'a', 'source': 'A'},
+            {'some_attr': 'a', 'source': 'B'}
+        ]
+
+        # If attribute is equal over all specs, return a simplified version
+        res = relater._switch_for_specs('some_attr', lambda spec: spec['some_attr'] * 3)
+        self.assertEqual('aaa', res)
+
+        relater.relation_specs = [
+            {'some_attr': 'a', 'source': 'A'},
+            {'some_attr': 'b', 'source': 'B'}
+        ]
+
+        # Attribute is not equal, return OR expression
+        res = relater._switch_for_specs('some_attr', lambda spec: spec['some_attr'] * 3)
+        self.assertEqual("((src._application = 'A' AND aaa) OR (src._application = 'B' AND bbb))", res)
+        
+        # One spec resolves to TRUE, simplify the TRUE.
+        # Other spec resolves to FALSE, leave out application expression
+        res = relater._switch_for_specs('some_attr', lambda spec: 'FALSE' if spec['some_attr'] != 'a' else 'TRUE')
+        self.assertEqual("((src._application = 'A'))", res)
+
+        # All specs resolve to FALSE. Simplify to a simple FALSE
+        res = relater._switch_for_specs('some_attr', lambda spec: 'FALSE')
+        self.assertEqual('FALSE', res)
 
     def _get_get_query_mocked_relater(self):
         relater = self._get_relater()
@@ -956,7 +1024,7 @@ dst_side AS (
     LEFT JOIN rel_src_catalog_name_src_collection_name_src_field_name rel
         ON rel.src_id=src._id AND rel.src_volgnummer = src.volgnummer
         AND rel.src_source = src._source AND rel.bronwaarde = src.bronwaarde
-         AND ((src._application = 'sourceA') OR (src._application = 'sourceB' AND rel.dst_id = dst._id))
+         AND ((src._application = 'applicationA') OR (src._application = 'applicationB' AND rel.dst_id = dst._id))
     JOIN_SRC_GELDIGHEID
     JOIN_DST_GELDIGHEID
     JOIN MAX EVENTIDS
@@ -1019,7 +1087,7 @@ dst_side AS (
     LEFT JOIN rel_src_catalog_name_src_collection_name_src_field_name rel
         ON rel.src_id=src._id AND rel.src_volgnummer = src.volgnummer
         AND rel.src_source = src._source AND rel.bronwaarde = src.bronwaarde
-         AND ((src._application = 'sourceA') OR (src._application = 'sourceB' AND rel.dst_id = dst._id))
+         AND ((src._application = 'applicationA') OR (src._application = 'applicationB' AND rel.dst_id = dst._id))
     JOIN_SRC_GELDIGHEID
     JOIN_DST_GELDIGHEID
     JOIN MAX EVENTIDS
@@ -1279,32 +1347,30 @@ SELECT * FROM src_side
         mock_execute.return_value = iter([1])
         self.assertFalse(relater._is_initial_load())
 
-    @patch("gobupload.relate.update._execute")
-    def test_check_preconditions(self, mock_execute):
+    def test_check_preconditions(self):
         relater = self._get_relater()
         relater.src_table_name = 'src_table'
         relater.src_catalog_name = 'src_catalog'
         relater.src_collection_name = 'src_collection'
         relater.src_field_name = 'src_field'
+        relater._get_applications_in_src = MagicMock(return_value=['applicationA', 'applicationB'])
         relater.relation_specs = [{'source': 'applicationA'}, {'source': 'applicationB'}]
-
-        mock_execute.return_value = [('applicationA',), ('applicationB',)]
 
         # No Exceptions are thrown
         relater._check_preconditions()
-        mock_execute.assert_called_with('SELECT DISTINCT _application FROM src_table')
+        relater._get_applications_in_src.assert_called_once()
 
         # No Exceptions. Gobsources and src table don't match, but everything we need is defined -> Not all sources
         # have to be present in the src table
-        mock_execute.return_value = [('applicationA',)]
+        relater._get_applications_in_src.return_value = ['applicationA']
         relater._check_preconditions()
 
         # Empty table. OK.
-        mock_execute.return_value = []
+        relater._get_applications_in_src.return_value = []
         relater._check_preconditions()
 
         # applicationC is not defined in gobsources
-        mock_execute.return_value = [('applicationC',)]
+        relater._get_applications_in_src.return_value = ['applicationC']
         with self.assertRaises(GOBException):
             relater._check_preconditions()
 

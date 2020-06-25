@@ -1,17 +1,5 @@
 """
 See README.md in this directory for explanation of this file.
-
-Side notes on this code (JK):
-There are some checks in the multiple_allowed code that always compares the source of the relation with something to
-decide whether or not to filter on a field (for example the row_number check, or the join on src_dst (that will include
-a comparison with dst_id, dst_volgnummer only if multiple_allowed is True for a source. For other sources this check is
-neglected). In theory we could simplify the generated query here when for all sources the value for multiple_allowed
-is consistent. However, I don't expect that to have any huge impact on the query performance, but it does keep the code
-in this class cleaner and more understandable. I would only opt for this query simplification (and thus more complex
-code here) if we encounter performance issues with the relate query that are clearly caused by those clauses (after
-proper investigation). However, as all this filtering is done on intermediate results and the larger query path itself
-shouldn't change between the two variations and the exclusions performed in these steps are minimal, I don't expect any
-issues there, and thus I opted for more straightforward code.
 """
 
 import hashlib
@@ -107,16 +95,21 @@ class Relater:
         self.src_has_states = self.model.has_states(self.src_catalog_name, self.src_collection_name)
         self.dst_has_states = self.model.has_states(self.dst_catalog_name, self.dst_collection_name)
 
-        # Copy relation specs and set default for multiple_allowed
-        self.relation_specs = [{
+        # Copy relation specs and set default for multiple_allowed. Filter out specs that are not present in src.
+        relation_specs = [{
             **spec,
             'multiple_allowed': spec.get('multiple_allowed', False)
         } for spec in self.sources.get_field_relations(src_catalog_name, src_collection_name, src_field_name)]
 
-        if not self.relation_specs:
+        if not relation_specs:
             raise RelateException("Missing relation specification for " +
                                   f"{src_catalog_name} {src_collection_name} {src_field_name} " +
                                   "(sources.get_field_relations)")
+        src_applications = self._get_applications_in_src()
+
+        # Only include specs that are present in the src table. If no specs are left this implies that the src table is
+        # empty.
+        self.relation_specs = [spec for spec in relation_specs if spec['source'] in src_applications]
 
         self.is_many = self.src_field['type'] == "GOB.ManyReference"
         self.relation_table = "rel_" + get_relation_name(self.model, src_catalog_name, src_collection_name,
@@ -124,6 +117,12 @@ class Relater:
 
         # Initally don't exclude the relation tables
         self.exclude_relation_table = False
+
+    def _get_applications_in_src(self):
+        query = f"SELECT DISTINCT {FIELD.APPLICATION} FROM {self.src_table_name}"
+
+        result = _execute(query)
+        return [row[0] for row in result]
 
     def _validity_select_expressions(self):
         if self.src_has_states and self.dst_has_states:
@@ -285,6 +284,13 @@ class Relater:
         return self._get_id('src.bronwaarde')
 
     def _get_id(self, src_value_ref=None):
+
+        if not self.relation_specs:
+            return 'NULL'
+        elif len(self.relation_specs) == 1:
+            # Only one spec, no CASE expression necessary
+            return self._get_id_for_spec(self.relation_specs[0], src_value_ref)
+
         # Switch per source. Different sources have different multiple_allowed values
         whens = [f"WHEN src.{FIELD.APPLICATION} = '{spec['source']}' THEN {self._get_id_for_spec(spec, src_value_ref)}"
                  for spec in self.relation_specs]
@@ -297,6 +303,12 @@ class Relater:
 
         :return:
         """
+        if not self.relation_specs:
+            return 'NULL'
+        elif len(self.relation_specs) == 1:
+            # Only one spec, no CASE expression necessary
+            return f"'{self.relation_specs[0]['destination_attribute']}'"
+
         whens = "\n        ".join(
             [f"WHEN '{spec['source']}' THEN '{spec['destination_attribute']}'" for spec in self.relation_specs]
         )
@@ -346,8 +358,12 @@ class Relater:
         :return:
         """
 
-        clause = [f"(src.{FIELD.APPLICATION} = '{spec['source']}' AND " +
-                  f"{self._relate_match(spec, source_value_ref)})" for spec in self.relation_specs]
+        if len(self.relation_specs) == 1:
+            clause = [self._relate_match(self.relation_specs[0], source_value_ref)]
+        else:
+            clause = [f"(src.{FIELD.APPLICATION} = '{spec['source']}' AND " +
+                      f"{self._relate_match(spec, source_value_ref)})" for spec in self.relation_specs]
+
         # If more matches have been defined that catch any of the matches
         if len(clause) > 1:
             clause = [f"({self.or_join.join(clause)})"]
@@ -388,15 +404,11 @@ class Relater:
 
         if not self.exclude_relation_table:
             # Add check for row_number for all sources that don't have multiple_allowed set.
-            ors = []
-            for spec in self.relation_specs:
-                or_ = f"src.{FIELD.APPLICATION} = '{spec['source']}'"
-                if not spec['multiple_allowed']:
-                    or_ += " AND src_dst.row_number = 1"
 
-                ors.append(or_)
-
-            join_on.append(f"(({') OR ('.join(ors)}))")
+            join_on.append(self._switch_for_specs(
+                'multiple_allowed',
+                lambda spec: 'src_dst.row_number = 1' if not spec['multiple_allowed'] else 'TRUE'
+            ))
 
         return join_on
 
@@ -434,9 +446,11 @@ class Relater:
 
         :return:
         """
-        return self.or_join.join([
-            f"({FIELD.APPLICATION} = '{spec['source']}' AND ST_IsValid({spec['source_attribute']}))"
-            for spec in self.relation_specs])
+
+        return self._switch_for_specs(
+            'source_attribute',
+            lambda spec: f"ST_IsValid({spec['source_attribute']})"
+        )
 
     def _join_array_elements(self):
         return f"JOIN jsonb_array_elements(src.{self.src_field_name}) {self.json_join_alias}(item) " \
@@ -453,6 +467,9 @@ class Relater:
         :param source_side:
         :return:
         """
+        join_on = self._src_dst_match()
+        join_on.append(f"dst.{FIELD.DATE_DELETED} IS NULL")
+
         if self._have_geo_specs():
             """If this relation contains geometry matching, we should include a validity check in the query. This means
             that we add an extra join on the source table in which we check the validity of the geo fields in the src
@@ -476,8 +493,7 @@ LEFT JOIN (
     ) src
     {validgeo_src}
     {self._join_array_elements() if self.is_many else ""}
-    LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(self._src_dst_match())}
-    AND dst.{FIELD.DATE_DELETED} IS NULL
+    LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(join_on)}
     GROUP BY {self.comma_join.join(self._src_dst_group_by())}
 ) src_dst ON {self.and_join.join(self._src_dst_join_on())}
 """
@@ -678,17 +694,12 @@ JOIN max_dst_event ON TRUE
     def _join_rel_dst_clause(self):
         dst_join_clause = f"rel.dst_id = dst.{FIELD.ID}" + (f" AND rel.dst_volgnummer = dst.{FIELD.SEQNR}"
                                                             if self.dst_has_states else "")
-        ors = []
-        # Implement conditions
-        for spec in self.relation_specs:
 
-            if spec['multiple_allowed']:
-                or_ = f"src.{FIELD.APPLICATION} = '{spec['source']}' AND {dst_join_clause}"
-            else:
-                or_ = f"src.{FIELD.APPLICATION} = '{spec['source']}'"
-            ors.append(or_)
-
-        return f" AND (({') OR ('.join(ors)}))"
+        switch = self._switch_for_specs(
+            'multiple_allowed',
+            lambda spec: dst_join_clause if spec['multiple_allowed'] else 'TRUE'
+        )
+        return f" AND {switch}"
 
     def _join_rel(self):
         dst_join = self._join_rel_dst_clause()
@@ -717,11 +728,11 @@ LEFT JOIN (
 
         :return:
         """
-        ors = [f"src.{FIELD.APPLICATION} = '{spec['source']}'"
-               for spec in self.relation_specs
-               if not spec['multiple_allowed']]
 
-        return f"(({') OR ('.join(ors)}) AND row_number > 1)" if ors else 'FALSE'
+        return self._switch_for_specs(
+            'multiple_allowed',
+            lambda spec: f'row_number > 1' if not spec['multiple_allowed'] else 'FALSE'
+        )
 
     def _get_where(self):
         """Returns WHERE clause for both sides of the UNION.
@@ -745,15 +756,63 @@ LEFT JOIN (
 
         :return:
         """
-        ors = []
 
-        for spec in self.relation_specs:
-            ors.append(
-                f"src.{FIELD.APPLICATION} = '{spec['source']}'" +
-                (f' AND dst.{FIELD.ID} IS NOT NULL' if spec['multiple_allowed'] else '')
-            )
+        return self._switch_for_specs(
+            'multiple_allowed',
+            lambda spec: f'dst.{FIELD.ID} IS NOT NULL' if spec['multiple_allowed'] else 'TRUE'
+        )
 
-        return f"(({') OR ('.join(ors)}))"
+    def _switch_for_specs(self, attribute: str, func: callable):
+        """Creates a conditional expression based on the different sources, for example, creates constructs like:
+
+        ... AND ((src._application = 'A' AND row_number = 1) OR (src._application = 'B' AND row_number = 1) OR
+            (src._application = 'C' AND some_other_condition))
+
+        where the expressions (AND row_number = 1 in this case) are conditional based on the value of src._application.
+
+        Tries to simplify the condition. If the expression that comes after the _application comparison is the same
+        for all values for _application, the comparison with _application is omitted.
+
+        :param attribute:
+        :param func:
+        :return:
+        """
+
+        if self._can_simplify_for(attribute):
+            return func(self.relation_specs[0])
+        else:
+            ors = []
+
+            for spec in self.relation_specs:
+                condition = func(spec)
+
+                if condition == 'FALSE':
+                    continue
+
+                # simplify TRUE
+                condition = '' if condition == 'TRUE' else f" AND {condition}"
+                ors.append(f"src.{FIELD.APPLICATION} = '{spec['source']}'{condition}")
+
+            if not ors:
+                # No possible matches. Always FALSE. Important to add this if nothing matches above, otherwise this
+                # would result in a (wrongly) implied TRUE (everything matches).
+                return 'FALSE'
+
+            return f"(({') OR ('.join(ors)}))"
+
+    def _can_simplify_for(self, attribute: str):
+        """Expressions like ((_source = 'A' AND somecondition) OR (_source = 'B' and somecondition) can often be
+        simplified, because the condition depends on a value in the spec in relation_specs. If all specs in
+        relation_specs have the same value for the referred attribute, we can simplify this expression, with positive
+        impact on database performance.
+
+        This method returns a boolean value if such constructs based on the value of attribute can be simplified. (That
+        is, if for all specs in relation_specs the value for attribute is the same).
+
+        :param attribute:
+        :return:
+        """
+        return len(set([spec[attribute] for spec in self.relation_specs])) == 1
 
     def get_conflicts_query(self):
         self.exclude_relation_table = True
@@ -952,9 +1011,7 @@ SELECT * FROM dst_side
         """
 
         applications = [spec['source'] for spec in self.relation_specs]
-
-        result = _execute(f"SELECT DISTINCT {FIELD.APPLICATION} FROM {self.src_table_name}")
-        src_table_applications = [row[0] for row in result]
+        src_table_applications = self._get_applications_in_src()
 
         difference = set(src_table_applications) - set(applications)
 
