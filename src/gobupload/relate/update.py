@@ -12,6 +12,7 @@ from gobcore.exceptions import GOBException
 from gobcore.events.import_events import ADD, DELETE, CONFIRM, MODIFY
 from gobcore.message_broker.offline_contents import ContentsWriter
 
+from gobcore.logging.logger import logger
 from gobcore.model import GOBModel
 from gobcore.model.metadata import FIELD
 from gobcore.model.relations import get_relation_name
@@ -1063,6 +1064,7 @@ SELECT * FROM dst_side
         try:
             next(result)
         except StopIteration:
+            logger.info("Relation table is empty. Have initial load.")
             return True
         return False
 
@@ -1078,8 +1080,19 @@ SELECT * FROM dst_side
         changed_src_objects = self._get_count_for(f'({self._src_entities()})')
         changed_dst_objects = self._get_count_for(f'({self._dst_entities()})')
 
-        return (changed_dst_objects / total_dst_objects) + \
-               (changed_src_objects / total_src_objects) >= _FORCE_FULL_RELATE_THRESHOLD
+        src_ratio = changed_src_objects / total_src_objects
+        dst_ratio = changed_dst_objects / total_dst_objects
+
+        logger.info(f"Ratio of changed src objects: {src_ratio}")
+        logger.info(f"Ratio of changed dst objects: {dst_ratio}")
+
+        sum_ratio = src_ratio + dst_ratio
+        if sum_ratio >= _FORCE_FULL_RELATE_THRESHOLD:
+            logger.info(f"Sum of ratios ({sum_ratio}) exceeds threshold value of {_FORCE_FULL_RELATE_THRESHOLD}. "
+                        f"Force full relate.")
+            return True
+
+        return False
 
     def _check_preconditions(self):
         """Checks if all applications in the src table are defined in GOBSources.

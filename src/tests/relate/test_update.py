@@ -40,6 +40,7 @@ class MockSources:
         }]
 
 
+@patch("gobupload.relate.update.logger", MagicMock())
 @patch("gobupload.relate.update.Relater.model", MockModel())
 @patch("gobupload.relate.update.Relater.sources", MockSources())
 @patch("gobupload.relate.update._execute")
@@ -85,6 +86,8 @@ class TestRelaterInit(TestCase):
             e = self._get_relater()
             self.assertEqual(True, e.is_many)
 
+
+@patch("gobupload.relate.update.logger", MagicMock())
 @patch("gobupload.relate.update.Relater.model", MockModel())
 @patch("gobupload.relate.update.Relater.sources", MockSources())
 @patch("gobupload.relate.update.Relater._get_applications_in_src", lambda *args: ['applicationA', 'applicationB'])
