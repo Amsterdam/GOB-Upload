@@ -811,6 +811,7 @@ WHERE catalogue = 'CATALOG'
         relater = self._get_relater()
         relater._source_value_ref = lambda: 'SOURCE_VAL_REF'
         relater._changed_source_ids = MagicMock(return_value='CHANGED_SRC_IDS')
+        relater.relation_specs = [{'source_attribute': 'attrA'}, {'source_attribute': 'attrB'}, {}]
         relater.is_many = True
         expected = f"""
 SELECT * FROM src_catalog_name_src_collection_name_table src
@@ -822,7 +823,7 @@ WHERE src._source_id IN (CHANGED_SRC_IDS)
             'src_catalog_name',
             'src_collection_name',
             "(SELECT COALESCE(MAX(_last_src_event), 0) FROM rel_src_catalog_name_src_collection_name_src_field_name)",
-            ['src_field_name']
+            ['src_field_name', 'attrA', 'attrB']
         )
         expected = f"""
 SELECT * FROM src_catalog_name_src_collection_name_table src
