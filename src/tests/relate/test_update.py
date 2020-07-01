@@ -40,6 +40,7 @@ class MockSources:
         }]
 
 
+@patch("gobupload.relate.update.logger", MagicMock())
 @patch("gobupload.relate.update.Relater.model", MockModel())
 @patch("gobupload.relate.update.Relater.sources", MockSources())
 @patch("gobupload.relate.update._execute")
@@ -85,6 +86,8 @@ class TestRelaterInit(TestCase):
             e = self._get_relater()
             self.assertEqual(True, e.is_many)
 
+
+@patch("gobupload.relate.update.logger", MagicMock())
 @patch("gobupload.relate.update.Relater.model", MockModel())
 @patch("gobupload.relate.update.Relater.sources", MockSources())
 @patch("gobupload.relate.update.Relater._get_applications_in_src", lambda *args: ['applicationA', 'applicationB'])
@@ -785,59 +788,102 @@ dst_volgnummer_begin_geldigheid AS (
         relater.src_has_states = False
         self.assertEqual(["VALIDITIES_FOR_DST"], relater._start_validities())
 
-    def test_with_src_entities(self):
+    def test_changed_source_ids(self):
+        relater = self._get_relater()
+        expected = f"""
+SELECT e.source_id
+FROM events e
+INNER JOIN jsonb_array_elements(e.contents -> 'modifications') modifications
+ON modifications ->> 'key' IN ('begin_geldigheid', 'eind_geldigheid', '_source', 'attrA', 'attrB')
+WHERE catalogue = 'CATALOG'
+  AND entity = 'COLLECTION'
+  AND eventid > LAST_EVENTID
+  AND action = 'MODIFY'
+UNION
+SELECT e.source_id
+FROM events e
+WHERE catalogue = 'CATALOG'
+  AND entity = 'COLLECTION'
+  AND eventid > LAST_EVENTID
+  AND action IN ('ADD', 'DELETE')
+"""
+
+        self.assertEqual(expected, relater._changed_source_ids('CATALOG', 'COLLECTION', 'LAST_EVENTID', ['attrA', 'attrB']))
+
+    def test_src_entities(self):
         relater = self._get_relater()
         relater._source_value_ref = lambda: 'SOURCE_VAL_REF'
+        relater._changed_source_ids = MagicMock(return_value='CHANGED_SRC_IDS')
+        relater.relation_specs = [{'source_attribute': 'attrA'}, {'source_attribute': 'attrB'}, {}]
         relater.is_many = True
         expected = f"""
--- All changed source entities
-src_entities AS (
-    SELECT * FROM src_catalog_name_src_collection_name_table src
-    WHERE _last_event > (
-        SELECT COALESCE(MAX(_last_src_event), 0) FROM rel_src_catalog_name_src_collection_name_src_field_name
-    )
-)"""
-        self.assertEqual(expected, relater._with_src_entities())
+SELECT * FROM src_catalog_name_src_collection_name_table src
+WHERE src._source_id IN (CHANGED_SRC_IDS)
+"""
+        self.assertEqual(expected, relater._src_entities())
+
+        relater._changed_source_ids.assert_called_with(
+            'src_catalog_name',
+            'src_collection_name',
+            "(SELECT COALESCE(MAX(_last_src_event), 0) FROM rel_src_catalog_name_src_collection_name_src_field_name)",
+            ['src_field_name', 'attrA', 'attrB']
+        )
+        expected = f"""
+SELECT * FROM src_catalog_name_src_collection_name_table src
+
+"""
+        self.assertEqual(expected, relater._src_entities(True))
+
+
         relater.is_many = False
 
         expected = f"""
--- All changed source entities
-src_entities AS (
-    SELECT * FROM src_catalog_name_src_collection_name_table src
-    WHERE SOURCE_VAL_REF IS NOT NULL AND _last_event > (
-        SELECT COALESCE(MAX(_last_src_event), 0) FROM rel_src_catalog_name_src_collection_name_src_field_name
-    )
-)"""
-        self.assertEqual(expected, relater._with_src_entities())
+SELECT * FROM src_catalog_name_src_collection_name_table src
+WHERE SOURCE_VAL_REF IS NOT NULL AND src._source_id IN (CHANGED_SRC_IDS)
+"""
+        self.assertEqual(expected, relater._src_entities())
         relater.is_many = True
 
         relater.exclude_relation_table = True
         expected = f"""
--- All changed source entities
-src_entities AS (
-    SELECT * FROM src_catalog_name_src_collection_name_table src
+SELECT * FROM src_catalog_name_src_collection_name_table src
 
-)"""
-        self.assertEqual(expected, relater._with_src_entities())
+"""
+        self.assertEqual(expected, relater._src_entities())
 
-    def test_with_dst_entities(self):
+    def test_dst_entities(self):
         relater = self._get_relater()
-        expected = f"""
--- All changed destination entities
-dst_entities AS (
-    SELECT * FROM dst_catalog_name_dst_collection_name_table WHERE _last_event > (
-        SELECT COALESCE(MAX(_last_dst_event), 0) FROM rel_src_catalog_name_src_collection_name_src_field_name
-    )
-)"""
-        self.assertEqual(expected, relater._with_dst_entities())
+        relater._changed_source_ids = MagicMock(return_value='CHANGED_SOURCE_IDS')
+        relater.relation_specs = [{'destination_attribute': 'attrA'}, {'destination_attribute': 'attrB'}]
+        expected = f"SELECT * FROM dst_catalog_name_dst_collection_name_table WHERE _source_id IN (CHANGED_SOURCE_IDS)"
+        self.assertEqual(expected, relater._dst_entities())
+        relater._changed_source_ids.assert_called_with(
+            'dst_catalog_name',
+            'dst_collection_name',
+            '(SELECT COALESCE(MAX(_last_dst_event), 0) FROM rel_src_catalog_name_src_collection_name_src_field_name)',
+            ['attrA', 'attrB']
+        )
 
         relater.exclude_relation_table = True
-        expected = f"""
+        expected = f"SELECT * FROM dst_catalog_name_dst_collection_name_table"
+        self.assertEqual(expected, relater._dst_entities())
+
+    def test_with_src_dst_entities(self):
+        relater = self._get_relater()
+        relater._src_entities = lambda initial: 'SRC_ENTITIES_INITIAL' if initial else 'SRC_ENTITIES'
+        relater._dst_entities = lambda: 'DST_ENTITIES'
+
+        self.assertEqual("""
+-- All changed source entities
+src_entities AS (SRC_ENTITIES)""", relater._with_src_entities())
+
+        self.assertEqual("""
+-- All changed source entities
+src_entities AS (SRC_ENTITIES_INITIAL)""", relater._with_src_entities(True))
+
+        self.assertEqual("""
 -- All changed destination entities
-dst_entities AS (
-    SELECT * FROM dst_catalog_name_dst_collection_name_table
-)"""
-        self.assertEqual(expected, relater._with_dst_entities())
+dst_entities AS (DST_ENTITIES)""", relater._with_dst_entities())
 
     def test_with_max_src_event(self):
         relater = self._get_relater()
@@ -851,7 +897,7 @@ dst_entities AS (
 
     def test_with_queries(self):
         relater = self._get_relater()
-        relater._with_src_entities = lambda: 'SRC ENTITIES'
+        relater._with_src_entities = lambda initial: 'SRC ENTITIES' + (' INITIAL' if initial else '')
         relater._with_dst_entities = lambda: 'DST ENTITIES'
         relater._with_max_src_event = lambda: 'MAX SRC EVENT'
         relater._with_max_dst_event = lambda: 'MAX DST EVENT'
@@ -1034,7 +1080,6 @@ dst_side AS (
 
 -- All relations for changed src entities
 SELECT * FROM src_side
-
 UNION_DELETED_src
 UNION ALL
 -- All relations for changed dst entities
@@ -1097,7 +1142,6 @@ dst_side AS (
 
 -- All relations for changed src entities
 SELECT * FROM src_side
-
 UNION_DELETED_src
 UNION ALL
 -- All relations for changed dst entities
@@ -1191,7 +1235,7 @@ src_side AS (
 
 -- All relations for changed src entities
 SELECT * FROM src_side
-"""
+UNION_DELETED_src"""
         result = relater.get_query(True)
         self.assertEqual(result, expected)
 
@@ -1346,6 +1390,26 @@ SELECT * FROM src_side
 
         mock_execute.return_value = iter([1])
         self.assertFalse(relater._is_initial_load())
+
+    @patch("gobupload.relate.update._FORCE_FULL_RELATE_THRESHOLD", 1.0)
+    def test_force_full_relate(self):
+        relater = self._get_relater()
+        relater._src_entities = MagicMock()
+        relater._dst_entities = MagicMock()
+
+        testcases = [
+            # ([ total_src, total_dst, changed_src, changed_dst], result)
+            ([100, 100, 50, 0], False),
+            ([100, 100, 100, 0], True),
+            ([100, 100, 0, 0], False),
+            ([100, 100, 100, 100], True),
+            ([100, 100, 50, 50], True),
+        ]
+
+        for counts, result in testcases:
+            relater._get_count_for = MagicMock(side_effect=counts)
+
+            self.assertEqual(result, relater._force_full_relate())
 
     def test_check_preconditions(self):
         relater = self._get_relater()

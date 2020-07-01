@@ -6,11 +6,13 @@ import hashlib
 import json
 
 from datetime import date, datetime
+from typing import List
 
 from gobcore.exceptions import GOBException
 from gobcore.events.import_events import ADD, DELETE, CONFIRM, MODIFY
 from gobcore.message_broker.offline_contents import ContentsWriter
 
+from gobcore.logging.logger import logger
 from gobcore.model import GOBModel
 from gobcore.model.metadata import FIELD
 from gobcore.model.relations import get_relation_name
@@ -28,6 +30,11 @@ GOB = 'GOB'
 
 # Maximum number of error messages to report
 _MAX_RELATION_CONFLICTS = 25
+
+# Ratio of changed src_objects + changed dst_objects that trigger a full relate.
+# Value is between 0 and 2. 0 is full relate always. 2 is full relate when everything is changed.
+# 1.0 means that 50% of src objects and 50% of dst objects have changed (0.5 + 0.5), or 100% and 0%, or 60/40
+_FORCE_FULL_RELATE_THRESHOLD = 1.0
 
 
 class Relater:
@@ -611,42 +618,97 @@ all_{src_or_dst}_intervals(
 
         return result
 
-    def _with_src_entities(self):
+    def _changed_source_ids(self, catalogue: str, collection: str, last_eventid: str, related_attributes: List[str]):
+        """Returns a query that returns the source_ids from all events after last_eventid that are interesting for the
+        relate. These include all source_ids associated with ADD or DELETE events and all MODIFY events that include
+        modifications on columns such as START_VALIDITY, END_VALIDITY, EXPIRATION_DATE plus the attributes that are
+        used in the relate process (provided in the related_attributes list).
+
+        The last_eventid parameter may be any value (an integer string, but also a query that determines the
+        last_eventid)
+
+        :param catalogue:
+        :param collection:
+        :param last_eventid:
+        :param related_attributes:
+        :return:
+        """
+        interesting_modifications = [FIELD.START_VALIDITY, FIELD.END_VALIDITY, FIELD.SOURCE] + related_attributes
+        keys = ", ".join([f"'{field}'" for field in interesting_modifications])
+
+        return f"""
+SELECT e.source_id
+FROM events e
+INNER JOIN jsonb_array_elements(e.contents -> 'modifications') modifications
+ON modifications ->> 'key' IN ({keys})
+WHERE catalogue = '{catalogue}'
+  AND entity = '{collection}'
+  AND eventid > {last_eventid}
+  AND action = '{MODIFY.name}'
+UNION
+SELECT e.source_id
+FROM events e
+WHERE catalogue = '{catalogue}'
+  AND entity = '{collection}'
+  AND eventid > {last_eventid}
+  AND action IN ('{ADD.name}', '{DELETE.name}')
+"""
+
+    def _src_entities(self, initial_load=False):
         filters = []
 
         if not self.is_many:
             filters.append(f"{self._source_value_ref()} IS NOT NULL")
 
-        if not self.exclude_relation_table:
-            filters.append(f"""{FIELD.LAST_EVENT} > (
-        SELECT COALESCE(MAX({FIELD.LAST_SRC_EVENT}), 0) FROM {self.relation_table}
-    )""")
+        if not self.exclude_relation_table and not initial_load:
+            last_eventid = f"(SELECT COALESCE(MAX({FIELD.LAST_SRC_EVENT}), 0) FROM {self.relation_table})"
+            source_attrs = [spec['source_attribute'] for spec in self.relation_specs if 'source_attribute' in spec]
+            changed_source_ids = self._changed_source_ids(
+                self.src_catalog_name,
+                self.src_collection_name,
+                last_eventid,
+                [self.src_field_name] + source_attrs
+            )
 
-        filters_str = f'    WHERE {" AND ".join(filters)}' if filters else ""
+            filters.append(f"src.{FIELD.SOURCE_ID} IN ({changed_source_ids})")
 
+        filters_str = f'WHERE {" AND ".join(filters)}' if filters else ""
+
+        return f"""
+SELECT * FROM {self.src_table_name} src
+{filters_str}
+"""
+
+    def _with_src_entities(self, initial_load=False):
         statement = f"""
 -- All changed source entities
-{self.src_entities_alias} AS (
-    SELECT * FROM {self.src_table_name} src
-{filters_str}
-)"""
+{self.src_entities_alias} AS ({self._src_entities(initial_load)})"""
         return statement
+
+    def _dst_entities(self):
+        query = f"""SELECT * FROM {self.dst_table_name}"""
+
+        if not self.exclude_relation_table:
+            last_eventid = f"(SELECT COALESCE(MAX({FIELD.LAST_DST_EVENT}), 0) FROM {self.relation_table})"
+            changed_source_ids = self._changed_source_ids(
+                self.dst_catalog_name,
+                self.dst_collection_name,
+                last_eventid,
+                [spec['destination_attribute'] for spec in self.relation_specs]
+            )
+            query += f" WHERE {FIELD.SOURCE_ID} IN ({changed_source_ids})"
+        return query
 
     def _with_dst_entities(self):
         statement = f"""
 -- All changed destination entities
-{self.dst_entities_alias} AS (
-    SELECT * FROM {self.dst_table_name}"""
-
-        if not self.exclude_relation_table:
-            statement += f""" WHERE {FIELD.LAST_EVENT} > (
-        SELECT COALESCE(MAX({FIELD.LAST_DST_EVENT}), 0) FROM {self.relation_table}
-    )"""
-
-        statement += """
-)"""
+{self.dst_entities_alias} AS ({self._dst_entities()})"""
 
         return statement
+
+    def _get_count_for(self, frm: str):
+        result = _execute(f"SELECT COUNT(*) FROM {frm} alias")
+        return next(result)[0]
 
     def _with_max_src_event(self):
         return f"""
@@ -661,7 +723,7 @@ max_dst_event AS (SELECT MAX({FIELD.LAST_EVENT}) {FIELD.LAST_EVENT} FROM {self.d
     def _with_queries(self, initial_load=False):
         start_validities = self._start_validities(initial_load)
         other_withs = [
-            self._with_src_entities(),
+            self._with_src_entities(initial_load),
             self._with_dst_entities(),
             self._with_max_src_event(),
             self._with_max_dst_event()
@@ -903,8 +965,10 @@ dst_side AS (
         query += f"""
 -- All relations for changed src entities
 SELECT * FROM src_side
-""" + (f"""
-{self._union_deleted_relations('src') if not self.exclude_relation_table else ''}
+""" + \
+                 (self._union_deleted_relations('src')
+                  if not self.exclude_relation_table
+                  else '') + (f"""
 UNION ALL
 -- All relations for changed dst entities
 SELECT * FROM dst_side
@@ -993,14 +1057,41 @@ SELECT * FROM dst_side
 
         return relation
 
-    def _is_initial_load(self):
+    def _is_initial_load(self) -> bool:
         query = f"SELECT {FIELD.ID} FROM {self.relation_table} LIMIT 1"
         result = _execute(query)
 
         try:
             next(result)
         except StopIteration:
+            logger.info("Relation table is empty. Have initial load.")
             return True
+        return False
+
+    def _force_full_relate(self) -> bool:
+        """Returns True if should force full relate. Full relate is forced when there are many updated src/dst objects
+        to consider.
+
+        :return:
+        """
+        total_src_objects = self._get_count_for(self.src_table_name)
+        total_dst_objects = self._get_count_for(self.dst_table_name)
+
+        changed_src_objects = self._get_count_for(f'({self._src_entities()})')
+        changed_dst_objects = self._get_count_for(f'({self._dst_entities()})')
+
+        src_ratio = changed_src_objects / total_src_objects
+        dst_ratio = changed_dst_objects / total_dst_objects
+
+        logger.info(f"Ratio of changed src objects: {src_ratio}")
+        logger.info(f"Ratio of changed dst objects: {dst_ratio}")
+
+        sum_ratio = src_ratio + dst_ratio
+        if sum_ratio >= _FORCE_FULL_RELATE_THRESHOLD:
+            logger.info(f"Sum of ratios ({sum_ratio}) exceeds threshold value of {_FORCE_FULL_RELATE_THRESHOLD}. "
+                        f"Force full relate.")
+            return True
+
         return False
 
     def _check_preconditions(self):
@@ -1023,7 +1114,7 @@ SELECT * FROM dst_side
     def update(self):
         self._check_preconditions()
 
-        initial_load = self._is_initial_load()
+        initial_load = self._is_initial_load() or self._force_full_relate()
         query = self.get_query(initial_load)
 
         with ProgressTicker("Process relate src result", 10000) as progress, \
