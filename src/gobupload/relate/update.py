@@ -661,11 +661,12 @@ WHERE catalogue = '{catalogue}'
 
         if not self.exclude_relation_table and not initial_load:
             last_eventid = f"(SELECT COALESCE(MAX({FIELD.LAST_SRC_EVENT}), 0) FROM {self.relation_table})"
+            source_attrs = [spec['source_attribute'] for spec in self.relation_specs if 'source_attribute' in spec]
             changed_source_ids = self._changed_source_ids(
                 self.src_catalog_name,
                 self.src_collection_name,
                 last_eventid,
-                [self.src_field_name]
+                [self.src_field_name] + source_attrs
             )
 
             filters.append(f"src.{FIELD.SOURCE_ID} IN ({changed_source_ids})")
