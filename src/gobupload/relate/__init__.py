@@ -270,8 +270,14 @@ def process_relate(msg: dict):
 
     logger.info(f"Relate table started")
 
+    full_update = header.get('mode', "update") == "full"
+
+    if full_update:
+        logger.info("Full relate requested")
+
     updater = Relater(header[CATALOG_KEY], header[COLLECTION_KEY], header[ATTRIBUTE_KEY])
-    filename, confirms = updater.update()
+
+    filename, confirms = updater.update(full_update)
 
     logger.info(f"Relate table completed")
 
