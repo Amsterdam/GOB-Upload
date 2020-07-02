@@ -891,6 +891,10 @@ LEFT JOIN (
             else f"({src_or_dst}_id, {src_or_dst}_volgnummer) IN (SELECT {FIELD.ID}, {FIELD.SEQNR} " \
                  f"FROM {src_or_dst_entities_alias})"
 
+        # rel_id should not be in src_side and dst_side
+        rel_ids = "SELECT rel_id FROM src_side WHERE rel_id IS NOT NULL" + \
+                  (" UNION ALL SELECT rel_id FROM dst_side WHERE rel_id IS NOT NULL" if src_or_dst == 'dst' else "")
+
         return f"""
 UNION ALL
 -- Add all relations for entities in {src_or_dst_entities_alias} that should be deleted
@@ -898,7 +902,7 @@ UNION ALL
 -- anymore.
 SELECT {self.comma_join.join(self._select_expressions_rel_delete())}
 FROM {self.relation_table} rel
-WHERE {in_src_or_dst_entities} AND rel.id NOT IN (SELECT rel_id FROM {src_or_dst}_side WHERE rel_id IS NOT NULL)
+WHERE {in_src_or_dst_entities} AND rel.id NOT IN ({rel_ids})
     AND rel.{FIELD.DATE_DELETED} IS NULL
 """
 
@@ -1080,8 +1084,8 @@ SELECT * FROM dst_side
         changed_src_objects = self._get_count_for(f'({self._src_entities()})')
         changed_dst_objects = self._get_count_for(f'({self._dst_entities()})')
 
-        src_ratio = changed_src_objects / total_src_objects
-        dst_ratio = changed_dst_objects / total_dst_objects
+        src_ratio = changed_src_objects / total_src_objects if total_src_objects > 0 else 1
+        dst_ratio = changed_dst_objects / total_dst_objects if total_dst_objects > 0 else 1
 
         logger.info(f"Ratio of changed src objects: {src_ratio}")
         logger.info(f"Ratio of changed dst objects: {dst_ratio}")
@@ -1111,10 +1115,10 @@ SELECT * FROM dst_side
                                f"{self.src_field_name} because the src table contains values for "
                                f"{FIELD.APPLICATION} that are not defined in GOBSources: {','.join(difference)}")
 
-    def update(self):
+    def update(self, do_full_update=False):
         self._check_preconditions()
 
-        initial_load = self._is_initial_load() or self._force_full_relate()
+        initial_load = do_full_update or self._is_initial_load() or self._force_full_relate()
         query = self.get_query(initial_load)
 
         with ProgressTicker("Process relate src result", 10000) as progress, \
