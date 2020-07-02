@@ -1205,7 +1205,7 @@ UNION ALL
 SELECT EXPRESSION1,
     EXPRESSION2
 FROM rel_src_catalog_name_src_collection_name_src_field_name rel
-WHERE dst_id IN (SELECT _id FROM dst_entities) AND rel.id NOT IN (SELECT rel_id FROM dst_side WHERE rel_id IS NOT NULL)
+WHERE dst_id IN (SELECT _id FROM dst_entities) AND rel.id NOT IN (SELECT rel_id FROM src_side WHERE rel_id IS NOT NULL UNION ALL SELECT rel_id FROM dst_side WHERE rel_id IS NOT NULL)
     AND rel._date_deleted IS NULL
 """, relater._union_deleted_relations('dst'))
 
@@ -1404,6 +1404,8 @@ UNION_DELETED_src"""
             ([100, 100, 0, 0], False),
             ([100, 100, 100, 100], True),
             ([100, 100, 50, 50], True),
+            ([0, 100, 0, 0], True),
+            ([100, 0, 0, 0], True),
         ]
 
         for counts, result in testcases:

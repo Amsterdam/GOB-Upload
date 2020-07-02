@@ -315,6 +315,7 @@ class TestInit(TestCase):
         mock_check_message.assert_called_with(msg)
 
         mock_relater.assert_called_with('catalog', 'the collection', 'the attribute')
+        mock_relater().update.assert_called_with(False)
 
         self.assertEqual({
             'header': {
@@ -336,3 +337,8 @@ class TestInit(TestCase):
             'contents_ref': 'result filename',
             'confirms': 2840,
         }, result)
+
+        # Full relate forced
+        msg['header']['mode'] = 'full'
+        result = process_relate(msg)
+        mock_relater().update.assert_called_with(True)
