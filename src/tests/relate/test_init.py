@@ -213,6 +213,14 @@ class TestInit(TestCase):
 
         mock_publish.assert_called_with(split_msg, [])
 
+        # With existing process id
+        msg['header']['process_id'] = 'existing process_id'
+        split_msg['header']['process_id'] = 'existing process_id'
+        self.assertEqual(mock_publish.return_value, prepare_relate(msg))
+        mock_split_job.assert_called_with(split_msg)
+
+        mock_publish.assert_called_with(split_msg, [])
+
     @patch("gobupload.relate.MaterializedViews")
     def test_get_materialized_view_by_relation_name(self, mock_mv):
         self.assertEqual(mock_mv.return_value.get_by_relation_name.return_value,
@@ -268,6 +276,10 @@ class TestInit(TestCase):
 
         mock_get_mv.assert_called_with('catalog', 'collection', 'attribute')
         mock_get_mv.return_value.refresh.assert_called_with(mock_storage_handler.return_value)
+
+        msg['header']['process_id'] = 'existing process_id'
+        expected_result_msg['header']['process_id'] = 'existing process_id'
+        self.assertEqual(expected_result_msg, update_materialized_view(msg))
 
     @patch("gobupload.relate.GOBModel", MockModel)
     @patch("gobupload.relate.GOBSources", MockSources)
