@@ -36,6 +36,9 @@ _MAX_RELATION_CONFLICTS = 25
 # 1.0 means that 50% of src objects and 50% of dst objects have changed (0.5 + 0.5), or 100% and 0%, or 60/40
 _FORCE_FULL_RELATE_THRESHOLD = 1.0
 
+# Used for initial relate. 30000 seems to be the sweetspot for the current configuration
+_MAX_ROWS_PER_SIDE = 30000
+
 
 class Relater:
     model = GOBModel()
@@ -62,6 +65,7 @@ class Relater:
         'derivation',
         'src_source',
         'src_id',
+        'src_last_event',
         'dst_source',
         'dst_id',
         FIELD.SOURCE_VALUE,
@@ -125,6 +129,9 @@ class Relater:
         # Initally don't exclude the relation tables
         self.exclude_relation_table = False
 
+        self.min_src_event_id = 0
+        self.max_src_event_id = None
+
     def _get_applications_in_src(self):
         query = f"SELECT DISTINCT {FIELD.APPLICATION} FROM {self.src_table_name}"
 
@@ -176,6 +183,7 @@ class Relater:
             "src_source": f"src.{FIELD.SOURCE}",
             "src_id": f"src.{FIELD.ID}",
             "src_volgnummer": f"src.{FIELD.SEQNR}",
+            "src_last_event": f"src.{FIELD.LAST_EVENT}",
             "dst_source": f"CASE WHEN dst.{FIELD.DATE_DELETED} IS NULL THEN dst.{FIELD.SOURCE} ELSE NULL END",
             "dst_id": f"CASE WHEN dst.{FIELD.DATE_DELETED} IS NULL THEN dst.{FIELD.ID} ELSE NULL END",
             "dst_volgnummer": f"CASE WHEN dst.{FIELD.DATE_DELETED} IS NULL THEN dst.{FIELD.SEQNR} ELSE NULL END",
@@ -215,6 +223,7 @@ class Relater:
             "src_source": f"src.{FIELD.SOURCE}",
             "src_id": f"src.{FIELD.ID}",
             "src_volgnummer": f"src.{FIELD.SEQNR}",
+            "src_last_event": f"src.{FIELD.LAST_EVENT}",
             "dst_source": f"dst.{FIELD.SOURCE}",
             "dst_id": f"dst.{FIELD.ID}",
             "dst_volgnummer": f"dst.{FIELD.SEQNR}",
@@ -540,7 +549,7 @@ LEFT JOIN (
     ){source_value_not_null}
 """
 
-    def _start_validity_per_seqnr(self, src_or_dst, initial_load=False):
+    def _start_validity_per_seqnr(self, src_or_dst):
         """Generates the recursive WITH queries that find the begin_geldigheid for every volgnummer
 
         Result of this recursive query isa relation src_volgnummer_begin_geldigheid or dst_volgnummer_begin_geldigheid
@@ -552,11 +561,9 @@ LEFT JOIN (
         else:
             table_name = self.dst_table_name
 
-        where_relevant = "TRUE"
-        if not initial_load:
-            changed_entities = self.src_entities_alias if src_or_dst == 'src' else self.dst_entities_alias
-            # Filter the tuples on only the relevant tuples for the update
-            where_relevant = f"(_id, volgnummer) in (SELECT _id, volgnummer FROM {changed_entities})"
+        changed_entities = self.src_entities_alias if src_or_dst == 'src' else self.dst_entities_alias
+        # Filter the tuples on only the relevant tuples for the update
+        where_relevant = f"(_id, volgnummer) in (SELECT _id, volgnummer FROM {changed_entities})"
 
         return f"""
 -- Find all possible {src_or_dst} intervals: id - seqnr - start - end
@@ -605,16 +612,16 @@ all_{src_or_dst}_intervals(
     GROUP BY {FIELD.ID}, {FIELD.SEQNR}
 )"""
 
-    def _start_validities(self, initial_load=False):
+    def _start_validities(self):
         """Adds recursive queries to determine the begin_geldigheid for each volgnummer
 
         """
         result = []
         if self.src_has_states:
-            result.append(self._start_validity_per_seqnr('src', initial_load))
+            result.append(self._start_validity_per_seqnr('src'))
 
         if self.dst_has_states:
-            result.append(self._start_validity_per_seqnr('dst', initial_load))
+            result.append(self._start_validity_per_seqnr('dst'))
 
         return result
 
@@ -655,10 +662,18 @@ WHERE catalogue = '{catalogue}'
 """
 
     def _src_entities(self, initial_load=False):
+        limit = ''
         filters = []
 
         if not self.is_many:
             filters.append(f"{self._source_value_ref()} IS NOT NULL")
+
+        # min_src_event_id and max_src_event_id are used for pagination during the initial load.
+        if self.min_src_event_id:
+            filters.append(f"src.{FIELD.LAST_EVENT} > {self.min_src_event_id}")
+
+        if self.max_src_event_id:
+            filters.append(f"src.{FIELD.LAST_EVENT} <= {self.max_src_event_id}")
 
         if not self.exclude_relation_table and not initial_load:
             last_eventid = f"(SELECT COALESCE(MAX({FIELD.LAST_SRC_EVENT}), 0) FROM {self.relation_table})"
@@ -671,12 +686,16 @@ WHERE catalogue = '{catalogue}'
             )
 
             filters.append(f"src.{FIELD.SOURCE_ID} IN ({changed_source_ids})")
+        elif not self.exclude_relation_table and initial_load:
+            # Initial load. Limit the number of src entities. Only possible for initial_load!
+            limit = f'ORDER BY src.{FIELD.LAST_EVENT} LIMIT {_MAX_ROWS_PER_SIDE}'
 
         filters_str = f'WHERE {" AND ".join(filters)}' if filters else ""
 
         return f"""
 SELECT * FROM {self.src_table_name} src
 {filters_str}
+{limit}
 """
 
     def _with_src_entities(self, initial_load=False):
@@ -711,7 +730,13 @@ SELECT * FROM {self.src_table_name} src
         return next(result)[0]
 
     def _with_max_src_event(self):
-        return f"""
+        if self.max_src_event_id:
+            return f"""
+-- Last event we're considering in this relate process
+max_src_event AS (SELECT {self.max_src_event_id} {FIELD.LAST_EVENT})"""
+
+        else:
+            return f"""
 -- Last event that has updated a source entity
 max_src_event AS (SELECT MAX({FIELD.LAST_EVENT}) {FIELD.LAST_EVENT} FROM {self.src_table_name})"""
 
@@ -721,7 +746,7 @@ max_src_event AS (SELECT MAX({FIELD.LAST_EVENT}) {FIELD.LAST_EVENT} FROM {self.s
 max_dst_event AS (SELECT MAX({FIELD.LAST_EVENT}) {FIELD.LAST_EVENT} FROM {self.dst_table_name})"""
 
     def _with_queries(self, initial_load=False):
-        start_validities = self._start_validities(initial_load)
+        start_validities = self._start_validities()
         other_withs = [
             self._with_src_entities(initial_load),
             self._with_dst_entities(),
@@ -1115,11 +1140,70 @@ SELECT * FROM dst_side
                                f"{self.src_field_name} because the src table contains values for "
                                f"{FIELD.APPLICATION} that are not defined in GOBSources: {','.join(difference)}")
 
+    def _get_max_src_event(self):
+        query = f"SELECT MAX({FIELD.LAST_EVENT}) FROM {self.src_table_name}"
+        return next(_execute(query))[0]
+
+    def _get_paged_updates(self):
+        """Paged updates are always when initial_load is True
+
+        :return:
+        """
+
+        # Set a max to the _last_event we consider for the src entities. If we don't do this, we risk considering
+        # certain src entities twice when a src entity is updated while this job is running.
+        self.max_src_event_id = self._get_max_src_event()
+
+        while True:
+            min_src_event_id_before = self.min_src_event_id
+
+            result = self._query_results(True)
+
+            for row in result:
+                # row['src_last_event'] may be None when the relation table isn't empty: a row from the relation table
+                # is found that does not match any src objects, meaning this row will be deleted. Set to 0
+                self.min_src_event_id = max(self.min_src_event_id, row['src_last_event'] or 0)
+                yield row
+
+            if min_src_event_id_before == self.min_src_event_id:
+                # No updates
+                break
+
+    def _get_updates(self, initial_load):
+        """Return updates from the database.
+
+        If this is an initial_load, paginate the results by default. Pagination is only possible for initial loads.
+
+        :param initial_load:
+        :return:
+        """
+        if initial_load:
+            logger.info("Initial load. Relate in batches.")
+            yield from self._get_paged_updates()
+        else:
+            logger.info("Update run. Relate in once.")
+            yield from self._query_results(initial_load)
+
+    def _query_results(self, initial_load):
+        query = self.get_query(initial_load)
+
+        # Execute the query in a try-except block.
+        # The query is complex and if it fails it is hard to debug
+        # In order to allow debugging, any failing query is reported on stdout
+        # Afterwards the exception is re-raised
+        try:
+            result = _execute(query, stream=True, max_row_buffer=25000)
+            for row in result:
+                yield dict(row)
+            result.close()
+        except Exception as e:
+            print(f"Update failed: {str(e)}, Failing query:\n{query}\n")
+            raise e
+
     def update(self, do_full_update=False):
         self._check_preconditions()
 
         initial_load = do_full_update or self._is_initial_load() or self._force_full_relate()
-        query = self.get_query(initial_load)
 
         with ProgressTicker("Process relate src result", 10000) as progress, \
                 ContentsWriter() as contents_writer, \
@@ -1129,19 +1213,11 @@ SELECT * FROM dst_side
             filename = contents_writer.filename
             confirms = confirms_writer.filename
 
-            try:
-                # Execute the query in a try-except block.
-                # The query is complex and if it fails it is hard to debug
-                # In order to allow debugging, any failing query is reported on stdout
-                # Afterwards the exception is re-raised
-                result = _execute(query, stream=True, max_row_buffer=25000)
-                for row in result:
-                    progress.tick()
-                    event = self._create_event(self._format_relation(dict(row)))
-                    event_collector.collect(event)
-                result.close()
-            except Exception as e:
-                print(f"Update failed: {str(e)}, Failing query:\n{query}\n")
-                raise e
+            result = self._get_updates(initial_load)
+
+            for row in result:
+                progress.tick()
+                event = self._create_event(self._format_relation(row))
+                event_collector.collect(event)
 
             return filename, confirms
