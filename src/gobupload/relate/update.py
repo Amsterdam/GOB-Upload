@@ -4,6 +4,7 @@ See README.md in this directory for explanation of this file.
 
 import hashlib
 import json
+import random
 
 from datetime import date, datetime
 from typing import List
@@ -134,8 +135,10 @@ class Relater:
         self.max_src_event_id = None
 
         # begin_geldigheid tmp table names
-        self.src_intv_tmp_table_name = f"{self.src_catalog_name}_{self.src_collection['abbreviation']}_intv".lower()
-        self.dst_intv_tmp_table_name = f"{self.dst_catalog_name}_{self.dst_collection['abbreviation']}_intv".lower()
+        self.src_intv_tmp_table_name = f"tmp_{self.src_catalog_name}_{self.src_collection['abbreviation']}_intv_" \
+                                       f"{str(random.randint(0, 1000)).zfill(4)}".lower()
+        self.dst_intv_tmp_table_name = f"tmp_{self.dst_catalog_name}_{self.dst_collection['abbreviation']}_intv_" \
+                                       f"{str(random.randint(0, 1000)).zfill(4)}".lower()
 
     def _get_applications_in_src(self):
         query = f"SELECT DISTINCT {FIELD.APPLICATION} FROM {self.src_table_name}"
@@ -605,15 +608,21 @@ FROM all_intervals
 GROUP BY {FIELD.ID}, {FIELD.SEQNR}
 """
 
+    def _cleanup_tmp_tables(self):
+        _execute(f"DROP TABLE IF EXISTS {self.src_intv_tmp_table_name}")
+        _execute(f"DROP TABLE IF EXISTS {self.dst_intv_tmp_table_name}")
+
     def _create_tmp_tables(self):
         """Creates tmp tables from recursive queries to determine the begin_geldigheid for each volgnummer
 
         """
+        self._cleanup_tmp_tables()
+
         if self.src_has_states:
             query = self._start_validity_per_seqnr(self.src_table_name)
 
             logger.info(f"Creating temporary table {self.src_intv_tmp_table_name}")
-            _execute(f"CREATE TEMPORARY TABLE IF NOT EXISTS {self.src_intv_tmp_table_name} AS ({query})")
+            _execute(f"CREATE TABLE IF NOT EXISTS {self.src_intv_tmp_table_name} AS ({query})")
 
         if self.dst_has_states and self.src_table_name != self.dst_table_name:
             if self.src_table_name == self.dst_table_name:
@@ -623,7 +632,7 @@ GROUP BY {FIELD.ID}, {FIELD.SEQNR}
                 query = self._start_validity_per_seqnr(self.dst_table_name)
 
                 logger.info(f"Creating temporary table {self.dst_intv_tmp_table_name}")
-                _execute(f"CREATE TEMPORARY TABLE IF NOT EXISTS {self.dst_intv_tmp_table_name} AS ({query})")
+                _execute(f"CREATE TABLE IF NOT EXISTS {self.dst_intv_tmp_table_name} AS ({query})")
 
     def _changed_source_ids(self, catalogue: str, collection: str, last_eventid: str, related_attributes: List[str]):
         """Returns a query that returns the source_ids from all events after last_eventid that are interesting for the
@@ -902,10 +911,17 @@ LEFT JOIN (
         """
         return len(set([spec[attribute] for spec in self.relation_specs])) == 1
 
-    def get_conflicts_query(self):
+    def _get_conflicts_query(self):
         self.exclude_relation_table = True
-        self._prepare_query()
         return self.get_query()
+
+    def get_conflicts(self):
+        self._prepare_query()
+        query = self._get_conflicts_query()
+
+        yield from _execute(query, stream=True, max_row_buffer=25000)
+
+        self._cleanup()
 
     def _union_deleted_relations(self, src_or_dst: str):
         assert src_or_dst in ('src', 'dst'), f"src_or_dst should be 'src' or 'dst', not '{src_or_dst}'"
@@ -1179,6 +1195,10 @@ SELECT * FROM dst_side
         logger.info("Create temporary tables.")
         self._create_tmp_tables()
 
+    def _cleanup(self):
+        logger.info("Removing temporary tables")
+        self._cleanup_tmp_tables()
+
     def _get_updates(self, initial_load):
         """Return updates from the database.
 
@@ -1195,6 +1215,8 @@ SELECT * FROM dst_side
         else:
             logger.info("Update run. Relate in once.")
             yield from self._query_results(initial_load)
+
+        self._cleanup()
 
     def _query_results(self, initial_load):
         query = self.get_query(initial_load)

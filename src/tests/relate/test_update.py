@@ -50,6 +50,7 @@ class MockSources:
 @patch("gobupload.relate.update.Relater.model", MockModel())
 @patch("gobupload.relate.update.Relater.sources", MockSources())
 @patch("gobupload.relate.update._execute")
+@patch("gobupload.relate.update.random.randint", lambda x, y: 89)
 @patch("gobupload.relate.update.get_relation_name", lambda m, cat, col, field: f"{cat}_{col}_{field}")
 class TestRelaterInit(TestCase):
 
@@ -78,8 +79,8 @@ class TestRelaterInit(TestCase):
         self.assertEqual('rel_src_catalog_name_src_collection_name_src_field_name', e.relation_table)
         mock_execute.assert_called_with("SELECT DISTINCT _application FROM src_catalog_name_src_collection_name_table")
 
-        self.assertEqual('src_catalog_name_srcabbr_intv', e.src_intv_tmp_table_name)
-        self.assertEqual('dst_catalog_name_dstabbr_intv', e.dst_intv_tmp_table_name)
+        self.assertEqual('tmp_src_catalog_name_srcabbr_intv_0089', e.src_intv_tmp_table_name)
+        self.assertEqual('tmp_dst_catalog_name_dstabbr_intv_0089', e.dst_intv_tmp_table_name)
 
         with patch('gobupload.relate.update.Relater.sources.get_field_relations',
                    lambda cat, col, field: []):
@@ -718,6 +719,7 @@ GROUP BY _id, volgnummer
     @patch("gobupload.relate.update._execute")
     def test_create_tmp_tables(self, mock_execute):
         relater = self._get_relater()
+        relater._cleanup_tmp_tables = MagicMock()
         relater._start_validity_per_seqnr = lambda tablename: "START_VALIDITIES_" + tablename
         relater.src_intv_tmp_table_name = 'src_bg_tmp_table'
         relater.dst_intv_tmp_table_name = 'dst_bg_tmp_table'
@@ -728,10 +730,11 @@ GROUP BY _id, volgnummer
         relater.dst_has_states = True
 
         relater._create_tmp_tables()
+        relater._cleanup_tmp_tables.assert_called_once()
 
         mock_execute.assert_has_calls([
-            call("CREATE TEMPORARY TABLE IF NOT EXISTS src_bg_tmp_table AS (START_VALIDITIES_src_table_name)"),
-            call("CREATE TEMPORARY TABLE IF NOT EXISTS dst_bg_tmp_table AS (START_VALIDITIES_dst_table_name)"),
+            call("CREATE TABLE IF NOT EXISTS src_bg_tmp_table AS (START_VALIDITIES_src_table_name)"),
+            call("CREATE TABLE IF NOT EXISTS dst_bg_tmp_table AS (START_VALIDITIES_dst_table_name)"),
         ])
 
         relater.src_has_states = True
@@ -740,7 +743,7 @@ GROUP BY _id, volgnummer
         relater._create_tmp_tables()
 
         mock_execute.assert_has_calls([
-            call("CREATE TEMPORARY TABLE IF NOT EXISTS src_bg_tmp_table AS (START_VALIDITIES_src_table_name)"),
+            call("CREATE TABLE IF NOT EXISTS src_bg_tmp_table AS (START_VALIDITIES_src_table_name)"),
         ])
 
         relater.src_has_states = False
@@ -749,7 +752,7 @@ GROUP BY _id, volgnummer
         relater._create_tmp_tables()
 
         mock_execute.assert_has_calls([
-            call("CREATE TEMPORARY TABLE IF NOT EXISTS dst_bg_tmp_table AS (START_VALIDITIES_dst_table_name)"),
+            call("CREATE TABLE IF NOT EXISTS dst_bg_tmp_table AS (START_VALIDITIES_dst_table_name)"),
         ])
 
         relater.src_table_name = 'src_table_name'
@@ -760,7 +763,7 @@ GROUP BY _id, volgnummer
         relater._create_tmp_tables()
 
         mock_execute.assert_has_calls([
-            call("CREATE TEMPORARY TABLE IF NOT EXISTS src_bg_tmp_table AS (START_VALIDITIES_src_table_name)"),
+            call("CREATE TABLE IF NOT EXISTS src_bg_tmp_table AS (START_VALIDITIES_src_table_name)"),
         ])
 
     def test_changed_source_ids(self):
@@ -909,20 +912,22 @@ dst_entities AS (DST_ENTITIES)""", relater._with_dst_entities())
     def test_join_src_geldigheid(self):
         relater = self._get_relater()
         relater.src_table_name = 'src_table'
+        relater.src_intv_tmp_table_name = 'src_intv_tmp_table_name'
         relater.src_has_states = False
         self.assertEqual("", relater._join_src_geldigheid())
         relater.src_has_states = True
-        self.assertEqual("LEFT JOIN src_catalog_name_srcabbr_intv src_bg "
+        self.assertEqual("LEFT JOIN src_intv_tmp_table_name src_bg "
                          "ON src_bg._id = src._id AND src_bg.volgnummer = src.volgnummer",
                          relater._join_src_geldigheid())
 
     def test_join_dst_geldigheid(self):
         relater = self._get_relater()
         relater.dst_table_name = 'dst_table'
+        relater.dst_intv_tmp_table_name = 'dst_intv_tmp_table_name'
         relater.dst_has_states = False
         self.assertEqual("", relater._join_dst_geldigheid())
         relater.dst_has_states = True
-        self.assertEqual("LEFT JOIN dst_catalog_name_dstabbr_intv dst_bg "
+        self.assertEqual("LEFT JOIN dst_intv_tmp_table_name dst_bg "
                          "ON dst_bg._id = dst._id AND dst_bg.volgnummer = dst.volgnummer",
                          relater._join_dst_geldigheid())
 
@@ -1177,9 +1182,22 @@ src_side AS (
 -- All relations for changed src entities
 SELECT * FROM src_side
 """
-        result = relater.get_conflicts_query()
+        result = relater._get_conflicts_query()
         self.assertEqual(result, expected)
+
+    @patch("gobupload.relate.update._execute")
+    def test_get_conflicts(self, mock_execute):
+        relater = self._get_relater()
+        relater._prepare_query = MagicMock()
+        relater._cleanup = MagicMock()
+        relater._get_conflicts_query = MagicMock()
+        mock_execute.return_value = iter(['a', 'b', 'c'])
+
+        result = list(relater.get_conflicts())
+        self.assertEqual(['a', 'b', 'c'], result)
+        mock_execute.assert_called_with(relater._get_conflicts_query.return_value, stream=True, max_row_buffer=25000)
         relater._prepare_query.assert_called_once()
+        relater._cleanup.assert_called_once()
 
     def test_union_deleted_relations(self):
         relater = self._get_relater()
@@ -1475,9 +1493,17 @@ UNION_DELETED_src"""
         relater._create_tmp_tables.assert_called_once()
 
     @patch("gobupload.relate.logger", MagicMock())
+    def test_cleanup(self):
+        relater = self._get_relater()
+        relater._cleanup_tmp_tables = MagicMock()
+        relater._cleanup()
+        relater._cleanup_tmp_tables.assert_called_once()
+
+    @patch("gobupload.relate.logger", MagicMock())
     def test_get_updates(self):
         relater = self._get_relater()
         relater._prepare_query = MagicMock()
+        relater._cleanup = MagicMock()
         relater._get_paged_updates = MagicMock(return_value=iter(['paged_update1', 'paged_update2']))
         relater._query_results = MagicMock(return_value=iter(['nonpaged_update1', 'nonpaged_update2']))
 
@@ -1486,6 +1512,7 @@ UNION_DELETED_src"""
 
         relater._query_results.assert_called_with(False)
         relater._prepare_query.assert_called()
+        relater._cleanup.assert_called()
 
     @patch("gobupload.relate.update._execute")
     def test_query_results(self, mock_execute):
