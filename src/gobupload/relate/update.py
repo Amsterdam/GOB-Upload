@@ -100,6 +100,7 @@ class Relater:
 
         # Get the destination catalog and collection names
         self.dst_catalog_name, self.dst_collection_name = self.src_field['ref'].split(':')
+        self.dst_collection = self.model.get_collection(self.dst_catalog_name, self.dst_collection_name)
         self.dst_table_name = self.model.get_table_name(self.dst_catalog_name, self.dst_collection_name)
 
         # Check if source or destination has states (volgnummer, begin_geldigheid, eind_geldigheid)
@@ -131,6 +132,10 @@ class Relater:
 
         self.min_src_event_id = 0
         self.max_src_event_id = None
+
+        # begin_geldigheid tmp table names
+        self.src_intv_tmp_table_name = f"{self.src_catalog_name}_{self.src_collection['abbreviation']}_intv".lower()
+        self.dst_intv_tmp_table_name = f"{self.dst_catalog_name}_{self.dst_collection['abbreviation']}_intv".lower()
 
     def _get_applications_in_src(self):
         query = f"SELECT DISTINCT {FIELD.APPLICATION} FROM {self.src_table_name}"
@@ -549,25 +554,18 @@ LEFT JOIN (
     ){source_value_not_null}
 """
 
-    def _start_validity_per_seqnr(self, src_or_dst):
+    def _start_validity_per_seqnr(self, table_name: str):
         """Generates the recursive WITH queries that find the begin_geldigheid for every volgnummer
 
         Result of this recursive query isa relation src_volgnummer_begin_geldigheid or dst_volgnummer_begin_geldigheid
         containing (_id, volgnummer, begin_geldigheid) tuples.
 
         """
-        if src_or_dst == 'src':
-            table_name = self.src_table_name
-        else:
-            table_name = self.dst_table_name
-
-        changed_entities = self.src_entities_alias if src_or_dst == 'src' else self.dst_entities_alias
-        # Filter the tuples on only the relevant tuples for the update
-        where_relevant = f"(_id, volgnummer) in (SELECT _id, volgnummer FROM {changed_entities})"
 
         return f"""
--- Find all possible {src_or_dst} intervals: id - seqnr - start - end
-all_{src_or_dst}_intervals(
+-- Find all possible intervals for {table_name}: id - seqnr - start - end
+WITH RECURSIVE
+all_intervals(
     {FIELD.ID},
     start_{FIELD.SEQNR},
     {FIELD.SEQNR},
@@ -589,41 +587,43 @@ all_{src_or_dst}_intervals(
     SELECT
         intv.{FIELD.ID},
         intv.start_{FIELD.SEQNR},
-        {src_or_dst}.{FIELD.SEQNR},
+        t.{FIELD.SEQNR},
         intv.{FIELD.START_VALIDITY},
-        {src_or_dst}.{FIELD.END_VALIDITY}
-    FROM all_{src_or_dst}_intervals intv
-    LEFT JOIN {table_name} {src_or_dst}
-    ON intv.{FIELD.END_VALIDITY} = {src_or_dst}.{FIELD.START_VALIDITY}
-        AND {src_or_dst}.{FIELD.ID} = intv.{FIELD.ID}
-        AND {src_or_dst}.{FIELD.SEQNR} > intv.{FIELD.SEQNR}
-    WHERE {src_or_dst}.{FIELD.START_VALIDITY} IS NOT NULL
-),
--- Use these intervals to get all {src_or_dst} start validities:  id - seqnr - start validity
--- Only for the relevant id - seqnr combinations, that is that have changed
--- Or all combinations if it concerns an initial load
-{src_or_dst}_volgnummer_begin_geldigheid AS (
-    SELECT
-        {FIELD.ID},
-        {FIELD.SEQNR},
-        MIN({FIELD.START_VALIDITY}) {FIELD.START_VALIDITY}
-    FROM all_{src_or_dst}_intervals
-    WHERE {where_relevant}
-    GROUP BY {FIELD.ID}, {FIELD.SEQNR}
-)"""
+        t.{FIELD.END_VALIDITY}
+    FROM all_intervals intv
+    LEFT JOIN {table_name} t
+    ON intv.{FIELD.END_VALIDITY} = t.{FIELD.START_VALIDITY}
+        AND t.{FIELD.ID} = intv.{FIELD.ID}
+        AND t.{FIELD.SEQNR} > intv.{FIELD.SEQNR}
+    WHERE t.{FIELD.START_VALIDITY} IS NOT NULL
+)
+SELECT
+    {FIELD.ID},
+    {FIELD.SEQNR},
+    MIN({FIELD.START_VALIDITY}) {FIELD.START_VALIDITY}
+FROM all_intervals
+GROUP BY {FIELD.ID}, {FIELD.SEQNR}
+"""
 
-    def _start_validities(self):
-        """Adds recursive queries to determine the begin_geldigheid for each volgnummer
+    def _create_tmp_tables(self):
+        """Creates tmp tables from recursive queries to determine the begin_geldigheid for each volgnummer
 
         """
-        result = []
         if self.src_has_states:
-            result.append(self._start_validity_per_seqnr('src'))
+            query = self._start_validity_per_seqnr(self.src_table_name)
 
-        if self.dst_has_states:
-            result.append(self._start_validity_per_seqnr('dst'))
+            logger.info(f"Creating temporary table {self.src_intv_tmp_table_name}")
+            _execute(f"CREATE TEMPORARY TABLE IF NOT EXISTS {self.src_intv_tmp_table_name} AS ({query})")
 
-        return result
+        if self.dst_has_states and self.src_table_name != self.dst_table_name:
+            if self.src_table_name == self.dst_table_name:
+                # Use same table as src as they are the same
+                self.dst_intv_tmp_table_name = self.src_intv_tmp_table_name
+            else:
+                query = self._start_validity_per_seqnr(self.dst_table_name)
+
+                logger.info(f"Creating temporary table {self.dst_intv_tmp_table_name}")
+                _execute(f"CREATE TEMPORARY TABLE IF NOT EXISTS {self.dst_intv_tmp_table_name} AS ({query})")
 
     def _changed_source_ids(self, catalogue: str, collection: str, last_eventid: str, related_attributes: List[str]):
         """Returns a query that returns the source_ids from all events after last_eventid that are interesting for the
@@ -746,31 +746,32 @@ max_src_event AS (SELECT MAX({FIELD.LAST_EVENT}) {FIELD.LAST_EVENT} FROM {self.s
 max_dst_event AS (SELECT MAX({FIELD.LAST_EVENT}) {FIELD.LAST_EVENT} FROM {self.dst_table_name})"""
 
     def _with_queries(self, initial_load=False):
-        start_validities = self._start_validities()
-        other_withs = [
+        withs = [
             self._with_src_entities(initial_load),
-            self._with_dst_entities(),
             self._with_max_src_event(),
             self._with_max_dst_event()
         ]
 
-        return f"WITH{' RECURSIVE' if start_validities else ''} " \
-               f"{','.join(start_validities + other_withs)}\n" \
+        if not initial_load:
+            withs.append(self._with_dst_entities())
+
+        return f"WITH " \
+               f"{','.join(withs)}\n" \
                f"-- END WITH\n"
 
-    def _join_geldigheid(self, src_dst):
+    def _join_geldigheid(self, table_name: str, alias: str, join_with: str):
         """Returns the join with the begin_geldigheid for the given volgnummer for either 'src' or 'dst' (src_bg or
         dst_bg)
         """
-        return f"LEFT JOIN {src_dst}_volgnummer_begin_geldigheid {src_dst}_bg " \
-               f"ON {src_dst}_bg.{FIELD.ID} = {src_dst}.{FIELD.ID} " \
-               f"AND {src_dst}_bg.{FIELD.SEQNR} = {src_dst}.{FIELD.SEQNR}"
+        return f"LEFT JOIN {table_name} {alias} " \
+               f"ON {alias}.{FIELD.ID} = {join_with}.{FIELD.ID} " \
+               f"AND {alias}.{FIELD.SEQNR} = {join_with}.{FIELD.SEQNR}"
 
     def _join_dst_geldigheid(self):
-        return self._join_geldigheid('dst') if self.dst_has_states else ""
+        return self._join_geldigheid(self.dst_intv_tmp_table_name, 'dst_bg', 'dst') if self.dst_has_states else ""
 
     def _join_src_geldigheid(self):
-        return self._join_geldigheid('src') if self.src_has_states else ""
+        return self._join_geldigheid(self.src_intv_tmp_table_name, 'src_bg', 'src') if self.src_has_states else ""
 
     def _join_max_event_ids(self):
         return f"""
@@ -903,6 +904,7 @@ LEFT JOIN (
 
     def get_conflicts_query(self):
         self.exclude_relation_table = True
+        self._prepare_query()
         return self.get_query()
 
     def _union_deleted_relations(self, src_or_dst: str):
@@ -1169,6 +1171,14 @@ SELECT * FROM dst_side
                 # No updates
                 break
 
+    def _prepare_query(self):
+        """Prepare step before the query can be executed
+
+        :return:
+        """
+        logger.info("Create temporary tables.")
+        self._create_tmp_tables()
+
     def _get_updates(self, initial_load):
         """Return updates from the database.
 
@@ -1177,6 +1187,8 @@ SELECT * FROM dst_side
         :param initial_load:
         :return:
         """
+        self._prepare_query()
+
         if initial_load:
             logger.info("Initial load. Relate in batches.")
             yield from self._get_paged_updates()
