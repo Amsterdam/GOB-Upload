@@ -13,15 +13,21 @@ class MockModel:
         'dst_collection_name': False,
     }
 
-    def get_collection(self, *args):
-        return {
-            'all_fields': {
-                'src_field_name': {
-                    'type': 'GOB.Reference',
-                    'ref': 'dst_catalog_name:dst_collection_name',
-                }
+    def get_collection(self, cat, coll):
+        if coll == 'src_collection_name':
+            return {
+                'all_fields': {
+                    'src_field_name': {
+                        'type': 'GOB.Reference',
+                        'ref': 'dst_catalog_name:dst_collection_name',
+                    }
+                },
+                'abbreviation': 'srcabbr'
             }
-        }
+        else:
+            return {
+                'abbreviation': 'dstabbr'
+            }
 
     def get_table_name(self, catalog_name, collection_name):
         return f"{catalog_name}_{collection_name}_table"
@@ -58,8 +64,8 @@ class TestRelaterInit(TestCase):
         self.assertEqual('src_catalog_name', e.src_catalog_name)
         self.assertEqual('src_collection_name', e.src_collection_name)
         self.assertEqual('src_field_name', e.src_field_name)
-        self.assertEqual(MockModel().get_collection(), e.src_collection)
-        self.assertEqual(MockModel().get_collection()['all_fields']['src_field_name'], e.src_field)
+        self.assertEqual(MockModel().get_collection('', 'src_collection_name'), e.src_collection)
+        self.assertEqual(MockModel().get_collection('', 'src_collection_name')['all_fields']['src_field_name'], e.src_field)
         self.assertEqual('dst_catalog_name_dst_collection_name_table', e.dst_table_name)
         self.assertEqual(True, e.src_has_states)
         self.assertEqual(False, e.dst_has_states)
@@ -72,6 +78,9 @@ class TestRelaterInit(TestCase):
         self.assertEqual('rel_src_catalog_name_src_collection_name_src_field_name', e.relation_table)
         mock_execute.assert_called_with("SELECT DISTINCT _application FROM src_catalog_name_src_collection_name_table")
 
+        self.assertEqual('src_catalog_name_srcabbr_intv', e.src_intv_tmp_table_name)
+        self.assertEqual('dst_catalog_name_dstabbr_intv', e.dst_intv_tmp_table_name)
+
         with patch('gobupload.relate.update.Relater.sources.get_field_relations',
                    lambda cat, col, field: []):
             with self.assertRaises(RelateException):
@@ -82,7 +91,7 @@ class TestRelaterInit(TestCase):
                        'src_field_name': {
                            'type': 'GOB.ManyReference',
                            'ref': 'dst_catalog_name:dst_collection_name',
-                       }}}):
+                       }}, 'abbreviation': 'abbr'}):
             e = self._get_relater()
             self.assertEqual(True, e.is_many)
 
@@ -661,8 +670,9 @@ LEFT JOIN (
 
     def test_start_validitity_per_seqnr_src(self):
         relater = self._get_relater()
-        expected_intervals = """
-all_src_intervals(
+        expected = """
+WITH RECURSIVE
+all_intervals(
     _id,
     start_volgnummer,
     volgnummer,
@@ -674,8 +684,8 @@ all_src_intervals(
         s.volgnummer,
         s.begin_geldigheid,
         s.eind_geldigheid
-    FROM src_catalog_name_src_collection_name_table s
-    LEFT JOIN src_catalog_name_src_collection_name_table t
+    FROM table_name s
+    LEFT JOIN table_name t
     ON s._id = t._id
         AND t.volgnummer < s.volgnummer
         AND t.eind_geldigheid = s.begin_geldigheid
@@ -684,97 +694,74 @@ all_src_intervals(
     SELECT
         intv._id,
         intv.start_volgnummer,
-        src.volgnummer,
+        t.volgnummer,
         intv.begin_geldigheid,
-        src.eind_geldigheid
-    FROM all_src_intervals intv
-    LEFT JOIN src_catalog_name_src_collection_name_table src
-    ON intv.eind_geldigheid = src.begin_geldigheid
-        AND src._id = intv._id
-        AND src.volgnummer > intv.volgnummer
-    WHERE src.begin_geldigheid IS NOT NULL
-)"""
-        expected_begin_geldigheid = """\
-src_volgnummer_begin_geldigheid AS (
-    SELECT
-        _id,
-        volgnummer,
-        MIN(begin_geldigheid) begin_geldigheid
-    FROM all_src_intervals
-    WHERE (_id, volgnummer) in (SELECT _id, volgnummer FROM src_entities)
-    GROUP BY _id, volgnummer
-)"""
-
-        self.assertTrue(expected_intervals in relater._start_validity_per_seqnr('src'))
-        self.assertTrue(expected_begin_geldigheid in relater._start_validity_per_seqnr('src'))
-
-    def test_start_validitity_per_seqnr_dst(self):
-        relater = self._get_relater()
-        expected_intervals = """
-all_dst_intervals(
+        t.eind_geldigheid
+    FROM all_intervals intv
+    LEFT JOIN table_name t
+    ON intv.eind_geldigheid = t.begin_geldigheid
+        AND t._id = intv._id
+        AND t.volgnummer > intv.volgnummer
+    WHERE t.begin_geldigheid IS NOT NULL
+)
+SELECT
     _id,
-    start_volgnummer,
     volgnummer,
-    begin_geldigheid,
-    eind_geldigheid) AS (
-    SELECT
-        s._id,
-        s.volgnummer,
-        s.volgnummer,
-        s.begin_geldigheid,
-        s.eind_geldigheid
-    FROM dst_catalog_name_dst_collection_name_table s
-    LEFT JOIN dst_catalog_name_dst_collection_name_table t
-    ON s._id = t._id
-        AND t.volgnummer < s.volgnummer
-        AND t.eind_geldigheid = s.begin_geldigheid
-    WHERE t._id IS NULL
-    UNION
-    SELECT
-        intv._id,
-        intv.start_volgnummer,
-        dst.volgnummer,
-        intv.begin_geldigheid,
-        dst.eind_geldigheid
-    FROM all_dst_intervals intv
-    LEFT JOIN dst_catalog_name_dst_collection_name_table dst
-    ON intv.eind_geldigheid = dst.begin_geldigheid
-        AND dst._id = intv._id
-        AND dst.volgnummer > intv.volgnummer
-    WHERE dst.begin_geldigheid IS NOT NULL
-)"""
+    MIN(begin_geldigheid) begin_geldigheid
+FROM all_intervals
+GROUP BY _id, volgnummer
+"""
 
-        expected_begin_geldigheid = """\
-dst_volgnummer_begin_geldigheid AS (
-    SELECT
-        _id,
-        volgnummer,
-        MIN(begin_geldigheid) begin_geldigheid
-    FROM all_dst_intervals
-    WHERE (_id, volgnummer) in (SELECT _id, volgnummer FROM dst_entities)
-    GROUP BY _id, volgnummer
-)"""
+        self.assertTrue(expected in relater._start_validity_per_seqnr('table_name'))
 
-        self.assertTrue(expected_intervals in relater._start_validity_per_seqnr('dst'))
-        self.assertTrue(expected_begin_geldigheid in relater._start_validity_per_seqnr('dst'))
-
-    def test_start_validities(self):
+    @patch("gobupload.relate.update.logger", MagicMock())
+    @patch("gobupload.relate.update._execute")
+    def test_create_tmp_tables(self, mock_execute):
         relater = self._get_relater()
-        relater._start_validity_per_seqnr = lambda x: 'VALIDITIES_FOR_' + x.upper()
+        relater._start_validity_per_seqnr = lambda tablename: "START_VALIDITIES_" + tablename
+        relater.src_intv_tmp_table_name = 'src_bg_tmp_table'
+        relater.dst_intv_tmp_table_name = 'dst_bg_tmp_table'
 
-        relater.src_has_states = False
-        relater.dst_has_states = False
+        relater.src_table_name = 'src_table_name'
+        relater.dst_table_name = 'dst_table_name'
+        relater.src_has_states = True
+        relater.dst_has_states = True
 
-        self.assertEqual([], relater._start_validities())
+        relater._create_tmp_tables()
+
+        mock_execute.assert_has_calls([
+            call("CREATE TEMPORARY TABLE IF NOT EXISTS src_bg_tmp_table AS (START_VALIDITIES_src_table_name)"),
+            call("CREATE TEMPORARY TABLE IF NOT EXISTS dst_bg_tmp_table AS (START_VALIDITIES_dst_table_name)"),
+        ])
 
         relater.src_has_states = True
-        self.assertEqual(["VALIDITIES_FOR_SRC"], relater._start_validities())
+        relater.dst_has_states = False
 
-        relater.dst_has_states = True
-        self.assertEqual(["VALIDITIES_FOR_SRC", "VALIDITIES_FOR_DST"], relater._start_validities())
+        relater._create_tmp_tables()
+
+        mock_execute.assert_has_calls([
+            call("CREATE TEMPORARY TABLE IF NOT EXISTS src_bg_tmp_table AS (START_VALIDITIES_src_table_name)"),
+        ])
 
         relater.src_has_states = False
-        self.assertEqual(["VALIDITIES_FOR_DST"], relater._start_validities())
+        relater.dst_has_states = True
+
+        relater._create_tmp_tables()
+
+        mock_execute.assert_has_calls([
+            call("CREATE TEMPORARY TABLE IF NOT EXISTS dst_bg_tmp_table AS (START_VALIDITIES_dst_table_name)"),
+        ])
+
+        relater.src_table_name = 'src_table_name'
+        relater.dst_table_name = 'src_table_name' # same table name, only create one tmp table
+        relater.src_has_states = True
+        relater.dst_has_states = True
+
+        relater._create_tmp_tables()
+
+        mock_execute.assert_has_calls([
+            call("CREATE TEMPORARY TABLE IF NOT EXISTS src_bg_tmp_table AS (START_VALIDITIES_src_table_name)"),
+        ])
 
     def test_changed_source_ids(self):
         relater = self._get_relater()
@@ -915,29 +902,27 @@ dst_entities AS (DST_ENTITIES)""", relater._with_dst_entities())
         relater._with_max_src_event = lambda: 'MAX SRC EVENT'
         relater._with_max_dst_event = lambda: 'MAX DST EVENT'
         relater._start_validities = lambda: []
-        self.assertTrue('WITH SRC ENTITIES,DST ENTITIES,MAX SRC EVENT,MAX DST EVENT' in relater._with_queries())
+        self.assertTrue('WITH SRC ENTITIES,MAX SRC EVENT,MAX DST EVENT,DST ENTITIES' in relater._with_queries())
 
-        relater._start_validities = lambda: ['START_VALIDITIES1', 'START_VALIDITIES2']
-        self.assertTrue(
-            'WITH RECURSIVE START_VALIDITIES1,START_VALIDITIES2,SRC ENTITIES,DST ENTITIES,MAX SRC EVENT,MAX DST EVENT'
-            in relater._with_queries()
-        )
+        self.assertTrue('WITH SRC ENTITIES INITIAL,MAX SRC EVENT,MAX DST EVENT' in relater._with_queries(True))
 
     def test_join_src_geldigheid(self):
         relater = self._get_relater()
+        relater.src_table_name = 'src_table'
         relater.src_has_states = False
         self.assertEqual("", relater._join_src_geldigheid())
         relater.src_has_states = True
-        self.assertEqual("LEFT JOIN src_volgnummer_begin_geldigheid src_bg "
+        self.assertEqual("LEFT JOIN src_catalog_name_srcabbr_intv src_bg "
                          "ON src_bg._id = src._id AND src_bg.volgnummer = src.volgnummer",
                          relater._join_src_geldigheid())
 
     def test_join_dst_geldigheid(self):
         relater = self._get_relater()
+        relater.dst_table_name = 'dst_table'
         relater.dst_has_states = False
         self.assertEqual("", relater._join_dst_geldigheid())
         relater.dst_has_states = True
-        self.assertEqual("LEFT JOIN dst_volgnummer_begin_geldigheid dst_bg "
+        self.assertEqual("LEFT JOIN dst_catalog_name_dstabbr_intv dst_bg "
                          "ON dst_bg._id = dst._id AND dst_bg.volgnummer = dst.volgnummer",
                          relater._join_dst_geldigheid())
 
@@ -1166,6 +1151,7 @@ UNION_DELETED_dst
 
     def test_get_conflicts_query(self):
         relater = self._get_get_query_mocked_relater()
+        relater._prepare_query = MagicMock()
         relater.is_many = False
 
         expected = """
@@ -1193,6 +1179,7 @@ SELECT * FROM src_side
 """
         result = relater.get_conflicts_query()
         self.assertEqual(result, expected)
+        relater._prepare_query.assert_called_once()
 
     def test_union_deleted_relations(self):
         relater = self._get_relater()
@@ -1481,8 +1468,16 @@ UNION_DELETED_src"""
         self.assertEqual(3, relater._query_results.call_count)
 
     @patch("gobupload.relate.logger", MagicMock())
+    def test_prepare_updates(self):
+        relater = self._get_relater()
+        relater._create_tmp_tables = MagicMock()
+        relater._prepare_query()
+        relater._create_tmp_tables.assert_called_once()
+
+    @patch("gobupload.relate.logger", MagicMock())
     def test_get_updates(self):
         relater = self._get_relater()
+        relater._prepare_query = MagicMock()
         relater._get_paged_updates = MagicMock(return_value=iter(['paged_update1', 'paged_update2']))
         relater._query_results = MagicMock(return_value=iter(['nonpaged_update1', 'nonpaged_update2']))
 
@@ -1490,6 +1485,7 @@ UNION_DELETED_src"""
         self.assertEqual(['nonpaged_update1', 'nonpaged_update2'], list(relater._get_updates(False)))
 
         relater._query_results.assert_called_with(False)
+        relater._prepare_query.assert_called()
 
     @patch("gobupload.relate.update._execute")
     def test_query_results(self, mock_execute):
