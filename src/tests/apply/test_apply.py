@@ -242,6 +242,7 @@ class TestApply(TestCase):
         apply(msg)
         mock_storage_handler.return_value.analyze_table.assert_not_called()
 
+    @patch("gobupload.apply.main.add_notification")
     @patch("gobupload.apply.main._get_source_catalog_entity_combinations")
     @patch("gobupload.apply.main.get_event_ids")
     @patch("gobupload.apply.main.EventNotification")
@@ -251,7 +252,7 @@ class TestApply(TestCase):
     @patch("gobupload.apply.main._should_analyze", lambda *args: False)
     @patch("gobupload.apply.main.is_corrupted", lambda *args: False)
     def test_apply_notification_eventids(self, mock_statistics, mock_notification, mock_get_event_ids,
-                                         mock_get_combinations, mock_storage_handler):
+                                         mock_get_combinations, mock_add_notification, mock_storage_handler):
         """Tests if the correct before and after event ids are passed in the EventNotification
 
         :param mock_storage_handler:
@@ -274,3 +275,11 @@ class TestApply(TestCase):
             mock_get_event_ids.side_effect = [(i, 99999999) for i in max_eventids]
             apply({'header': {}})
             mock_notification.assert_called_with(1, [before, after])
+            mock_add_notification.assert_called_once()
+            mock_add_notification.reset_mock()
+
+        # Test that add_notification is not called when suppress_notifications is set
+        mock_get_combinations.return_value = [MagicMock()]
+        mock_get_event_ids.side_effect = [(0, 100),(1, 99),]
+        apply({'header': {'suppress_notifications': True}})
+        mock_add_notification.assert_not_called()
