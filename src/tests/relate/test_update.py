@@ -57,8 +57,10 @@ class TestRelaterInit(TestCase):
     def _get_relater(self):
         return Relater('src_catalog_name', 'src_collection_name', 'src_field_name')
 
-    def test_init(self, mock_execute):
+    @patch("gobupload.relate.update.datetime")
+    def test_init(self, mock_datetime, mock_execute):
         mock_execute.return_value = [('applicationA',)]
+        mock_datetime.now.return_value.strftime.return_value = '20200101'
 
         e = self._get_relater()
 
@@ -79,8 +81,8 @@ class TestRelaterInit(TestCase):
         self.assertEqual('rel_src_catalog_name_src_collection_name_src_field_name', e.relation_table)
         mock_execute.assert_called_with("SELECT DISTINCT _application FROM src_catalog_name_src_collection_name_table")
 
-        self.assertEqual('tmp_src_catalog_name_srcabbr_intv_0089', e.src_intv_tmp_table_name)
-        self.assertEqual('tmp_dst_catalog_name_dstabbr_intv_0089', e.dst_intv_tmp_table_name)
+        self.assertEqual('tmp_src_catalog_name_srcabbr_intv_20200101_0089', e.src_intv_tmp_table_name)
+        self.assertEqual('tmp_dst_catalog_name_dstabbr_intv_20200101_0089', e.dst_intv_tmp_table_name)
 
         with patch('gobupload.relate.update.Relater.sources.get_field_relations',
                    lambda cat, col, field: []):
@@ -734,7 +736,9 @@ GROUP BY _id, volgnummer
 
         mock_execute.assert_has_calls([
             call("CREATE TABLE IF NOT EXISTS src_bg_tmp_table AS (START_VALIDITIES_src_table_name)"),
+            call("CREATE INDEX ON src_bg_tmp_table(_id, volgnummer)"),
             call("CREATE TABLE IF NOT EXISTS dst_bg_tmp_table AS (START_VALIDITIES_dst_table_name)"),
+            call("CREATE INDEX ON dst_bg_tmp_table(_id, volgnummer)"),
         ])
 
         relater.src_has_states = True
@@ -744,6 +748,7 @@ GROUP BY _id, volgnummer
 
         mock_execute.assert_has_calls([
             call("CREATE TABLE IF NOT EXISTS src_bg_tmp_table AS (START_VALIDITIES_src_table_name)"),
+            call("CREATE INDEX ON src_bg_tmp_table(_id, volgnummer)"),
         ])
 
         relater.src_has_states = False
@@ -753,6 +758,7 @@ GROUP BY _id, volgnummer
 
         mock_execute.assert_has_calls([
             call("CREATE TABLE IF NOT EXISTS dst_bg_tmp_table AS (START_VALIDITIES_dst_table_name)"),
+            call("CREATE INDEX ON dst_bg_tmp_table(_id, volgnummer)"),
         ])
 
         relater.src_table_name = 'src_table_name'
@@ -769,6 +775,7 @@ GROUP BY _id, volgnummer
 
         mock_execute.assert_has_calls([
             call("CREATE TABLE IF NOT EXISTS src_bg_tmp_table AS (START_VALIDITIES_src_table_name)"),
+            call("CREATE INDEX ON src_bg_tmp_table(_id, volgnummer)"),
         ])
 
     def test_changed_source_ids(self):
