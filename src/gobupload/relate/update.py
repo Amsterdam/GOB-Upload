@@ -135,10 +135,11 @@ class Relater:
         self.max_src_event_id = None
 
         # begin_geldigheid tmp table names
+        datestr = datetime.now().strftime('%Y%m%d')
         self.src_intv_tmp_table_name = f"tmp_{self.src_catalog_name}_{self.src_collection['abbreviation']}_intv_" \
-                                       f"{str(random.randint(0, 1000)).zfill(4)}".lower()
+                                       f"{datestr}_{str(random.randint(0, 1000)).zfill(4)}".lower()
         self.dst_intv_tmp_table_name = f"tmp_{self.dst_catalog_name}_{self.dst_collection['abbreviation']}_intv_" \
-                                       f"{str(random.randint(0, 1000)).zfill(4)}".lower()
+                                       f"{datestr}_{str(random.randint(0, 1000)).zfill(4)}".lower()
 
     def _get_applications_in_src(self):
         query = f"SELECT DISTINCT {FIELD.APPLICATION} FROM {self.src_table_name}"
@@ -623,6 +624,7 @@ GROUP BY {FIELD.ID}, {FIELD.SEQNR}
 
             logger.info(f"Creating temporary table {self.src_intv_tmp_table_name}")
             _execute(f"CREATE TABLE IF NOT EXISTS {self.src_intv_tmp_table_name} AS ({query})")
+            _execute(f"CREATE INDEX ON {self.src_intv_tmp_table_name}({FIELD.ID}, {FIELD.SEQNR})")
 
         if self.dst_has_states:
             if self.src_table_name == self.dst_table_name:
@@ -633,6 +635,7 @@ GROUP BY {FIELD.ID}, {FIELD.SEQNR}
 
                 logger.info(f"Creating temporary table {self.dst_intv_tmp_table_name}")
                 _execute(f"CREATE TABLE IF NOT EXISTS {self.dst_intv_tmp_table_name} AS ({query})")
+                _execute(f"CREATE INDEX ON {self.dst_intv_tmp_table_name}({FIELD.ID}, {FIELD.SEQNR})")
 
     def _changed_source_ids(self, catalogue: str, collection: str, last_eventid: str, related_attributes: List[str]):
         """Returns a query that returns the source_ids from all events after last_eventid that are interesting for the
