@@ -760,7 +760,12 @@ GROUP BY _id, volgnummer
         relater.src_has_states = True
         relater.dst_has_states = True
 
+        # Should be different before
+        self.assertNotEqual(relater.src_intv_tmp_table_name, relater.dst_intv_tmp_table_name)
         relater._create_tmp_tables()
+
+        # But as src and dst table are the same, we set them to use the same intv tmp table
+        self.assertEqual(relater.src_intv_tmp_table_name, relater.dst_intv_tmp_table_name)
 
         mock_execute.assert_has_calls([
             call("CREATE TABLE IF NOT EXISTS src_bg_tmp_table AS (START_VALIDITIES_src_table_name)"),
