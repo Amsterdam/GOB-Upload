@@ -624,7 +624,7 @@ GROUP BY {FIELD.ID}, {FIELD.SEQNR}
             logger.info(f"Creating temporary table {self.src_intv_tmp_table_name}")
             _execute(f"CREATE TABLE IF NOT EXISTS {self.src_intv_tmp_table_name} AS ({query})")
 
-        if self.dst_has_states and self.src_table_name != self.dst_table_name:
+        if self.dst_has_states:
             if self.src_table_name == self.dst_table_name:
                 # Use same table as src as they are the same
                 self.dst_intv_tmp_table_name = self.src_intv_tmp_table_name
