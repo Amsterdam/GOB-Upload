@@ -342,9 +342,7 @@ GROUP BY
 
 def check_relation_conflicts(catalog_name, collection_name, attribute_name):
     updater = Relater(catalog_name, collection_name, attribute_name)
-    query = updater.get_conflicts_query()
-
-    result = _execute(query, stream=True, max_row_buffer=25000)
+    result = updater.get_conflicts()
 
     conflicts = 0
     conflicts_msg = f"Conflicting {attribute_name} relations"
