@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock, call
 from gobcore.model.metadata import FIELD
 from gobcore.exceptions import GOBException
 from datetime import date, datetime
-from gobupload.relate.update import Relater, RelateException
+from gobupload.relate.update import Relater, RelateException, StartValiditiesTable
 
 
 class MockModel:
@@ -46,6 +46,81 @@ class MockSources:
         }]
 
 
+class TestStartValiditiesTable(TestCase):
+
+    def test_query(self):
+        table = StartValiditiesTable('from_table_name', 'to_table')
+        expected = """
+WITH RECURSIVE
+all_intervals(
+    _id,
+    start_volgnummer,
+    volgnummer,
+    begin_geldigheid,
+    eind_geldigheid) AS (
+    SELECT
+        s._id,
+        s.volgnummer,
+        s.volgnummer,
+        s.begin_geldigheid,
+        s.eind_geldigheid
+    FROM from_table_name s
+    LEFT JOIN from_table_name t
+    ON s._id = t._id
+        AND t.volgnummer < s.volgnummer
+        AND t.eind_geldigheid = s.begin_geldigheid
+    WHERE t._id IS NULL
+    UNION
+    SELECT
+        intv._id,
+        intv.start_volgnummer,
+        t.volgnummer,
+        intv.begin_geldigheid,
+        t.eind_geldigheid
+    FROM all_intervals intv
+    LEFT JOIN from_table_name t
+    ON intv.eind_geldigheid = t.begin_geldigheid
+        AND t._id = intv._id
+        AND t.volgnummer > intv.volgnummer
+    WHERE t.begin_geldigheid IS NOT NULL
+)
+SELECT
+    _id,
+    volgnummer,
+    MIN(begin_geldigheid) begin_geldigheid
+FROM all_intervals
+GROUP BY _id, volgnummer
+"""
+
+        self.assertTrue(expected in table._query())
+
+    @patch("gobupload.relate.update._execute")
+    def test_create(self, mock_execute):
+        table = StartValiditiesTable('from_table_name', 'to_table')
+        table.drop = MagicMock()
+        table._query = MagicMock(return_value='the query')
+
+        table.create()
+
+        table.drop.assert_called_once()
+        mock_execute.assert_has_calls([
+            call("CREATE TABLE IF NOT EXISTS to_table AS (the query)"),
+            call("CREATE INDEX ON to_table(_id, volgnummer)")
+        ])
+
+    @patch("gobupload.relate.update._execute")
+    def test_drop(self, mock_execute):
+        table = StartValiditiesTable('from_table_name', 'to_table')
+        table.drop()
+        mock_execute.assert_called_with("DROP TABLE IF EXISTS to_table")
+
+    @patch("gobupload.relate.update.GOBModel", MockModel)
+    def test_from_catalog_collection(self):
+        res = StartValiditiesTable.from_catalog_collection('catalog_name', 'collection_name', 'table_name')
+
+        self.assertEqual('catalog_name_collection_name_table', res.from_table)
+        self.assertEqual('table_name', res.name)
+
 @patch("gobupload.relate.update.logger", MagicMock())
 @patch("gobupload.relate.update.Relater.model", MockModel())
 @patch("gobupload.relate.update.Relater.sources", MockSources())
@@ -81,8 +156,8 @@ class TestRelaterInit(TestCase):
         self.assertEqual('rel_src_catalog_name_src_collection_name_src_field_name', e.relation_table)
         mock_execute.assert_called_with("SELECT DISTINCT _application FROM src_catalog_name_src_collection_name_table")
 
-        self.assertEqual('tmp_src_catalog_name_srcabbr_intv_20200101_0089', e.src_intv_tmp_table_name)
-        self.assertEqual('tmp_dst_catalog_name_dstabbr_intv_20200101_0089', e.dst_intv_tmp_table_name)
+        self.assertEqual('tmp_src_catalog_name_srcabbr_intv_20200101_0089', e.src_intv_tmp_table.name)
+        self.assertEqual('tmp_dst_catalog_name_dstabbr_intv_20200101_0089', e.dst_intv_tmp_table.name)
 
         with patch('gobupload.relate.update.Relater.sources.get_field_relations',
                    lambda cat, col, field: []):
@@ -371,8 +446,13 @@ END"""
         expected = [
             "((src._application = 'source1' AND relate_match(source1,src_val_ref)) OR\n    "
             "(src._application = 'source2' AND relate_match(source2,src_val_ref)))",
-            '(dst.begin_geldigheid < src.eind_geldigheid OR src.eind_geldigheid IS NULL)',
-            '(dst.eind_geldigheid >= src.eind_geldigheid OR dst.eind_geldigheid IS NULL)',
+
+            '(((dst.begin_geldigheid < src.eind_geldigheid OR src.eind_geldigheid IS NULL) AND\n    '
+            '(dst.eind_geldigheid >= src.eind_geldigheid OR dst.eind_geldigheid IS NULL) AND\n    '
+            '(src.eind_geldigheid IS NULL OR src.begin_geldigheid <> src.eind_geldigheid)) OR\n    '
+            '((dst.begin_geldigheid <= src.eind_geldigheid) AND\n    '
+            '(dst.eind_geldigheid >= src.eind_geldigheid OR dst.eind_geldigheid IS NULL) AND\n    '
+            '(src.begin_geldigheid = src.eind_geldigheid)))'
         ]
         self.assertEqual(expected, relater._src_dst_match('src_val_ref'))
 
@@ -671,60 +751,22 @@ LEFT JOIN (
     )
 """, relater._select_rest_src())
 
-    def test_start_validitity_per_seqnr_src(self):
+    def test_cleanup_tmp_tables(self):
         relater = self._get_relater()
-        expected = """
-WITH RECURSIVE
-all_intervals(
-    _id,
-    start_volgnummer,
-    volgnummer,
-    begin_geldigheid,
-    eind_geldigheid) AS (
-    SELECT
-        s._id,
-        s.volgnummer,
-        s.volgnummer,
-        s.begin_geldigheid,
-        s.eind_geldigheid
-    FROM table_name s
-    LEFT JOIN table_name t
-    ON s._id = t._id
-        AND t.volgnummer < s.volgnummer
-        AND t.eind_geldigheid = s.begin_geldigheid
-    WHERE t._id IS NULL
-    UNION
-    SELECT
-        intv._id,
-        intv.start_volgnummer,
-        t.volgnummer,
-        intv.begin_geldigheid,
-        t.eind_geldigheid
-    FROM all_intervals intv
-    LEFT JOIN table_name t
-    ON intv.eind_geldigheid = t.begin_geldigheid
-        AND t._id = intv._id
-        AND t.volgnummer > intv.volgnummer
-    WHERE t.begin_geldigheid IS NOT NULL
-)
-SELECT
-    _id,
-    volgnummer,
-    MIN(begin_geldigheid) begin_geldigheid
-FROM all_intervals
-GROUP BY _id, volgnummer
-"""
+        relater.src_intv_tmp_table = MagicMock()
+        relater.dst_intv_tmp_table = MagicMock()
 
-        self.assertTrue(expected in relater._start_validity_per_seqnr('table_name'))
+        relater._cleanup_tmp_tables()
+        relater.src_intv_tmp_table.drop.assert_called_once()
+        relater.dst_intv_tmp_table.drop.assert_called_once()
 
     @patch("gobupload.relate.update.logger", MagicMock())
     @patch("gobupload.relate.update._execute")
     def test_create_tmp_tables(self, mock_execute):
         relater = self._get_relater()
-        relater._cleanup_tmp_tables = MagicMock()
         relater._start_validity_per_seqnr = lambda tablename: "START_VALIDITIES_" + tablename
-        relater.src_intv_tmp_table_name = 'src_bg_tmp_table'
-        relater.dst_intv_tmp_table_name = 'dst_bg_tmp_table'
+        relater.src_intv_tmp_table = MagicMock()
+        relater.dst_intv_tmp_table = MagicMock()
 
         relater.src_table_name = 'src_table_name'
         relater.dst_table_name = 'dst_table_name'
@@ -732,51 +774,47 @@ GROUP BY _id, volgnummer
         relater.dst_has_states = True
 
         relater._create_tmp_tables()
-        relater._cleanup_tmp_tables.assert_called_once()
 
-        mock_execute.assert_has_calls([
-            call("CREATE TABLE IF NOT EXISTS src_bg_tmp_table AS (START_VALIDITIES_src_table_name)"),
-            call("CREATE INDEX ON src_bg_tmp_table(_id, volgnummer)"),
-            call("CREATE TABLE IF NOT EXISTS dst_bg_tmp_table AS (START_VALIDITIES_dst_table_name)"),
-            call("CREATE INDEX ON dst_bg_tmp_table(_id, volgnummer)"),
-        ])
+        relater.src_intv_tmp_table.create.assert_called_once()
+        relater.dst_intv_tmp_table.create.assert_called_once()
 
+        relater.src_intv_tmp_table.create.reset_mock()
+        relater.dst_intv_tmp_table.create.reset_mock()
         relater.src_has_states = True
         relater.dst_has_states = False
 
         relater._create_tmp_tables()
 
-        mock_execute.assert_has_calls([
-            call("CREATE TABLE IF NOT EXISTS src_bg_tmp_table AS (START_VALIDITIES_src_table_name)"),
-            call("CREATE INDEX ON src_bg_tmp_table(_id, volgnummer)"),
-        ])
+        relater.src_intv_tmp_table.create.assert_called_once()
+        relater.dst_intv_tmp_table.create.assert_not_called()
 
+        relater.src_intv_tmp_table.create.reset_mock()
+        relater.dst_intv_tmp_table.create.reset_mock()
         relater.src_has_states = False
         relater.dst_has_states = True
 
         relater._create_tmp_tables()
 
-        mock_execute.assert_has_calls([
-            call("CREATE TABLE IF NOT EXISTS dst_bg_tmp_table AS (START_VALIDITIES_dst_table_name)"),
-            call("CREATE INDEX ON dst_bg_tmp_table(_id, volgnummer)"),
-        ])
+        relater.src_intv_tmp_table.create.assert_not_called()
+        relater.dst_intv_tmp_table.create.assert_called_once()
 
         relater.src_table_name = 'src_table_name'
         relater.dst_table_name = 'src_table_name' # same table name, only create one tmp table
+
+        relater.src_intv_tmp_table.create.reset_mock()
+        relater.dst_intv_tmp_table.create.reset_mock()
         relater.src_has_states = True
         relater.dst_has_states = True
 
         # Should be different before
-        self.assertNotEqual(relater.src_intv_tmp_table_name, relater.dst_intv_tmp_table_name)
+        self.assertNotEqual(relater.src_intv_tmp_table, relater.dst_intv_tmp_table)
         relater._create_tmp_tables()
 
         # But as src and dst table are the same, we set them to use the same intv tmp table
-        self.assertEqual(relater.src_intv_tmp_table_name, relater.dst_intv_tmp_table_name)
+        self.assertEqual(relater.src_intv_tmp_table, relater.dst_intv_tmp_table)
 
-        mock_execute.assert_has_calls([
-            call("CREATE TABLE IF NOT EXISTS src_bg_tmp_table AS (START_VALIDITIES_src_table_name)"),
-            call("CREATE INDEX ON src_bg_tmp_table(_id, volgnummer)"),
-        ])
+        relater.src_intv_tmp_table.create.assert_called_once()
+        # Don't check dst_intv_tmp_table, because that is the same object as src_intv_tmp_table now
 
     def test_changed_source_ids(self):
         relater = self._get_relater()
@@ -924,7 +962,7 @@ dst_entities AS (DST_ENTITIES)""", relater._with_dst_entities())
     def test_join_src_geldigheid(self):
         relater = self._get_relater()
         relater.src_table_name = 'src_table'
-        relater.src_intv_tmp_table_name = 'src_intv_tmp_table_name'
+        relater.src_intv_tmp_table.name = 'src_intv_tmp_table_name'
         relater.src_has_states = False
         self.assertEqual("", relater._join_src_geldigheid())
         relater.src_has_states = True
@@ -935,7 +973,7 @@ dst_entities AS (DST_ENTITIES)""", relater._with_dst_entities())
     def test_join_dst_geldigheid(self):
         relater = self._get_relater()
         relater.dst_table_name = 'dst_table'
-        relater.dst_intv_tmp_table_name = 'dst_intv_tmp_table_name'
+        relater.dst_intv_tmp_table.name = 'dst_intv_tmp_table_name'
         relater.dst_has_states = False
         self.assertEqual("", relater._join_dst_geldigheid())
         relater.dst_has_states = True
@@ -1194,7 +1232,7 @@ src_side AS (
 -- All relations for changed src entities
 SELECT * FROM src_side
 """
-        result = relater._get_conflicts_query()
+        result = relater.get_conflicts_query()
         self.assertEqual(result, expected)
 
     @patch("gobupload.relate.update._execute")
@@ -1202,12 +1240,12 @@ SELECT * FROM src_side
         relater = self._get_relater()
         relater._prepare_query = MagicMock()
         relater._cleanup = MagicMock()
-        relater._get_conflicts_query = MagicMock()
+        relater.get_conflicts_query = MagicMock()
         mock_execute.return_value = iter(['a', 'b', 'c'])
 
         result = list(relater.get_conflicts())
         self.assertEqual(['a', 'b', 'c'], result)
-        mock_execute.assert_called_with(relater._get_conflicts_query.return_value, stream=True, max_row_buffer=25000)
+        mock_execute.assert_called_with(relater.get_conflicts_query.return_value, stream=True, max_row_buffer=25000)
         relater._prepare_query.assert_called_once()
         relater._cleanup.assert_called_once()
 

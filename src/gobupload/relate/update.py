@@ -24,6 +24,7 @@ from gobcore.typesystem.json import GobTypeJSONEncoder
 from gobupload.relate.exceptions import RelateException
 from gobupload.storage.execute import _execute
 from gobupload.compare.event_collector import EventCollector
+from gobupload.config import DEBUG
 
 EQUALS = 'equals'
 LIES_IN = 'lies_in'
@@ -39,6 +40,111 @@ _FORCE_FULL_RELATE_THRESHOLD = 1.0
 
 # Used for initial relate. 30000 seems to be the sweetspot for the current configuration
 _MAX_ROWS_PER_SIDE = 30000
+
+
+# DEVELOPMENT: The DEBUG environment to 'true' to avoid removal of tmp tables.
+
+class StartValiditiesTable:
+    """Holds the start validities table for a given object.
+
+    For objects with state (volgnummers), for a given state, the begin_geldigheid that is used in the relate process
+    is the begin_geldigheid of the first state of the set of consecutive states this state is a member of.
+
+    For example, we have a certain object A with volgnummers 1, 2, 3, 5, 6 and 8
+
+    We have three sets of consecutive states:
+    1, 2, 3
+    5, 6
+    8
+
+    Each state in each series will get the begin_geldigheid of the first state in its set. This means that states 2
+    and 3 get the begin_geldigheid of state 1. 6 uses the begin_geldigheid of 5 and 1, 5 and 8 don't change.
+
+    These new values for begin_geldigheid are used only to determine the begin_geldigheid for the relation.
+
+    The resulting table contains the columns id, volgnummer, begin_geldigheid
+    """
+
+    def __init__(self, from_table: str, name: str):
+        """
+
+        :param from_table: The table to extract the calculate the start validities for
+        :param name: Name of the table to be created
+        """
+        self.from_table = from_table
+        self.name = name
+
+    def _query(self):
+        """Returns the query that builds the table
+
+        :return:
+        """
+        return f"""
+-- Find all possible intervals for {self.from_table}: id - seqnr - start - end
+WITH RECURSIVE
+all_intervals(
+    {FIELD.ID},
+    start_{FIELD.SEQNR},
+    {FIELD.SEQNR},
+    {FIELD.START_VALIDITY},
+    {FIELD.END_VALIDITY}) AS (
+    SELECT
+        s.{FIELD.ID},
+        s.{FIELD.SEQNR},
+        s.{FIELD.SEQNR},
+        s.{FIELD.START_VALIDITY},
+        s.{FIELD.END_VALIDITY}
+    FROM {self.from_table} s
+    LEFT JOIN {self.from_table} t
+    ON s.{FIELD.ID} = t.{FIELD.ID}
+        AND t.{FIELD.SEQNR} < s.{FIELD.SEQNR}
+        AND t.{FIELD.END_VALIDITY} = s.{FIELD.START_VALIDITY}
+    WHERE t.{FIELD.ID} IS NULL
+    UNION
+    SELECT
+        intv.{FIELD.ID},
+        intv.start_{FIELD.SEQNR},
+        t.{FIELD.SEQNR},
+        intv.{FIELD.START_VALIDITY},
+        t.{FIELD.END_VALIDITY}
+    FROM all_intervals intv
+    LEFT JOIN {self.from_table} t
+    ON intv.{FIELD.END_VALIDITY} = t.{FIELD.START_VALIDITY}
+        AND t.{FIELD.ID} = intv.{FIELD.ID}
+        AND t.{FIELD.SEQNR} > intv.{FIELD.SEQNR}
+    WHERE t.{FIELD.START_VALIDITY} IS NOT NULL
+)
+SELECT
+    {FIELD.ID},
+    {FIELD.SEQNR},
+    MIN({FIELD.START_VALIDITY}) {FIELD.START_VALIDITY}
+FROM all_intervals
+GROUP BY {FIELD.ID}, {FIELD.SEQNR}
+"""
+
+    def create(self):
+        """Creates the table with index on id, volgnummer
+
+        :return:
+        """
+        self.drop()
+
+        query = self._query()
+
+        _execute(f"CREATE TABLE IF NOT EXISTS {self.name} AS ({query})")
+        _execute(f"CREATE INDEX ON {self.name}({FIELD.ID}, {FIELD.SEQNR})")
+
+    def drop(self):
+        """Drops this table
+
+        :return:
+        """
+        _execute(f"DROP TABLE IF EXISTS {self.name}")
+
+    @classmethod
+    def from_catalog_collection(cls, catalog_name: str, collection_name: str, table_name: str):
+        from_table = GOBModel().get_table_name(catalog_name, collection_name)
+        return cls(from_table, table_name)
 
 
 class Relater:
@@ -136,10 +242,13 @@ class Relater:
 
         # begin_geldigheid tmp table names
         datestr = datetime.now().strftime('%Y%m%d')
-        self.src_intv_tmp_table_name = f"tmp_{self.src_catalog_name}_{self.src_collection['abbreviation']}_intv_" \
-                                       f"{datestr}_{str(random.randint(0, 1000)).zfill(4)}".lower()
-        self.dst_intv_tmp_table_name = f"tmp_{self.dst_catalog_name}_{self.dst_collection['abbreviation']}_intv_" \
-                                       f"{datestr}_{str(random.randint(0, 1000)).zfill(4)}".lower()
+        src_intv_tmp_table_name = f"tmp_{self.src_catalog_name}_{self.src_collection['abbreviation']}_intv_" \
+                                  f"{datestr}_{str(random.randint(0, 1000)).zfill(4)}".lower()
+        dst_intv_tmp_table_name = f"tmp_{self.dst_catalog_name}_{self.dst_collection['abbreviation']}_intv_" \
+                                  f"{datestr}_{str(random.randint(0, 1000)).zfill(4)}".lower()
+
+        self.src_intv_tmp_table = StartValiditiesTable(self.src_table_name, src_intv_tmp_table_name)
+        self.dst_intv_tmp_table = StartValiditiesTable(self.dst_table_name, dst_intv_tmp_table_name)
 
     def _get_applications_in_src(self):
         query = f"SELECT DISTINCT {FIELD.APPLICATION} FROM {self.src_table_name}"
@@ -394,12 +503,31 @@ class Relater:
             clause = [f"({self.or_join.join(clause)})"]
         # If both collections have states then join with corresponding geldigheid intervals
         if self.src_has_states and self.dst_has_states:
-            clause.extend([
-                f"(dst.{FIELD.START_VALIDITY} < src.{FIELD.END_VALIDITY} "
-                f"OR src.{FIELD.END_VALIDITY} IS NULL)",
-                f"(dst.{FIELD.END_VALIDITY} >= src.{FIELD.END_VALIDITY} "
-                f"OR dst.{FIELD.END_VALIDITY} IS NULL)"
+            # One of two cases may apply
+
+            # The 'normal' case, where the START_VALIDITY and END_VALIDITY of the src object are NOT equal. This means
+            # that this particular has a validity length > 0. END_VALIDITY may be NULL, in which case the validity
+            # length is infinite.
+            # We use < and >= to match states, so that corresponding states on the src and dst objects, where
+            # START_VALIDITY's and END_VALIDITY's of src and dst line up, are matched correctly.
+            normal_case = self.and_join.join([
+                f"(dst.{FIELD.START_VALIDITY} < src.{FIELD.END_VALIDITY} OR src.{FIELD.END_VALIDITY} IS NULL)",
+                f"(dst.{FIELD.END_VALIDITY} >= src.{FIELD.END_VALIDITY} OR dst.{FIELD.END_VALIDITY} IS NULL)",
+                f"(src.{FIELD.END_VALIDITY} IS NULL OR src.{FIELD.START_VALIDITY} <> src.{FIELD.END_VALIDITY})",
             ])
+
+            # The 'collapsed state' case. Here the START_VALIDITY and the END_VALIDITY of the src object are equal,
+            # meaning that the validity length of this object = 0.
+            # The difference with the 'normal' case is that we use both <= and >= to match states, so that a length 0
+            # state will find a match if anything matches on that particular point in time.
+            collapsed_state_case = self.and_join.join([
+                f"(dst.{FIELD.START_VALIDITY} <= src.{FIELD.END_VALIDITY})",
+                f"(dst.{FIELD.END_VALIDITY} >= src.{FIELD.END_VALIDITY} OR dst.{FIELD.END_VALIDITY} IS NULL)",
+                f"(src.{FIELD.START_VALIDITY} = src.{FIELD.END_VALIDITY})",
+            ])
+
+            clause.append(f'({self.or_join.join([f"({normal_case})", f"({collapsed_state_case})"])})')
+
         elif self.dst_has_states:
             # If only destination has states, get the destination that is valid until forever
             clause.extend([
@@ -558,84 +686,27 @@ LEFT JOIN (
     ){source_value_not_null}
 """
 
-    def _start_validity_per_seqnr(self, table_name: str):
-        """Generates the recursive WITH queries that find the begin_geldigheid for every volgnummer
-
-        Result of this recursive query isa relation src_volgnummer_begin_geldigheid or dst_volgnummer_begin_geldigheid
-        containing (_id, volgnummer, begin_geldigheid) tuples.
-
-        """
-
-        return f"""
--- Find all possible intervals for {table_name}: id - seqnr - start - end
-WITH RECURSIVE
-all_intervals(
-    {FIELD.ID},
-    start_{FIELD.SEQNR},
-    {FIELD.SEQNR},
-    {FIELD.START_VALIDITY},
-    {FIELD.END_VALIDITY}) AS (
-    SELECT
-        s.{FIELD.ID},
-        s.{FIELD.SEQNR},
-        s.{FIELD.SEQNR},
-        s.{FIELD.START_VALIDITY},
-        s.{FIELD.END_VALIDITY}
-    FROM {table_name} s
-    LEFT JOIN {table_name} t
-    ON s.{FIELD.ID} = t.{FIELD.ID}
-        AND t.{FIELD.SEQNR} < s.{FIELD.SEQNR}
-        AND t.{FIELD.END_VALIDITY} = s.{FIELD.START_VALIDITY}
-    WHERE t.{FIELD.ID} IS NULL
-    UNION
-    SELECT
-        intv.{FIELD.ID},
-        intv.start_{FIELD.SEQNR},
-        t.{FIELD.SEQNR},
-        intv.{FIELD.START_VALIDITY},
-        t.{FIELD.END_VALIDITY}
-    FROM all_intervals intv
-    LEFT JOIN {table_name} t
-    ON intv.{FIELD.END_VALIDITY} = t.{FIELD.START_VALIDITY}
-        AND t.{FIELD.ID} = intv.{FIELD.ID}
-        AND t.{FIELD.SEQNR} > intv.{FIELD.SEQNR}
-    WHERE t.{FIELD.START_VALIDITY} IS NOT NULL
-)
-SELECT
-    {FIELD.ID},
-    {FIELD.SEQNR},
-    MIN({FIELD.START_VALIDITY}) {FIELD.START_VALIDITY}
-FROM all_intervals
-GROUP BY {FIELD.ID}, {FIELD.SEQNR}
-"""
-
     def _cleanup_tmp_tables(self):
-        _execute(f"DROP TABLE IF EXISTS {self.src_intv_tmp_table_name}")
-        _execute(f"DROP TABLE IF EXISTS {self.dst_intv_tmp_table_name}")
+        self.src_intv_tmp_table.drop()
+        self.dst_intv_tmp_table.drop()
 
     def _create_tmp_tables(self):
         """Creates tmp tables from recursive queries to determine the begin_geldigheid for each volgnummer
 
         """
-        self._cleanup_tmp_tables()
-
         if self.src_has_states:
-            query = self._start_validity_per_seqnr(self.src_table_name)
 
-            logger.info(f"Creating temporary table {self.src_intv_tmp_table_name}")
-            _execute(f"CREATE TABLE IF NOT EXISTS {self.src_intv_tmp_table_name} AS ({query})")
-            _execute(f"CREATE INDEX ON {self.src_intv_tmp_table_name}({FIELD.ID}, {FIELD.SEQNR})")
+            logger.info(f"Creating temporary table {self.src_intv_tmp_table.name}")
+            self.src_intv_tmp_table.create()
 
         if self.dst_has_states:
             if self.src_table_name == self.dst_table_name:
                 # Use same table as src as they are the same
-                self.dst_intv_tmp_table_name = self.src_intv_tmp_table_name
+                self.dst_intv_tmp_table = self.src_intv_tmp_table
             else:
-                query = self._start_validity_per_seqnr(self.dst_table_name)
 
-                logger.info(f"Creating temporary table {self.dst_intv_tmp_table_name}")
-                _execute(f"CREATE TABLE IF NOT EXISTS {self.dst_intv_tmp_table_name} AS ({query})")
-                _execute(f"CREATE INDEX ON {self.dst_intv_tmp_table_name}({FIELD.ID}, {FIELD.SEQNR})")
+                logger.info(f"Creating temporary table {self.dst_intv_tmp_table.name}")
+                self.dst_intv_tmp_table.create()
 
     def _changed_source_ids(self, catalogue: str, collection: str, last_eventid: str, related_attributes: List[str]):
         """Returns a query that returns the source_ids from all events after last_eventid that are interesting for the
@@ -780,10 +851,10 @@ max_dst_event AS (SELECT MAX({FIELD.LAST_EVENT}) {FIELD.LAST_EVENT} FROM {self.d
                f"AND {alias}.{FIELD.SEQNR} = {join_with}.{FIELD.SEQNR}"
 
     def _join_dst_geldigheid(self):
-        return self._join_geldigheid(self.dst_intv_tmp_table_name, 'dst_bg', 'dst') if self.dst_has_states else ""
+        return self._join_geldigheid(self.dst_intv_tmp_table.name, 'dst_bg', 'dst') if self.dst_has_states else ""
 
     def _join_src_geldigheid(self):
-        return self._join_geldigheid(self.src_intv_tmp_table_name, 'src_bg', 'src') if self.src_has_states else ""
+        return self._join_geldigheid(self.src_intv_tmp_table.name, 'src_bg', 'src') if self.src_has_states else ""
 
     def _join_max_event_ids(self):
         return f"""
@@ -914,13 +985,13 @@ LEFT JOIN (
         """
         return len(set([spec[attribute] for spec in self.relation_specs])) == 1
 
-    def _get_conflicts_query(self):
+    def get_conflicts_query(self):
         self.exclude_relation_table = True
         return self.get_query()
 
     def get_conflicts(self):
         self._prepare_query()
-        query = self._get_conflicts_query()
+        query = self.get_conflicts_query()
 
         yield from _execute(query, stream=True, max_row_buffer=25000)
 
@@ -1199,8 +1270,11 @@ SELECT * FROM dst_side
         self._create_tmp_tables()
 
     def _cleanup(self):
-        logger.info("Removing temporary tables")
-        self._cleanup_tmp_tables()
+        if not DEBUG:
+            logger.info("Removing temporary tables")
+            self._cleanup_tmp_tables()
+        else:
+            logger.info("DEBUG ON: Not removing temporary tables")
 
     def _get_updates(self, initial_load):
         """Return updates from the database.
