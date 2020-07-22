@@ -2,6 +2,8 @@ import os
 
 FULL_UPLOAD = "full"
 
+DEBUG = True if os.getenv("DEBUG") else False
+
 GOB_DB = {
     'drivername': 'postgres',
     'username': os.getenv("DATABASE_USER", "gob"),

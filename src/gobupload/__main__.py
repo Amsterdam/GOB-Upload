@@ -18,6 +18,7 @@ from gobupload import relate
 from gobupload import update
 from gobupload import apply
 from gobupload.storage.handler import GOBStorageHandler
+from gobupload.config import DEBUG
 
 SERVICEDEFINITION = {
     'apply': {
@@ -92,6 +93,9 @@ parser.add_argument('--materialized_views',
                     default=False,
                     help='force recreation of materialized views')
 args = parser.parse_args()
+
+if DEBUG:
+    print("WARNING: Debug mode is ON")
 
 # Initialize database tables
 storage = GOBStorageHandler()
