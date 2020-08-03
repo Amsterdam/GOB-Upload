@@ -168,13 +168,9 @@ def prepare_relate(msg):
     }
 
     timestamp = datetime.datetime.utcnow().isoformat()
-    process_id = msg['header'].get('process_id', f"{timestamp}.{application}.{catalog_name}" +
-                                   (f".{collection_name}" if collection_name else "") +
-                                   (f".{attribute_name}" if attribute_name else ""))
 
     msg["header"].update({
         "timestamp": timestamp,
-        "process_id": process_id
     })
 
     logger.configure(msg, "RELATE")
@@ -332,8 +328,6 @@ def update_materialized_view(msg):
     collection_name = header.get('collection')
     attribute_name = header.get('attribute')
 
-    application = "GOBRelate"
-
     logger.configure(msg, "UPDATE_VIEW")
     storage_handler = GOBStorageHandler()
 
@@ -343,8 +337,7 @@ def update_materialized_view(msg):
 
     timestamp = datetime.datetime.utcnow().isoformat()
     msg['header'].update({
-        "timestamp": timestamp,
-        "process_id": msg['header'].get('process_id', f"{timestamp}.{application}.{catalog_name}.{collection_name}")
+        "timestamp": timestamp
     })
 
     return msg
