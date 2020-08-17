@@ -164,7 +164,6 @@ ORDER BY _source, _id, volgnummer, begin_geldigheid
     @patch('gobupload.storage.relate.log_issue')
     @patch('gobupload.storage.relate.logger')
     @patch('gobupload.storage.relate.Relater')
-    @patch('gobupload.storage.relate._MAX_RELATION_CONFLICTS', 1)
     def test_check_relation_conflicts(self, mock_relater, mock_logger, mock_log_issue, mock_issue):
         relater = mock_relater.return_value
         relater.dst_has_states = False
@@ -187,20 +186,19 @@ ORDER BY _source, _id, volgnummer, begin_geldigheid
         check_relation_conflicts("any_catalog", "any_collection", "any_field_name")
         mock_relater.assert_called_with("any_catalog", "any_collection", "any_field_name")
 
-        conflicts_msg = f"Conflicting any_field_name relations"
-
         mock_issue.assert_has_calls([
             call(QA_CHECK.Unique_destination, {
                 **mock_relater.return_value.get_conflicts.return_value[0],
                 'volgnummer': mock_relater.return_value.get_conflicts.return_value[0]['src_volgnummer'],
             }, 'src_id', 'bronwaarde'),
+            call(QA_CHECK.Unique_destination, {
+                **mock_relater.return_value.get_conflicts.return_value[1],
+                'volgnummer': mock_relater.return_value.get_conflicts.return_value[1]['src_volgnummer'],
+            }, 'src_id', 'bronwaarde'),
         ])
 
+        self.assertEqual(2, mock_log_issue.call_count)
         mock_log_issue.assert_called_with(mock_logger, QA_LEVEL.WARNING, mock_issue.return_value)
-
-        mock_logger.data_warning.assert_has_calls([
-            call(f"{conflicts_msg}: 2 found, 1 reported"),
-        ])
 
     @patch('gobupload.storage.relate.get_relation_name')
     def test_get_relation_check_query_single(self, mock_get_relation_name):

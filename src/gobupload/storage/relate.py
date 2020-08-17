@@ -30,9 +30,6 @@ WHERE = "where"
 EQUALS = "equals"     # equality comparison, eg src.bronwaarde == dst.code
 LIES_IN = "lies_in"   # geometric comparison, eg src.geometrie lies_in dst_geometrie
 
-# Maximum number of error messages to report
-_MAX_RELATION_CONFLICTS = 25
-
 
 def date_to_datetime(value):
     """
@@ -131,7 +128,7 @@ ORDER BY {', '.join(order_by)}
         yield row
 
 
-def _query_missing(query, check, attr, max_warnings=50):
+def _query_missing(query, check, attr):
     """
     Query for any missing attributes
 
@@ -139,26 +136,21 @@ def _query_missing(query, check, attr, max_warnings=50):
     :param items_name: name of the missing attribute
     :return: None
     """
-    count = 0
     historic_count = 0
     for data in _get_data(query):
         if data.get('eind_geldigheid') is None:
             # Report actual warnings
-            count += 1
-            if count <= max_warnings:
-                # Create an issue for the failing check
-                # The entity that contains the error is data, the id-attribute is named id
-                # The attribute that is in error is called bronwaarde
-                issue = Issue(check, data, 'id', 'bronwaarde')
-                issue.attribute = attr  # Set the name of the attribute that has the failing bronwaarde
-                log_issue(logger, QA_LEVEL.WARNING, issue)
+            # Create an issue for the failing check
+            # The entity that contains the error is data, the id-attribute is named id
+            # The attribute that is in error is called bronwaarde
+            issue = Issue(check, data, 'id', 'bronwaarde')
+            issue.attribute = attr  # Set the name of the attribute that has the failing bronwaarde
+            log_issue(logger, QA_LEVEL.WARNING, issue)
         else:
             # Count historic warnings
             historic_count += 1
 
     items_name = f"{attr} {check['msg']}"
-    if count > max_warnings:
-        logger.data_warning(f"{items_name}: {count} actual warnings, reported first {max_warnings} only")
     if historic_count > 0:
         logger.data_info(f"{items_name}: {historic_count} historical errors")
 
@@ -344,21 +336,11 @@ def check_relation_conflicts(catalog_name, collection_name, attribute_name):
     updater = Relater(catalog_name, collection_name, attribute_name)
     result = updater.get_conflicts()
 
-    conflicts = 0
-    conflicts_msg = f"Conflicting {attribute_name} relations"
-
     for row in result:
         row = dict(row)
         # Log conflicting relations
         if (row.get("row_number") or 0) > 1:
-
-            if conflicts < _MAX_RELATION_CONFLICTS:
-                row['volgnummer'] = row.get('src_volgnummer')
-                issue = Issue(QA_CHECK.Unique_destination, row, 'src_id', 'bronwaarde')
-                issue.attribute = attribute_name
-                log_issue(logger, QA_LEVEL.WARNING, issue)
-            conflicts += 1
-
-    if conflicts > _MAX_RELATION_CONFLICTS:
-        logger.data_warning(f"{conflicts_msg}: {conflicts} found, "
-                            f"{min(conflicts, _MAX_RELATION_CONFLICTS)} reported")
+            row['volgnummer'] = row.get('src_volgnummer')
+            issue = Issue(QA_CHECK.Unique_destination, row, 'src_id', 'bronwaarde')
+            issue.attribute = attribute_name
+            log_issue(logger, QA_LEVEL.WARNING, issue)
