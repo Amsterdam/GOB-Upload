@@ -329,10 +329,7 @@ class TestInit(TestCase):
                 'version': '0.1',
                 'timestamp': 'the timestamp',
             },
-            'summary': {
-                'warnings': mock_logger.get_warnings.return_value,
-                'errors': mock_logger.get_errors.return_value,
-            },
+            'summary': mock_logger.get_summary(),
             'contents_ref': 'result filename',
             'confirms': 2840,
         }, result)
