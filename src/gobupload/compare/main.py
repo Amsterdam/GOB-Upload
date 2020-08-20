@@ -56,10 +56,7 @@ def compare(msg):
             if not meets_dependencies(storage, msg):
                 return {
                     "header": msg["header"],
-                    "summary": {
-                        'warnings': logger.get_warnings(),
-                        'errors': logger.get_errors()
-                    },
+                    "summary": logger.get_summary(),
                     "contents": None
                 }
 
@@ -106,10 +103,7 @@ def compare(msg):
 
     logger.info(f"Compare {model} completed", {'data': results})
 
-    results.update({
-        'warnings': logger.get_warnings(),
-        'errors': logger.get_errors()
-    })
+    results.update(logger.get_summary())
 
     message = {
         "header": msg["header"],

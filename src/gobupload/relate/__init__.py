@@ -67,10 +67,7 @@ def check_relation(msg):
 
     return {
         "header": msg["header"],
-        "summary": {
-            'warnings': logger.get_warnings(),
-            'errors': logger.get_errors()
-        },
+        "summary": logger.get_summary(),
         "contents": None
     }
 
@@ -290,10 +287,7 @@ def process_relate(msg: dict):
             "version": RELATE_VERSION,
             "timestamp": msg.get("timestamp", datetime.datetime.utcnow().isoformat()),
         },
-        "summary": {
-            "warnings": logger.get_warnings(),
-            "errors": logger.get_errors(),
-        },
+        "summary": logger.get_summary(),
         "contents_ref": filename,
         "confirms": confirms,
     }

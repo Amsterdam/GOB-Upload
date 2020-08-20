@@ -140,10 +140,7 @@ def apply(msg):
         stats.log()
         logger.info(f"Apply events {model} completed", {'data': results})
 
-    msg['summary'] = {
-        'warnings': logger.get_warnings(),
-        'errors': logger.get_errors()
-    }
+    msg['summary'] = logger.get_summary()
 
     # Add a events notification telling what types of event have been applied
     if not msg['header'].get('suppress_notifications', False):

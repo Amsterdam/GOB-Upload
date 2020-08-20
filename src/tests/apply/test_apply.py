@@ -50,7 +50,7 @@ class TestApply(TestCase):
 
         result = apply({'header': {}})
 
-        expected_result_msg = {'header': {}, 'summary': {'errors': ANY, 'warnings': ANY}}
+        expected_result_msg = {'header': {}, 'summary': ANY}
         self.assertEqual(result, expected_result_msg)
         mock_apply.assert_not_called()
 
@@ -70,7 +70,7 @@ class TestApply(TestCase):
 
         result = apply({'header': {}})
 
-        result_msg = {'header': {}, 'summary': {'errors': ANY, 'warnings': ANY}}
+        result_msg = {'header': {}, 'summary': ANY}
 
         self.assertEqual(result, result_msg)
         mock_apply.assert_called()
@@ -167,7 +167,7 @@ class TestApply(TestCase):
 
         result = apply({'header': {}})
 
-        self.assertEqual(result, {'header': {}, 'summary': {'errors': ANY, 'warnings': ANY}})
+        self.assertEqual(result, {'header': {}, 'summary': ANY})
         mock_apply.assert_not_called()
 
     @patch('gobupload.apply.main.add_notification', MagicMock())
@@ -182,7 +182,7 @@ class TestApply(TestCase):
 
         result = apply({'header': {}})
 
-        self.assertEqual(result, {'header': {}, 'summary': {'errors': ANY, 'warnings': ANY}})
+        self.assertEqual(result, {'header': {}, 'summary': ANY})
         mock_apply.assert_not_called()
 
     def test_should_analyze(self, mock):

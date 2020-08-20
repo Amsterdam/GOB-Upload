@@ -96,10 +96,7 @@ def full_update(msg):
     stats.log()
     logger.info(f"Store events {model} completed", {'data': results})
 
-    results.update({
-        'warnings': logger.get_warnings(),
-        'errors': logger.get_errors()
-    })
+    results.update(logger.get_summary())
 
     # Return the result message, with no log, no contents but pass-through any confirms
     message = {
