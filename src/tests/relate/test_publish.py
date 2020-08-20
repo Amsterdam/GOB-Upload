@@ -21,9 +21,6 @@ class TestInit(TestCase):
         result = publish_result(msg, relates)
         self.assertEqual(result, {
             'header': msg['header'],
-            'summary': {
-                'warnings': mock.ANY,
-                'errors': mock.ANY
-            },
+            'summary': mock.ANY,
             'contents': relates
         })
