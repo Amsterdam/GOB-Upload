@@ -125,7 +125,7 @@ GROUP BY _id, volgnummer
 @patch("gobupload.relate.update.Relater.model", MockModel())
 @patch("gobupload.relate.update.Relater.sources", MockSources())
 @patch("gobupload.relate.update._execute")
-@patch("gobupload.relate.update.random.randint", lambda x, y: 89)
+@patch("gobupload.relate.update.random.choice", lambda x: 'a')
 @patch("gobupload.relate.update.get_relation_name", lambda m, cat, col, field: f"{cat}_{col}_{field}")
 class TestRelaterInit(TestCase):
 
@@ -156,8 +156,8 @@ class TestRelaterInit(TestCase):
         self.assertEqual('rel_src_catalog_name_src_collection_name_src_field_name', e.relation_table)
         mock_execute.assert_called_with("SELECT DISTINCT _application FROM src_catalog_name_src_collection_name_table")
 
-        self.assertEqual('tmp_src_catalog_name_srcabbr_intv_20200101_0089', e.src_intv_tmp_table.name)
-        self.assertEqual('tmp_dst_catalog_name_dstabbr_intv_20200101_0089', e.dst_intv_tmp_table.name)
+        self.assertEqual('tmp_src_catalog_name_srcabbr_intv_20200101_aaaaaa', e.src_intv_tmp_table.name)
+        self.assertEqual('tmp_dst_catalog_name_dstabbr_intv_20200101_aaaaaa', e.dst_intv_tmp_table.name)
 
         with patch('gobupload.relate.update.Relater.sources.get_field_relations',
                    lambda cat, col, field: []):
