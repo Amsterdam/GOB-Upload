@@ -1,4 +1,6 @@
 import gc
+import string
+import random
 
 
 class ActiveGarbageCollection:
@@ -45,3 +47,14 @@ def get_event_ids(storage):
         entity_max_eventid = storage.get_entity_max_eventid()
         last_eventid = storage.get_last_eventid()
         return entity_max_eventid, last_eventid
+
+
+def random_string(length):
+    """Returns a random string of length :length: consisting of lowercase characters and digits
+
+    :param length:
+    :return:
+    """
+    assert length > 0
+    characters = string.ascii_lowercase + ''.join([str(i) for i in range(10)])
+    return ''.join([random.choice(characters) for _ in range(length)])
