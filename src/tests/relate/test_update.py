@@ -125,7 +125,7 @@ GROUP BY _id, volgnummer
 @patch("gobupload.relate.update.Relater.model", MockModel())
 @patch("gobupload.relate.update.Relater.sources", MockSources())
 @patch("gobupload.relate.update._execute")
-@patch("gobupload.relate.update.random.choice", lambda x: 'a')
+@patch("gobupload.relate.update.random_string", lambda x: x * 'a')
 @patch("gobupload.relate.update.get_relation_name", lambda m, cat, col, field: f"{cat}_{col}_{field}")
 class TestRelaterInit(TestCase):
 

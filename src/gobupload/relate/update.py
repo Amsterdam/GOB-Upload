@@ -4,8 +4,6 @@ See README.md in this directory for explanation of this file.
 
 import hashlib
 import json
-import random
-import string
 
 from datetime import date, datetime
 from typing import List
@@ -26,6 +24,7 @@ from gobupload.relate.exceptions import RelateException
 from gobupload.storage.execute import _execute
 from gobupload.compare.event_collector import EventCollector
 from gobupload.config import DEBUG
+from gobupload.utils import random_string
 
 EQUALS = 'equals'
 LIES_IN = 'lies_in'
@@ -243,11 +242,10 @@ class Relater:
 
         # begin_geldigheid tmp table names
         datestr = datetime.now().strftime('%Y%m%d')
-        characters = string.ascii_lowercase + ''.join([str(i) for i in range(10)])
         src_intv_tmp_table_name = f"tmp_{self.src_catalog_name}_{self.src_collection['abbreviation']}_intv_{datestr}" \
-                                  f"_{''.join([random.choice(characters) for _ in range(6)])}".lower()
+                                  f"_{random_string(6)}".lower()
         dst_intv_tmp_table_name = f"tmp_{self.dst_catalog_name}_{self.dst_collection['abbreviation']}_intv_{datestr}" \
-                                  f"_{''.join([random.choice(characters) for _ in range(6)])}".lower()
+                                  f"_{random_string(6)}".lower()
 
         self.src_intv_tmp_table = StartValiditiesTable(self.src_table_name, src_intv_tmp_table_name)
         self.dst_intv_tmp_table = StartValiditiesTable(self.dst_table_name, dst_intv_tmp_table_name)
