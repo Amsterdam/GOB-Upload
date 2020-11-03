@@ -1,9 +1,9 @@
 import logging
-
 from unittest import TestCase
-from unittest.mock import MagicMock, patch, ANY
+from unittest.mock import ANY, MagicMock, patch
 
-from gobupload.apply.main import apply_events, apply_confirm_events, apply, _should_analyze
+from gobupload.apply.main import EVENT_EXCHANGE, _broadcast_event, _should_analyze, apply, apply_confirm_events, \
+    apply_events
 from gobupload.storage.handler import GOBStorageHandler
 from tests import fixtures
 
@@ -28,8 +28,10 @@ class TestApply(TestCase):
     def tearDown(self):
         logging.disable(logging.NOTSET)
 
+    @patch('gobupload.apply.main.MessageBrokerConnection')
+    @patch('gobupload.apply.main._broadcast_event')
     @patch('gobupload.apply.main.logger', MagicMock())
-    def test_apply_events(self, mock):
+    def test_apply_events(self, mock_broadcast, mock_messagebroker_connection, mock):
         event = fixtures.get_event_fixure()
         event.contents = '{"_entity_source_id": "{fixtures.random_string()}", "entity": {}}'
         mock.return_value = self.mock_storage
@@ -37,6 +39,7 @@ class TestApply(TestCase):
         stats = MagicMock()
 
         apply_events(self.mock_storage, {}, 1, stats)
+        mock_broadcast.assert_called_with(mock_messagebroker_connection().__enter__(), ANY)
 
         stats.add_applied.assert_called()
 
@@ -154,7 +157,6 @@ class TestApply(TestCase):
         }
         apply_confirm_events(self.mock_storage, mock_stats, msg)
         mock_os.remove.assert_not_called()
-
 
     @patch('gobupload.apply.main.add_notification', MagicMock())
     @patch('gobupload.apply.main.logger', MagicMock())
@@ -280,6 +282,29 @@ class TestApply(TestCase):
 
         # Test that add_notification is not called when suppress_notifications is set
         mock_get_combinations.return_value = [MagicMock()]
-        mock_get_event_ids.side_effect = [(0, 100),(1, 99),]
+        mock_get_event_ids.side_effect = [(0, 100), (1, 99), ]
         apply({'header': {'suppress_notifications': True}})
         mock_add_notification.assert_not_called()
+
+    @patch("gobupload.apply.main.get_routing_key")
+    def test_broadcast_event(self, mock_get_routing_key, mock_storagehandler):
+        message_broker_connection = MagicMock()
+        event = MagicMock()
+        event.catalogue = 'catalog'
+        event.entity = 'collection'
+        event._data = {'the': 'data', '_source_id': 'source id'}
+        event.name = 'ADD'
+        event.action = 'ADD'
+        event.id = 2480
+
+        _broadcast_event(message_broker_connection, event)
+        mock_get_routing_key.assert_called_with('catalog', 'collection')
+        message_broker_connection.publish.assert_called_with(EVENT_EXCHANGE, mock_get_routing_key(), {
+            'event_id': 2480,
+            'source_id': 'source id',
+            'name': 'ADD',
+            'type': 'ADD',
+            'data': {'the': 'data', '_source_id': 'source id'},
+            'catalog': 'catalog',
+            'collection': 'collection',
+        })

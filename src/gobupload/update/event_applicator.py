@@ -119,12 +119,10 @@ class EventApplicator:
         gob_event = _get_gob_event(event, data)
 
         # Return the action and number of applied entities
-        action = event.action
         count = 1
 
         if isinstance(gob_event, GOB.BULKCONFIRM):
             self.storage.bulk_update_confirms(gob_event, event.eventid)
-            action = "CONFIRM"
             count = len(gob_event._data['confirms'])
         elif isinstance(gob_event, GOB.ADD) and self.last_events.get(data["_entity_source_id"]) is None:
             # Initial add (an ADD event can also be applied on a deleted entity, this is handled by the else case)
@@ -136,7 +134,7 @@ class EventApplicator:
             # Add other event (MODIFY, CONFIRM, DELETE, ADD on deleted entity)
             self.add_other_event(gob_event, data)
 
-        return action, count
+        return gob_event, count
 
 
 def _get_gob_event(event, data):

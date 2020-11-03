@@ -7,9 +7,9 @@ from gobcore.logging.logger import logger
 from gobcore.utils import ProgressTicker
 
 from gobupload.storage.handler import GOBStorageHandler
-from gobupload.update.update_statistics import UpdateStatistics
 from gobupload.update.event_collector import EventCollector
-from gobupload.utils import ActiveGarbageCollection, is_corrupted, get_event_ids
+from gobupload.update.update_statistics import UpdateStatistics
+from gobupload.utils import ActiveGarbageCollection, get_event_ids, is_corrupted
 
 
 def _store_events(storage, last_events, events, stats):
