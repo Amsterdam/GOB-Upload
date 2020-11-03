@@ -292,6 +292,7 @@ class TestApply(TestCase):
         event = MagicMock()
         event.catalogue = 'catalog'
         event.entity = 'collection'
+        event.source = 'source'
         event._data = {'the': 'data', '_source_id': 'source id'}
         event.name = 'ADD'
         event.action = 'ADD'
@@ -307,4 +308,5 @@ class TestApply(TestCase):
             'data': {'the': 'data', '_source_id': 'source id'},
             'catalog': 'catalog',
             'collection': 'collection',
+            'source': 'source',
         })

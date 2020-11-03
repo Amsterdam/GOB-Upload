@@ -39,6 +39,7 @@ def _broadcast_event(message_broker_connection: MessageBrokerConnection, event: 
         'data': event._data,
         'catalog': event.catalogue,
         'collection': event.entity,
+        'source': event.source,
     }
 
     message_broker_connection.publish(EVENT_EXCHANGE, key, event_msg)
