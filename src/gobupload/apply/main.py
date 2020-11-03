@@ -1,21 +1,47 @@
 import os
 import sys
 
+from gobcore.events.import_events import ImportEvent
 from gobcore.logging.logger import logger
-from gobcore.utils import ProgressTicker
+from gobcore.message_broker.async_message_broker import AsyncConnection as MessageBrokerConnection
+from gobcore.message_broker.config import CONNECTION_PARAMS, EVENT_EXCHANGE
+from gobcore.message_broker.events import get_routing_key
+from gobcore.message_broker.notifications import EventNotification, add_notification
 from gobcore.message_broker.offline_contents import ContentsReader
-from gobcore.message_broker.notifications import add_notification, EventNotification
+from gobcore.utils import ProgressTicker
 
-from gobupload.storage.handler import GOBStorageHandler
-from gobupload.update.update_statistics import UpdateStatistics
-from gobupload.update.event_applicator import EventApplicator
-from gobupload.utils import ActiveGarbageCollection, is_corrupted, get_event_ids
 from gobupload.config import FULL_UPLOAD
+from gobupload.storage.handler import GOBStorageHandler
+from gobupload.update.event_applicator import EventApplicator
+from gobupload.update.update_statistics import UpdateStatistics
+from gobupload.utils import ActiveGarbageCollection, get_event_ids, is_corrupted
 
 # Trigger VACUUM ANALYZE on database if more than ANALYZE_THRESHOLD of entities are updated. When ANALYZE_THRESHOLD =
 # 0.3, this means that if more than 30% of the events update the data (MODIFY's, ADDs, DELETEs), a VACUUM ANALYZE is
 # triggered.
 ANALYZE_THRESHOLD = 0.3
+
+
+def _broadcast_event(message_broker_connection: MessageBrokerConnection, event: ImportEvent):
+    """Broadcasts single event to EVENT_EXCHANGE with corresponding routing key (depending on catalog/collection)
+
+    :param message_broker_connection:
+    :param event:
+    :return:
+    """
+    key = get_routing_key(event.catalogue, event.entity)
+
+    event_msg = {
+        'event_id': event.id,
+        'source_id': event._data['_source_id'],
+        'name': event.name,
+        'type': event.action,
+        'data': event._data,
+        'catalog': event.catalogue,
+        'collection': event.entity,
+    }
+
+    message_broker_connection.publish(EVENT_EXCHANGE, key, event_msg)
 
 
 def apply_events(storage, last_events, start_after, stats):
@@ -26,7 +52,8 @@ def apply_events(storage, last_events, start_after, stats):
     :param stats: update statitics for this action
     :return:
     """
-    with ActiveGarbageCollection("Apply events"), storage.get_session():
+    with ActiveGarbageCollection("Apply events"), storage.get_session(), MessageBrokerConnection(
+            CONNECTION_PARAMS) as messagebroker_connection:
         logger.info(f"Apply events")
 
         PROCESS_PER = 10000
@@ -37,9 +64,16 @@ def apply_events(storage, last_events, start_after, stats):
                     for event in unhandled_events:
                         progress.tick()
 
-                        action, count = event_applicator.apply(event)
+                        gob_event, count = event_applicator.apply(event)
+                        action = gob_event.action
                         stats.add_applied(action, count)
                         start_after = event.eventid
+
+                        _broadcast_event(
+                            messagebroker_connection,
+                            gob_event
+                        )
+
                 unhandled_events = storage.get_events_starting_after(start_after, PROCESS_PER)
 
 

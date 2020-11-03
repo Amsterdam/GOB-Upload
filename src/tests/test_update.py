@@ -1,17 +1,13 @@
 import logging
-
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
+from gobcore.events.import_events import ADD, CONFIRM, DELETE, MODIFY
 from gobcore.exceptions import GOBException
-from gobcore.events.import_events import ADD, DELETE, CONFIRM, MODIFY
 
-# from gobupload.update import full_update, UpdateStatistics, _get_gob_event, _get_event_ids, _store_events, _apply_events
-from gobupload.update import full_update
-from gobupload.update.main import full_update, UpdateStatistics, get_event_ids, _store_events
-from gobupload.apply.main import apply_events
-from gobupload.update.event_applicator import _get_gob_event
 from gobupload.storage.handler import GOBStorageHandler
+from gobupload.update.event_applicator import _get_gob_event
+from gobupload.update.main import UpdateStatistics, _store_events, full_update, get_event_ids
 from tests import fixtures
 
 
@@ -168,4 +164,3 @@ class TestUpdate(TestCase):
         stats = UpdateStatistics()
 
         _store_events(self.mock_storage, last_events, [event], stats)
-
