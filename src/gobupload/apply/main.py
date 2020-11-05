@@ -1,6 +1,8 @@
 import os
 import sys
 
+from typing import List
+
 from gobcore.events.import_events import ImportEvent
 from gobcore.logging.logger import logger
 from gobcore.message_broker.async_message_broker import AsyncConnection as MessageBrokerConnection
@@ -22,28 +24,39 @@ from gobupload.utils import ActiveGarbageCollection, get_event_ids, is_corrupted
 ANALYZE_THRESHOLD = 0.3
 
 
-def _broadcast_event(message_broker_connection: MessageBrokerConnection, event: ImportEvent):
+def _broadcast_events(message_broker_connection: MessageBrokerConnection, events: List[ImportEvent]):
     """Broadcasts single event to EVENT_EXCHANGE with corresponding routing key (depending on catalog/collection)
 
     :param message_broker_connection:
     :param event:
     :return:
     """
-    key = get_routing_key(event.catalogue, event.entity)
 
-    event_msg = {
-        'event_id': event.id,
-        'last_event_id': event.last_event,
-        'source_id': event._data['_source_id'],
-        'name': event.name,
-        'type': event.action,
-        'data': event._data,
-        'catalog': event.catalogue,
-        'collection': event.entity,
-        'source': event.source,
-    }
+    to_send = {}
 
-    message_broker_connection.publish(EVENT_EXCHANGE, key, event_msg)
+    for event in events:
+        key = get_routing_key(event.catalogue, event.entity)
+
+        if key not in to_send:
+            to_send[key] = []
+
+        event_msg = {
+            'header': {
+                'event_id': event.id,
+                'last_event_id': event.last_event,
+                'source_id': event._data['_source_id'],
+                'name': event.name,
+                'type': event.action,
+                'catalog': event.catalogue,
+                'collection': event.entity,
+                'source': event.source,
+            },
+            'contents': event._data,
+        }
+        to_send[key].append(event_msg)
+
+    for key, events in to_send.items():
+        message_broker_connection.publish(EVENT_EXCHANGE, key, {'contents': events})
 
 
 def apply_events(storage, last_events, start_after, stats):
@@ -66,14 +79,21 @@ def apply_events(storage, last_events, start_after, stats):
                     for event in unhandled_events:
                         progress.tick()
 
-                        gob_event, count = event_applicator.apply(event)
+                        gob_event, count, applied_events = event_applicator.apply(event)
                         action = gob_event.action
                         stats.add_applied(action, count)
                         start_after = event.eventid
 
-                        _broadcast_event(
+                        if applied_events:
+                            _broadcast_events(
+                                messagebroker_connection,
+                                applied_events
+                            )
+                    applied_events = event_applicator.apply_all()
+                    if applied_events:
+                        _broadcast_events(
                             messagebroker_connection,
-                            gob_event
+                            applied_events
                         )
 
                 unhandled_events = storage.get_events_starting_after(start_after, PROCESS_PER)
