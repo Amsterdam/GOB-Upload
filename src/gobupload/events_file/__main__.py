@@ -50,6 +50,10 @@ class EventsFileWriter:
                     data = {
                         '_event_type': gob_event.name,
                         '_event_id': gob_event.id,
+                        '_last_event': gob_event.last_event,
+                        '_catalog': gob_event.catalogue,
+                        '_collection': gob_event.entity,
+                        '_source': gob_event.source,
                         **gob_event._data,
                     }
                     f.write(f"{data['_source_id']}|{json.dumps(data)}\n")
