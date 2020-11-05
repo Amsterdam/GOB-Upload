@@ -33,6 +33,7 @@ def _broadcast_event(message_broker_connection: MessageBrokerConnection, event: 
 
     event_msg = {
         'event_id': event.id,
+        'last_event_id': event.last_event,
         'source_id': event._data['_source_id'],
         'name': event.name,
         'type': event.action,

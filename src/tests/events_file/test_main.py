@@ -45,15 +45,32 @@ class TestEventsFileWriter(TestCase):
             'name': ev['type'],
             'id': ev['id'],
             '_data': ev,
+            'catalogue': 'the cat',
+            'entity': 'the col',
+            'source': 'the source',
+            'last_event': 2480,
         })
 
         writer._write_events('CAT', 'COL', '/dst/dir')
         mock_open.assert_called_with('/dst/dir/CAT_COL.gobevents', 'w')
 
-        written_events = [
-            {'_event_type': 'ADD', '_event_id': 1, **events[0]},
-            {'_event_type': 'MODIFY', '_event_id': 2, **events[1]},
-        ]
+        written_events = [{
+            '_event_type': 'ADD',
+            '_event_id': 1,
+            '_last_event': 2480,
+            '_catalog': 'the cat',
+            '_collection': 'the col',
+            '_source': 'the source',
+            **events[0]
+        }, {
+            '_event_type': 'MODIFY',
+            '_event_id': 2,
+            '_last_event': 2480,
+            '_catalog': 'the cat',
+            '_collection': 'the col',
+            '_source': 'the source',
+            **events[1]
+        }]
         mock_file.write.assert_has_calls([
             call(f'100.1|{json.dumps(written_events[0])}\n'),
             call(f'200.1|{json.dumps(written_events[1])}\n'),

@@ -296,12 +296,14 @@ class TestApply(TestCase):
         event._data = {'the': 'data', '_source_id': 'source id'}
         event.name = 'ADD'
         event.action = 'ADD'
+        event.last_event = 2224
         event.id = 2480
 
         _broadcast_event(message_broker_connection, event)
         mock_get_routing_key.assert_called_with('catalog', 'collection')
         message_broker_connection.publish.assert_called_with(EVENT_EXCHANGE, mock_get_routing_key(), {
             'event_id': 2480,
+            'last_event_id': 2224,
             'source_id': 'source id',
             'name': 'ADD',
             'type': 'ADD',
