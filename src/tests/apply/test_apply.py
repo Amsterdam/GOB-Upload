@@ -1,8 +1,9 @@
-import logging
 from unittest import TestCase
+
+import logging
 from unittest.mock import ANY, MagicMock, patch
 
-from gobupload.apply.main import EVENT_EXCHANGE, _broadcast_event, _should_analyze, apply, apply_confirm_events, \
+from gobupload.apply.main import EVENT_EXCHANGE, _broadcast_events, _should_analyze, apply, apply_confirm_events, \
     apply_events
 from gobupload.storage.handler import GOBStorageHandler
 from tests import fixtures
@@ -29,7 +30,7 @@ class TestApply(TestCase):
         logging.disable(logging.NOTSET)
 
     @patch('gobupload.apply.main.MessageBrokerConnection')
-    @patch('gobupload.apply.main._broadcast_event')
+    @patch('gobupload.apply.main._broadcast_events')
     @patch('gobupload.apply.main.logger', MagicMock())
     def test_apply_events(self, mock_broadcast, mock_messagebroker_connection, mock):
         event = fixtures.get_event_fixure()
@@ -299,16 +300,23 @@ class TestApply(TestCase):
         event.last_event = 2224
         event.id = 2480
 
-        _broadcast_event(message_broker_connection, event)
+        _broadcast_events(message_broker_connection, [event])
         mock_get_routing_key.assert_called_with('catalog', 'collection')
         message_broker_connection.publish.assert_called_with(EVENT_EXCHANGE, mock_get_routing_key(), {
-            'event_id': 2480,
-            'last_event_id': 2224,
-            'source_id': 'source id',
-            'name': 'ADD',
-            'type': 'ADD',
-            'data': {'the': 'data', '_source_id': 'source id'},
-            'catalog': 'catalog',
-            'collection': 'collection',
-            'source': 'source',
+            'contents': [{
+                'contents': {
+                    'the': 'data',
+                    '_source_id': 'source id'
+                },
+                'header': {
+                    'event_id': 2480,
+                    'last_event_id': 2224,
+                    'source_id': 'source id',
+                    'name': 'ADD',
+                    'type': 'ADD',
+                    'catalog': 'catalog',
+                    'collection': 'collection',
+                    'source': 'source',
+                }
+            }]
         })
