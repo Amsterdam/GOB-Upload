@@ -37,25 +37,42 @@ class EventApplicator:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         # Write any buffered entities and flush storage
-        self.apply_add_events()
-        self.apply_other_events()
+        if self.add_events or self.other_events:
+            raise GOBException(f"Have unapplied events. Call apply_all() before leaving context")
         self.storage.force_flush_entities()
 
     def add_add_event(self, event):
+        """Adds add event to buffer, applies pending add events when buffer is full.
+        Returns the list of applied events.
+
+        :param event:
+        :return:
+        """
         self.add_events.append(event)
         if len(self.add_events) >= self.MAX_ADD_CHUNK:
-            self.apply_add_events()
+            return self.apply_add_events()
+        return []
 
     def apply_add_events(self):
+        """Applies add events in buffer.
+        Returns the list of applied events
+
+        :return:
+        """
         if self.add_events:
             with ActiveGarbageCollection("Apply add events"):
                 self.storage.add_add_events(self.add_events)
+                applied_events = self.add_events
                 self.add_events = []
+                return applied_events
+        return []
 
     def add_other_event(self, gob_event, data):
         """
         Add a non-ADD event, or an ADD event on a deleted entity
         If MAX_OTHER_CHUNK events have been buffered then mass-apply the events
+
+        Returns the list of applied events
 
         :param gob_event:
         :param data:
@@ -63,11 +80,14 @@ class EventApplicator:
         """
         self.other_events[data["_entity_source_id"]] = gob_event
         if len(self.other_events) >= self.MAX_OTHER_CHUNK:
-            self.apply_other_events()
+            return self.apply_other_events()
+        return []
 
     def apply_other_events(self):
         """
         Mass-Apply events
+
+        Returns the list of applied events
 
         :return:
         """
@@ -78,7 +98,10 @@ class EventApplicator:
                 entities = self.storage.get_entities(source_ids, with_deleted=True)
                 for entity in entities:
                     self.apply_other_event(entity)
+            applied_events = list(self.other_events.values())
             self.other_events = {}
+            return applied_events
+        return []
 
     def apply_other_event(self, entity):
         """
@@ -108,6 +131,11 @@ class EventApplicator:
         if not isinstance(gob_event, GOB.CONFIRM):
             entity._last_event = gob_event.id
 
+    def apply_all(self):
+        applied = self.apply_add_events()
+        applied += self.apply_other_events()
+        return applied
+
     def apply(self, event):
         # Parse the json data of the event
         if isinstance(event.contents, dict):
@@ -119,24 +147,23 @@ class EventApplicator:
         gob_event = _get_gob_event(event, data)
 
         # Return the action and number of applied entities
-        action = event.action
         count = 1
+        applied_events = []
 
         if isinstance(gob_event, GOB.BULKCONFIRM):
             self.storage.bulk_update_confirms(gob_event, event.eventid)
-            action = "CONFIRM"
             count = len(gob_event._data['confirms'])
         elif isinstance(gob_event, GOB.ADD) and self.last_events.get(data["_entity_source_id"]) is None:
             # Initial add (an ADD event can also be applied on a deleted entity, this is handled by the else case)
-            self.add_add_event(gob_event)
+            applied_events += self.add_add_event(gob_event)
         else:
             # If ADD events are waiting to be applied to the database, flush those first to make sure they exist
-            self.apply_add_events()
+            applied_events += self.apply_add_events()
 
             # Add other event (MODIFY, CONFIRM, DELETE, ADD on deleted entity)
-            self.add_other_event(gob_event, data)
+            applied_events += self.add_other_event(gob_event, data)
 
-        return action, count
+        return gob_event, count, applied_events
 
 
 def _get_gob_event(event, data):
