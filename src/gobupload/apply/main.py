@@ -25,7 +25,8 @@ ANALYZE_THRESHOLD = 0.3
 
 
 def _broadcast_events(message_broker_connection: MessageBrokerConnection, events: List[ImportEvent]):
-    """Broadcasts single event to EVENT_EXCHANGE with corresponding routing key (depending on catalog/collection)
+    """Broadcasts list of ImportEvents as batch to EVENT_EXCHANGE with corresponding routing key (depending
+    on catalog/collection)
 
     :param message_broker_connection:
     :param event:
