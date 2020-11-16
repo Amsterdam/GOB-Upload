@@ -58,9 +58,22 @@ node('GOBBUILD') {
                        def image = docker.image("${DOCKER_IMAGE_NAME}")
                        image.pull()
                        image.push("develop")
+                       image.push("test")
                     }
                 }
             }
+
+            stage("Deploy to TEST") {
+                tryStep "deployment", {
+                    build job: 'Subtask_Openstack_Playbook',
+                        parameters: [
+                            [$class: 'StringParameterValue', name: 'INVENTORY', value: 'test'],
+                            [$class: 'StringParameterValue', name: 'PLAYBOOK', value: 'deploy.yml'],
+                            [$class: 'StringParameterValue', name: 'PLAYBOOKPARAMS', value: "-e cmdb_id=app_gob-upload"],
+                        ]
+                }
+            }
+
         }
 
         if (BRANCH == "master") {
@@ -80,7 +93,8 @@ node('GOBBUILD') {
                     build job: 'Subtask_Openstack_Playbook',
                         parameters: [
                             [$class: 'StringParameterValue', name: 'INVENTORY', value: 'acceptance'],
-                            [$class: 'StringParameterValue', name: 'PLAYBOOK', value: 'deploy-gob-upload.yml'],
+                            [$class: 'StringParameterValue', name: 'PLAYBOOK', value: 'deploy.yml'],
+                            [$class: 'StringParameterValue', name: 'PLAYBOOKPARAMS', value: "-e cmdb_id=app_gob-upload"],
                         ]
                 }
             }
