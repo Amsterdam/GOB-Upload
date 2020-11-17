@@ -4,6 +4,8 @@ MAINTAINER datapunt@amsterdam.nl
 # Install gobupload in /app folder
 WORKDIR /app
 
+RUN apt-get update && apt-get -y --no-install-recommends install unixodbc-dev
+
 # Install required Python packages
 COPY requirements.txt /app/
 RUN pip3 install --no-cache-dir -r requirements.txt
