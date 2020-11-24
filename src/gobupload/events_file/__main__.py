@@ -47,16 +47,17 @@ class EventsFileWriter:
 
                 for event in events:
                     gob_event = self._db_to_gob_event(event)
-                    data = {
-                        '_event_type': gob_event.name,
-                        '_event_id': gob_event.id,
-                        '_last_event': gob_event.last_event,
-                        '_catalog': gob_event.catalogue,
-                        '_collection': gob_event.entity,
-                        '_source': gob_event.source,
-                        **gob_event._data,
+
+                    header = {
+                        'event_type': gob_event.name,
+                        'event_id': gob_event.id,
+                        'source_id': gob_event._data['_source_id'],
+                        'last_event': gob_event.last_event,
+                        'catalog': gob_event.catalogue,
+                        'collection': gob_event.entity,
+                        'source': gob_event.source,
                     }
-                    f.write(f"{data['_source_id']}|{json.dumps(data)}\n")
+                    f.write(f"{header['source_id']}|{json.dumps(header)}|{json.dumps(gob_event._data)}\n")
                 print(f"Done writing events")
 
     def _zipdir(self, path: str, filename: str):
