@@ -54,26 +54,26 @@ class TestEventsFileWriter(TestCase):
         writer._write_events('CAT', 'COL', '/dst/dir')
         mock_open.assert_called_with('/dst/dir/CAT_COL.gobevents', 'w')
 
-        written_events = [{
-            '_event_type': 'ADD',
-            '_event_id': 1,
-            '_last_event': 2480,
-            '_catalog': 'the cat',
-            '_collection': 'the col',
-            '_source': 'the source',
-            **events[0]
+        written_event_headers = [{
+            'event_type': 'ADD',
+            'event_id': 1,
+            'source_id': '100.1',
+            'last_event': 2480,
+            'catalog': 'the cat',
+            'collection': 'the col',
+            'source': 'the source',
         }, {
-            '_event_type': 'MODIFY',
-            '_event_id': 2,
-            '_last_event': 2480,
-            '_catalog': 'the cat',
-            '_collection': 'the col',
-            '_source': 'the source',
-            **events[1]
+            'event_type': 'MODIFY',
+            'event_id': 2,
+            'source_id': '200.1',
+            'last_event': 2480,
+            'catalog': 'the cat',
+            'collection': 'the col',
+            'source': 'the source',
         }]
         mock_file.write.assert_has_calls([
-            call(f'100.1|{json.dumps(written_events[0])}\n'),
-            call(f'200.1|{json.dumps(written_events[1])}\n'),
+            call(f'100.1|{json.dumps(written_event_headers[0])}|{json.dumps(events[0])}\n'),
+            call(f'200.1|{json.dumps(written_event_headers[1])}|{json.dumps(events[1])}\n'),
         ])
         mock_filter_by.assert_called_with(catalogue='CAT', entity='COL')
         mock_order_by.assert_called_with(mock_storage_handler().DbEvent.eventid.asc())
