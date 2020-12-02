@@ -294,7 +294,7 @@ class TestApply(TestCase):
         event.catalogue = 'catalog'
         event.entity = 'collection'
         event.source = 'source'
-        event._data = {'the': 'data', '_source_id': 'source id'}
+        event._data = {'the': 'data', '_entity_source_id': 'ent source id', '_source_id': 'the source id'}
         event.name = 'ADD'
         event.action = 'ADD'
         event.last_event = 2224
@@ -306,12 +306,13 @@ class TestApply(TestCase):
             'contents': [{
                 'contents': {
                     'the': 'data',
-                    '_source_id': 'source id'
+                    '_source_id': 'the source id',
+                    '_entity_source_id': 'ent source id',
                 },
                 'header': {
                     'event_id': 2480,
                     'last_event_id': 2224,
-                    'source_id': 'source id',
+                    'source_id': 'ent source id',
                     'name': 'ADD',
                     'type': 'ADD',
                     'catalog': 'catalog',

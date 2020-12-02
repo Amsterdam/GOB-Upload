@@ -51,7 +51,7 @@ class EventsFileWriter:
                     header = {
                         'event_type': gob_event.name,
                         'event_id': gob_event.id,
-                        'source_id': gob_event._data['_source_id'],
+                        'source_id': gob_event._data.get('_entity_source_id', gob_event._data['_source_id']),
                         'last_event': gob_event.last_event,
                         'catalog': gob_event.catalogue,
                         'collection': gob_event.entity,

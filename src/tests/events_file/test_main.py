@@ -26,7 +26,7 @@ class TestEventsFileWriter(TestCase):
     def test_write_events(self, mock_storage_handler, mock_open):
         events = [
             {'type': 'ADD', 'id': 1, '_source_id': '100.1'},
-            {'type': 'MODIFY', 'id': 2, '_source_id': '200.1'},
+            {'type': 'MODIFY', 'id': 2, '_entity_source_id': '200.1', '_source_id': '200.2'},
         ]
 
         mock_filter_by = mock_storage_handler.return_value. \
