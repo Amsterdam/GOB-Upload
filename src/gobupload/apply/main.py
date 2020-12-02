@@ -45,7 +45,7 @@ def _broadcast_events(message_broker_connection: MessageBrokerConnection, events
             'header': {
                 'event_id': event.id,
                 'last_event_id': event.last_event,
-                'source_id': event._data['_source_id'],
+                'source_id': event._data.get('_entity_source_id', event._data['_source_id']),
                 'name': event.name,
                 'type': event.action,
                 'catalog': event.catalogue,
