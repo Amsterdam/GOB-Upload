@@ -184,13 +184,30 @@ class TestRelater(TestCase):
     def _get_relater(self):
         return Relater('src_catalog_name', 'src_collection_name', 'src_field_name')
 
-    def test_validity_select_expressions(self):
+    def test_validity_select_expressions_src(self):
         test_cases = [
-            (True, True, ('GREATEST(src_bg.begin_geldigheid, dst_bg.begin_geldigheid)',
+            (True, True, ('GREATEST(src_bg.begin_geldigheid, dst_bg.begin_geldigheid, PROVIDED_START_VALIDITY)',
                           'LEAST(src.eind_geldigheid, dst.eind_geldigheid)')),
-            (True, False, ('src_bg.begin_geldigheid', 'src.eind_geldigheid')),
-            (False, True, ('dst_bg.begin_geldigheid', 'dst.eind_geldigheid')),
-            (False, False, ('NULL', 'NULL')),
+            (True, False, ('GREATEST(src_bg.begin_geldigheid, PROVIDED_START_VALIDITY)', 'src.eind_geldigheid')),
+            (False, True, ('GREATEST(dst_bg.begin_geldigheid, PROVIDED_START_VALIDITY)', 'dst.eind_geldigheid')),
+            (False, False, ('PROVIDED_START_VALIDITY', 'NULL')),
+        ]
+
+        relater = self._get_relater()
+        relater._provided_start_validity = MagicMock(return_value='PROVIDED_START_VALIDITY')
+
+        for src_has_states, dst_has_states, result in test_cases:
+            relater.src_has_states = src_has_states
+            relater.dst_has_states = dst_has_states
+            self.assertEqual(result, relater._validity_select_expressions_src())
+
+    def test_validity_select_expressions_dst(self):
+        test_cases = [
+            (True, True, ('GREATEST(src_bg.begin_geldigheid, dst_bg.begin_geldigheid, src.provided_begin_geldigheid)',
+                          'LEAST(src.eind_geldigheid, dst.eind_geldigheid)')),
+            (True, False, ('GREATEST(src_bg.begin_geldigheid, src.provided_begin_geldigheid)', 'src.eind_geldigheid')),
+            (False, True, ('GREATEST(dst_bg.begin_geldigheid, src.provided_begin_geldigheid)', 'dst.eind_geldigheid')),
+            (False, False, ('src.provided_begin_geldigheid', 'NULL')),
         ]
 
         relater = self._get_relater()
@@ -198,7 +215,7 @@ class TestRelater(TestCase):
         for src_has_states, dst_has_states, result in test_cases:
             relater.src_has_states = src_has_states
             relater.dst_has_states = dst_has_states
-            self.assertEqual(result, relater._validity_select_expressions())
+            self.assertEqual(result, relater._validity_select_expressions_dst())
 
     def test_select_aliases(self):
         relater = self._get_relater()
@@ -254,7 +271,7 @@ class TestRelater(TestCase):
         relater._get_derivation = lambda: 'DERIVATION'
         relater._source_value_ref = lambda: 'SOURCE VALUE'
         relater._build_select_expressions = MagicMock()
-        relater._validity_select_expressions = lambda: ('START_VALIDITY', 'END_VALIDITY')
+        relater._validity_select_expressions_src = lambda: ('SRC_START_VALIDITY', 'SRC_END_VALIDITY')
         result = relater._select_expressions_src()
         self.assertEqual(relater._build_select_expressions.return_value, result)
 
@@ -264,7 +281,7 @@ class TestRelater(TestCase):
         relater._get_derivation = lambda: 'DERIVATION'
         relater._source_value_ref = lambda: 'SOURCE VALUE'
         relater._build_select_expressions = MagicMock()
-        relater._validity_select_expressions = lambda: ('START_VALIDITY', 'END_VALIDITY')
+        relater._validity_select_expressions_dst = lambda: ('DST_START_VALIDITY', 'DST_END_VALIDITY')
         result = relater._select_expressions_dst()
         self.assertEqual(relater._build_select_expressions.return_value, result)
 
@@ -371,6 +388,15 @@ END"""
 
         relater.is_many = True
         self.assertEqual("json_arr_elm.item->>'bronwaarde'", relater._source_value_ref())
+
+    def test_provided_start_validity(self):
+        relater = self._get_relater()
+        relater.is_many = False
+
+        self.assertEqual("(src.src_field_name->>'begin_geldigheid')::timestamp without time zone", relater._provided_start_validity())
+
+        relater.is_many = True
+        self.assertEqual("(json_arr_elm.item->>'begin_geldigheid')::timestamp without time zone", relater._provided_start_validity())
 
     def test_geo_resolve(self):
         expected = "ST_IsValid(dst.dst_attribute) AND " \
@@ -724,13 +750,15 @@ LEFT JOIN (
     def test_select_rest_src(self):
         relater = self._get_relater()
         relater._source_value_ref = lambda: "SRC_VAL_REF"
+        relater._provided_start_validity = lambda: "PROVIDED_START_VALIDITY"
 
         relater.src_has_states = False
         relater.is_many = False
         self.assertEqual(f"""
     SELECT
         src.*,
-        SRC_VAL_REF bronwaarde
+        SRC_VAL_REF bronwaarde,
+        PROVIDED_START_VALIDITY provided_begin_geldigheid
     FROM src_catalog_name_src_collection_name_table src
     
     WHERE src._date_deleted IS NULL AND (_id) NOT IN (
@@ -743,7 +771,8 @@ LEFT JOIN (
         self.assertEqual(f"""
     SELECT
         src.*,
-        SRC_VAL_REF bronwaarde
+        SRC_VAL_REF bronwaarde,
+        PROVIDED_START_VALIDITY provided_begin_geldigheid
     FROM src_catalog_name_src_collection_name_table src
     JOIN jsonb_array_elements(src.src_field_name) json_arr_elm(item) ON json_arr_elm->>'bronwaarde' IS NOT NULL
     WHERE src._date_deleted IS NULL AND (_id,volgnummer) NOT IN (
