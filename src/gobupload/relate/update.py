@@ -256,18 +256,36 @@ class Relater:
         result = _execute(query)
         return [row[0] for row in result]
 
-    def _validity_select_expressions(self):
+    def _validity_select_expressions_src(self):
         if self.src_has_states and self.dst_has_states:
-            start = f"GREATEST(src_bg.{FIELD.START_VALIDITY}, dst_bg.{FIELD.START_VALIDITY})"
+            start = f"GREATEST(src_bg.{FIELD.START_VALIDITY}, dst_bg.{FIELD.START_VALIDITY}, " \
+                    f"{self._provided_start_validity()})"
             end = f"LEAST(src.{FIELD.END_VALIDITY}, dst.{FIELD.END_VALIDITY})"
         elif self.src_has_states:
-            start = f"src_bg.{FIELD.START_VALIDITY}"
+            start = f"GREATEST(src_bg.{FIELD.START_VALIDITY}, {self._provided_start_validity()})"
             end = f"src.{FIELD.END_VALIDITY}"
         elif self.dst_has_states:
-            start = f"dst_bg.{FIELD.START_VALIDITY}"
+            start = f"GREATEST(dst_bg.{FIELD.START_VALIDITY}, {self._provided_start_validity()})"
             end = f"dst.{FIELD.END_VALIDITY}"
         else:
-            start = "NULL"
+            start = self._provided_start_validity()
+            end = "NULL"
+
+        return start, end
+
+    def _validity_select_expressions_dst(self):
+        if self.src_has_states and self.dst_has_states:
+            start = f"GREATEST(src_bg.{FIELD.START_VALIDITY}, dst_bg.{FIELD.START_VALIDITY}, " \
+                    f"src.provided_{FIELD.START_VALIDITY})"
+            end = f"LEAST(src.{FIELD.END_VALIDITY}, dst.{FIELD.END_VALIDITY})"
+        elif self.src_has_states:
+            start = f"GREATEST(src_bg.{FIELD.START_VALIDITY}, src.provided_{FIELD.START_VALIDITY})"
+            end = f"src.{FIELD.END_VALIDITY}"
+        elif self.dst_has_states:
+            start = f"GREATEST(dst_bg.{FIELD.START_VALIDITY}, src.provided_{FIELD.START_VALIDITY})"
+            end = f"dst.{FIELD.END_VALIDITY}"
+        else:
+            start = f"src.provided_{FIELD.START_VALIDITY}"
             end = "NULL"
 
         return start, end
@@ -288,7 +306,7 @@ class Relater:
         return [f'{mapping[alias]} AS {alias}' for alias in aliases]
 
     def _select_expressions_dst(self):
-        start_validity, end_validity = self._validity_select_expressions()
+        start_validity, end_validity = self._validity_select_expressions_dst()
 
         mapping = {
             FIELD.VERSION: f"src.{FIELD.VERSION}",
@@ -328,7 +346,7 @@ class Relater:
 
         :return:
         """
-        start_validity, end_validity = self._validity_select_expressions()
+        start_validity, end_validity = self._validity_select_expressions_src()
 
         mapping = {
             FIELD.VERSION: f"src.{FIELD.VERSION}",
@@ -459,6 +477,17 @@ class Relater:
             return f"{self.json_join_alias}.item->>'{FIELD.SOURCE_VALUE}'"
         else:
             return f"src.{self.src_field_name}->>'{FIELD.SOURCE_VALUE}'"
+
+    def _provided_start_validity(self):
+        """Returns the start validity as provided in the src object, if present. Defaults to NULL if not present.
+
+        :return:
+        """
+
+        if self.is_many:
+            return f"({self.json_join_alias}.item->>'{FIELD.START_VALIDITY}')::timestamp without time zone"
+        else:
+            return f"(src.{self.src_field_name}->>'{FIELD.START_VALIDITY}')::timestamp without time zone"
 
     def _geo_resolve(self, spec):
         src_geo = f"src.{spec['source_attribute']}"
@@ -678,7 +707,8 @@ LEFT JOIN (
         return f"""
     SELECT
         src.*,
-        {self._source_value_ref()} {FIELD.SOURCE_VALUE}
+        {self._source_value_ref()} {FIELD.SOURCE_VALUE},
+        {self._provided_start_validity()} provided_{FIELD.START_VALIDITY}
     FROM {self.src_table_name} src
     {self._join_array_elements() if self.is_many else ""}
     WHERE src.{FIELD.DATE_DELETED} IS NULL AND ({','.join(not_in_fields)}) NOT IN (
