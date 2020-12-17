@@ -3,7 +3,7 @@ from unittest import TestCase
 import logging
 from unittest.mock import ANY, MagicMock, patch
 
-from gobupload.apply.main import EVENT_EXCHANGE, _broadcast_events, _should_analyze, apply, apply_confirm_events, \
+from gobupload.apply.main import _should_analyze, apply, apply_confirm_events, \
     apply_events
 from gobupload.storage.handler import GOBStorageHandler
 from tests import fixtures
@@ -29,10 +29,8 @@ class TestApply(TestCase):
     def tearDown(self):
         logging.disable(logging.NOTSET)
 
-    @patch('gobupload.apply.main.MessageBrokerConnection')
-    @patch('gobupload.apply.main._broadcast_events')
     @patch('gobupload.apply.main.logger', MagicMock())
-    def test_apply_events(self, mock_broadcast, mock_messagebroker_connection, mock):
+    def test_apply_events(self, mock):
         event = fixtures.get_event_fixure()
         event.contents = '{"_entity_source_id": "{fixtures.random_string()}", "entity": {}}'
         mock.return_value = self.mock_storage
@@ -40,7 +38,6 @@ class TestApply(TestCase):
         stats = MagicMock()
 
         apply_events(self.mock_storage, {}, 1, stats)
-        mock_broadcast.assert_called_with(mock_messagebroker_connection().__enter__(), ANY)
 
         stats.add_applied.assert_called()
 
@@ -286,38 +283,3 @@ class TestApply(TestCase):
         mock_get_event_ids.side_effect = [(0, 100), (1, 99), ]
         apply({'header': {'suppress_notifications': True}})
         mock_add_notification.assert_not_called()
-
-    @patch("gobupload.apply.main.get_routing_key")
-    def test_broadcast_event(self, mock_get_routing_key, mock_storagehandler):
-        message_broker_connection = MagicMock()
-        event = MagicMock()
-        event.catalogue = 'catalog'
-        event.entity = 'collection'
-        event.source = 'source'
-        event._data = {'the': 'data', '_entity_source_id': 'ent source id', '_source_id': 'the source id'}
-        event.name = 'ADD'
-        event.action = 'ADD'
-        event.last_event = 2224
-        event.id = 2480
-
-        _broadcast_events(message_broker_connection, [event])
-        mock_get_routing_key.assert_called_with('catalog', 'collection')
-        message_broker_connection.publish.assert_called_with(EVENT_EXCHANGE, mock_get_routing_key(), {
-            'contents': [{
-                'contents': {
-                    'the': 'data',
-                    '_source_id': 'the source id',
-                    '_entity_source_id': 'ent source id',
-                },
-                'header': {
-                    'event_id': 2480,
-                    'last_event_id': 2224,
-                    'source_id': 'ent source id',
-                    'name': 'ADD',
-                    'type': 'ADD',
-                    'catalog': 'catalog',
-                    'collection': 'collection',
-                    'source': 'source',
-                }
-            }]
-        })
