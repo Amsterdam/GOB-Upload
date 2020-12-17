@@ -1,13 +1,7 @@
 import os
 import sys
 
-from typing import List
-
-from gobcore.events.import_events import ImportEvent
 from gobcore.logging.logger import logger
-from gobcore.message_broker.async_message_broker import AsyncConnection as MessageBrokerConnection
-from gobcore.message_broker.config import CONNECTION_PARAMS, EVENT_EXCHANGE
-from gobcore.message_broker.events import get_routing_key
 from gobcore.message_broker.notifications import EventNotification, add_notification
 from gobcore.message_broker.offline_contents import ContentsReader
 from gobcore.utils import ProgressTicker
@@ -24,42 +18,6 @@ from gobupload.utils import ActiveGarbageCollection, get_event_ids, is_corrupted
 ANALYZE_THRESHOLD = 0.3
 
 
-def _broadcast_events(message_broker_connection: MessageBrokerConnection, events: List[ImportEvent]):
-    """Broadcasts list of ImportEvents as batch to EVENT_EXCHANGE with corresponding routing key (depending
-    on catalog/collection)
-
-    :param message_broker_connection:
-    :param event:
-    :return:
-    """
-
-    to_send = {}
-
-    for event in events:
-        key = get_routing_key(event.catalogue, event.entity)
-
-        if key not in to_send:
-            to_send[key] = []
-
-        event_msg = {
-            'header': {
-                'event_id': event.id,
-                'last_event_id': event.last_event,
-                'source_id': event._data.get('_entity_source_id', event._data['_source_id']),
-                'name': event.name,
-                'type': event.action,
-                'catalog': event.catalogue,
-                'collection': event.entity,
-                'source': event.source,
-            },
-            'contents': event._data,
-        }
-        to_send[key].append(event_msg)
-
-    for key, events in to_send.items():
-        message_broker_connection.publish(EVENT_EXCHANGE, key, {'contents': events})
-
-
 def apply_events(storage, last_events, start_after, stats):
     """Apply any unhandled events to the database
 
@@ -68,8 +26,7 @@ def apply_events(storage, last_events, start_after, stats):
     :param stats: update statitics for this action
     :return:
     """
-    with ActiveGarbageCollection("Apply events"), storage.get_session(), MessageBrokerConnection(
-            CONNECTION_PARAMS) as messagebroker_connection:
+    with ActiveGarbageCollection("Apply events"), storage.get_session():
         logger.info(f"Apply events")
 
         PROCESS_PER = 10000
@@ -85,17 +42,7 @@ def apply_events(storage, last_events, start_after, stats):
                         stats.add_applied(action, count)
                         start_after = event.eventid
 
-                        if applied_events:
-                            _broadcast_events(
-                                messagebroker_connection,
-                                applied_events
-                            )
-                    applied_events = event_applicator.apply_all()
-                    if applied_events:
-                        _broadcast_events(
-                            messagebroker_connection,
-                            applied_events
-                        )
+                    event_applicator.apply_all()
 
                 unhandled_events = storage.get_events_starting_after(start_after, PROCESS_PER)
 
