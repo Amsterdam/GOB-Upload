@@ -6,7 +6,7 @@ from gobcore.exceptions import GOBException
 from unittest.mock import MagicMock, patch, ANY
 
 from gobupload.storage.handler import GOBStorageHandler
-from gobupload.update.event_applicator import EventApplicator, _get_gob_event
+from gobupload.update.event_applicator import EventApplicator
 from tests.fixtures import dict_to_object
 
 
@@ -122,73 +122,6 @@ class TestEventApplicator(TestCase):
         })
         event = dict_to_object(self.mock_event)
         self.assertEqual((ANY, 1, ['applied event3', 'applied event4', 'applied event5', 'applied event6']), applicator.apply(event))
-
-
-    @patch('gobupload.update.event_applicator.GOBModel')
-    @patch('gobupload.update.event_applicator.GobEvent')
-    @patch('gobupload.update.event_applicator.MessageMetaData')
-    def test_get_gob_event(self, mock_message_meta_data, mock_gob_event, mock_model):
-        mock_model().get_collection.return_value = {
-            'version': '0.1'
-        }
-
-        event = dict_to_object(self.mock_event)
-        data = {
-            'entity': {
-                '_version': '0.1'
-            }
-        }
-
-        expected_event_msg = {
-            'event': event.action,
-            'data': data
-        }
-        expected_meta_data = mock_message_meta_data.return_value = 'meta_data'
-
-        _get_gob_event(event, data)
-
-        mock_gob_event.assert_called_with(expected_event_msg, expected_meta_data)
-
-    @patch('gobupload.update.event_applicator.GOBMigrations')
-    @patch('gobupload.update.event_applicator.GOBModel')
-    @patch('gobupload.update.event_applicator.GobEvent')
-    @patch('gobupload.update.event_applicator.MessageMetaData')
-    def test_get_gob_event_migration(self, mock_message_meta_data, mock_gob_event, mock_model, mock_migrations):
-        target_version = '0.2'
-
-        mock_model().get_collection.return_value = {
-            'version': target_version
-        }
-
-        mock_migrations().migrate_event_data.return_value = {
-            'entity': {
-                '_version': target_version
-            }
-        }
-
-        event = dict_to_object(self.mock_event)
-        data = {
-            'entity': {
-                '_version': '0.1'
-            }
-        }
-
-        expected_event_msg = {
-            'event': event.action,
-            'data': {
-                'entity': {
-                    '_version': target_version
-                }
-            }
-        }
-        expected_meta_data = mock_message_meta_data.return_value = 'meta_data'
-
-        _get_gob_event(event, data)
-
-        mock_migrations().migrate_event_data.assert_called_with(event, data, event.catalogue, event.entity,
-                                                                target_version)
-
-        mock_gob_event.assert_called_with(expected_event_msg, expected_meta_data)
 
     def test_add_other_event(self):
         applicator = EventApplicator(self.storage, {})
