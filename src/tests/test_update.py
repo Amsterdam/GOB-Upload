@@ -6,7 +6,7 @@ from gobcore.events.import_events import ADD, CONFIRM, DELETE, MODIFY
 from gobcore.exceptions import GOBException
 
 from gobupload.storage.handler import GOBStorageHandler
-from gobupload.update.event_applicator import _get_gob_event
+from gobupload.update.event_applicator import database_to_gobevent
 from gobupload.update.main import UpdateStatistics, _store_events, full_update, get_event_ids
 from tests import fixtures
 
@@ -42,7 +42,7 @@ class TestUpdate(TestCase):
 
         self.mock_storage.add_events.assert_called_with(message['contents'])
 
-    @patch('gobupload.update.event_applicator.GobEvent')
+    @patch('gobcore.events.GobEvent')
     @patch('gobupload.update.main.get_event_ids')
     def test_fullupdate_creates_event_and_pops_ids(self, mock_ids, mock_event, mock):
         self.mock_storage.get_last_events.return_value = {}
@@ -61,7 +61,7 @@ class TestUpdate(TestCase):
 
         self.mock_storage.get_events_starting_after.assert_not_called()
 
-    @patch('gobupload.update.event_applicator.GobEvent')
+    @patch('gobcore.events.GobEvent')
     @patch('gobupload.update.main.get_event_ids')
     def test_fullupdate_not_creates_event_and_pops_ids(self, mock_ids, mock_event, mock):
         mock.return_value = self.mock_storage
@@ -80,7 +80,7 @@ class TestUpdate(TestCase):
         self.mock_storage.add_events.assert_not_called()
         self.mock_storage.get_events_starting_after.assert_not_called()
 
-    @patch('gobupload.update.event_applicator.GobEvent')
+    @patch('gobcore.events.GobEvent')
     @patch('gobupload.update.main.get_event_ids')
     def test_fullupdate_applies_events(self, mock_ids, mock_event, mock):
         self.mock_storage.get_last_events.return_value = {}
@@ -132,9 +132,10 @@ class TestUpdate(TestCase):
         for action_expected in ['ADD', 'DELETE', 'CONFIRM', 'MODIFY']:
             data = {'_last_event': last_event_expected}
             dummy_event.action = action_expected
+            dummy_event.contents = data
 
             # setup done, run gob event
-            gob_event = _get_gob_event(dummy_event, data)
+            gob_event = database_to_gobevent(dummy_event)
 
             # assert action and last_event are as expected
             self.assertEqual(action_expected, gob_event.name)
@@ -146,12 +147,13 @@ class TestUpdate(TestCase):
     def test_gob_event_invalid_action(self, mock_event):
         # setup initial event and data
         dummy_event = fixtures.get_event_fixure()
+        dummy_event.contents = {}
 
         for invalid_action in ['FOO', 'BAR', None, 1]:
             dummy_event.action = invalid_action
 
             # Assert that Exception is thrown when events have invalid actions
-            self.assertRaises(GOBException, _get_gob_event, dummy_event, {})
+            self.assertRaises(GOBException, database_to_gobevent, dummy_event)
 
     def test_store_events(self, mock):
         metadata = fixtures.get_metadata_fixture()
