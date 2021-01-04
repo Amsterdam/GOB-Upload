@@ -2,11 +2,12 @@ from unittest import TestCase, mock
 from unittest.mock import MagicMock, patch, call
 
 from gobcore.model import GOBModel
+from datetime import date
 
 from gobupload.relate.exceptions import RelateException
 from gobupload.storage.relate import EQUALS, LIES_IN, JOIN, WHERE, \
     _get_data, get_current_relations, _query_missing, check_relations, \
-    check_very_many_relations, check_relation_conflicts, _get_relation_check_query, QA_CHECK, QA_LEVEL
+    check_very_many_relations, check_relation_conflicts, _get_relation_check_query, QA_CHECK, QA_LEVEL, date_to_datetime, _get_date_origin_fields
 
 
 class TestRelations(TestCase):
@@ -16,6 +17,20 @@ class TestRelations(TestCase):
 
     def tearDown(self):
         pass
+
+    def test_date_to_datetime(self):
+        date_obj = date(2020, 12, 19)
+        dt_obj = date_to_datetime(date_obj)
+
+        self.assertEqual('2020-12-19 00:00:00', dt_obj.strftime('%Y-%m-%d %H:%M:%S'))
+
+    def test_get_date_origin_fields(self):
+        self.assertEqual([
+            "src_begin_geldigheid",
+            "dst_begin_geldigheid",
+            "src_eind_geldigheid",
+            "dst_eind_geldigheid",
+        ], _get_date_origin_fields())
 
     @patch('gobupload.storage.relate._execute')
     def test_current_relations(self, mock_execute):
