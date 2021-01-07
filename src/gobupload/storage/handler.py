@@ -363,7 +363,8 @@ WHERE
         result = None
         try:
             # Get the result of comparison where data is equal to the current state
-            result = self.engine.execute(queries.get_comparison_query(source, current, tmp_table_name, fields, mode))
+            result = self.engine.execution_options(stream_results=True)\
+                .execute(queries.get_comparison_query(source, current, tmp_table_name, fields, mode))
 
             for row in result:
                 yield dict(row)

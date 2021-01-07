@@ -296,8 +296,10 @@ WHERE
         diff = self.storage.compare_temporary_data(temporary)
         results = [result for result in diff]
 
+        self.storage.engine.execution_options.assert_called_with(stream_results=True)
+
         # Assert the query is performed is deleted
-        self.storage.engine.execute.assert_any_call(query)
+        self.storage.engine.execution_options().execute.assert_any_call(query)
 
         # Assert the temporary table is deleted
         self.storage.engine.execute.assert_any_call(f"DROP TABLE IF EXISTS {temporary}")
