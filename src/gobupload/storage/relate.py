@@ -170,9 +170,13 @@ def _get_relation_check_query(query_type, src_catalog_name, src_collection_name,
     relation_table_name = "rel_" + get_relation_name(model, src_catalog_name, src_collection_name, src_field_name)
 
     main_select = [f"src.{FIELD.ID} as id",
-                   f"src.{src_field_name}->>'{FIELD.SOURCE_VALUE}' as {FIELD.SOURCE_VALUE}",
                    f"src.{FIELD.EXPIRATION_DATE}"]
-    select = [FIELD.ID, f"{src_field_name}->>'{FIELD.SOURCE_VALUE}'", FIELD.EXPIRATION_DATE]
+    main_select.extend([f"rel.{FIELD.SOURCE_VALUE}"] if query_type == "dangling" else
+                       [f"src.{src_field_name}->>'{FIELD.SOURCE_VALUE}' as {FIELD.SOURCE_VALUE}"])
+    select = [FIELD.ID,
+              FIELD.EXPIRATION_DATE,
+              FIELD.DATE_DELETED,
+              f"jsonb_array_elements({src_field_name}) as {src_field_name}"]
 
     if src_has_states:
         state_select = [FIELD.SEQNR, FIELD.START_VALIDITY, FIELD.END_VALIDITY]
@@ -189,22 +193,19 @@ def _get_relation_check_query(query_type, src_catalog_name, src_collection_name,
     src = f"""
 (
 SELECT
-    {select},
-    _date_deleted,
-    jsonb_array_elements({src_field_name}) as {src_field_name}
+    {select}
 FROM
     {src_table_name}
 ) AS src
-""" if is_many else f"{src_table_name} AS src"
+""" if is_many and query_type == "missing" else f"{src_table_name} src"
 
-    where = ["COALESCE(src._expiration_date, '9999-12-31'::timestamp without time zone) > NOW()"]
+    where = [f"src.{FIELD.DATE_DELETED} IS NULL"]
 
     # For missing relations check is bronwaarde is empty
     where.extend([f"{src_field_name}->>'bronwaarde' IS NULL"] if query_type == "missing" else [])
 
-    # For dangling relations check if bronwaarde is filled but no destination is found
-    where.extend([f"{src_field_name}->>'bronwaarde' IS NOT NULL",
-                  "rel.dst_id IS NULL"] if query_type == "dangling" else [])
+    # For dangling relations check if destination is empty
+    where.extend(["rel.dst_id IS NULL", f"rel.{FIELD.DATE_DELETED} IS NULL"] if query_type == "dangling" else [])
 
     if filter_applications:
         ors = [f"src.{FIELD.APPLICATION} = '{application}'" for application in filter_applications]
@@ -215,10 +216,15 @@ FROM
 SELECT
     {main_select}
 FROM
-    {src}
+    {src}"""
+
+    query += f"""
 JOIN {relation_table_name} rel
 ON
     {join_on}
+""" if query_type == "dangling" else ""
+
+    query += f"""
 WHERE
     {where}
 """
