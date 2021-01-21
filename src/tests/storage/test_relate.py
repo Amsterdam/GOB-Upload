@@ -236,18 +236,15 @@ ORDER BY _source, _id, volgnummer, begin_geldigheid
             expect = """
 SELECT
     src._id as id,
-    src.any_field_name->>'bronwaarde' as bronwaarde,
     src._expiration_date,
+    src.any_field_name->>'bronwaarde' as bronwaarde,
     src.volgnummer,
     src.begin_geldigheid,
     src.eind_geldigheid
 FROM
-    any_catalogany_collection AS src
-JOIN rel_cat_col_cat2_col2_field rel
-ON
-    src._id = rel.src_id AND src.volgnummer = rel.src_volgnummer
+    any_catalogany_collection src
 WHERE
-    COALESCE(src._expiration_date, '9999-12-31'::timestamp without time zone) > NOW() AND any_field_name->>'bronwaarde' IS NULL
+    src._date_deleted IS NULL AND any_field_name->>'bronwaarde' IS NULL
 """
             self.assertEqual(result, expect)
 
@@ -256,18 +253,19 @@ WHERE
             expect = """
 SELECT
     src._id as id,
-    src.any_field_name->>'bronwaarde' as bronwaarde,
     src._expiration_date,
+    rel.bronwaarde,
     src.volgnummer,
     src.begin_geldigheid,
     src.eind_geldigheid
 FROM
-    any_catalogany_collection AS src
+    any_catalogany_collection src
 JOIN rel_cat_col_cat2_col2_field rel
 ON
     src._id = rel.src_id AND src.volgnummer = rel.src_volgnummer
+
 WHERE
-    COALESCE(src._expiration_date, '9999-12-31'::timestamp without time zone) > NOW() AND any_field_name->>'bronwaarde' IS NOT NULL AND rel.dst_id IS NULL
+    src._date_deleted IS NULL AND rel.dst_id IS NULL AND rel._date_deleted IS NULL
 """
             self.assertEqual(result, expect)
 
@@ -298,8 +296,8 @@ WHERE
             expect = """
 SELECT
     src._id as id,
-    src.any_field_name->>'bronwaarde' as bronwaarde,
     src._expiration_date,
+    src.any_field_name->>'bronwaarde' as bronwaarde,
     src.volgnummer,
     src.begin_geldigheid,
     src.eind_geldigheid
@@ -308,22 +306,18 @@ FROM
 (
 SELECT
     _id,
-    any_field_name->>'bronwaarde',
     _expiration_date,
+    _date_deleted,
+    jsonb_array_elements(any_field_name) as any_field_name,
     volgnummer,
     begin_geldigheid,
-    eind_geldigheid,
-    _date_deleted,
-    jsonb_array_elements(any_field_name) as any_field_name
+    eind_geldigheid
 FROM
     any_catalogany_collection
 ) AS src
 
-JOIN rel_cat_col_cat2_col2_field rel
-ON
-    src._id = rel.src_id AND src.volgnummer = rel.src_volgnummer
 WHERE
-    COALESCE(src._expiration_date, '9999-12-31'::timestamp without time zone) > NOW() AND any_field_name->>'bronwaarde' IS NULL
+    src._date_deleted IS NULL AND any_field_name->>'bronwaarde' IS NULL
 """
             self.assertEqual(result, expect)
 
@@ -332,31 +326,18 @@ WHERE
             expect = """
 SELECT
     src._id as id,
-    src.any_field_name->>'bronwaarde' as bronwaarde,
     src._expiration_date,
+    rel.bronwaarde,
     src.volgnummer,
     src.begin_geldigheid,
     src.eind_geldigheid
 FROM
-    
-(
-SELECT
-    _id,
-    any_field_name->>'bronwaarde',
-    _expiration_date,
-    volgnummer,
-    begin_geldigheid,
-    eind_geldigheid,
-    _date_deleted,
-    jsonb_array_elements(any_field_name) as any_field_name
-FROM
-    any_catalogany_collection
-) AS src
-
+    any_catalogany_collection src
 JOIN rel_cat_col_cat2_col2_field rel
 ON
     src._id = rel.src_id AND src.volgnummer = rel.src_volgnummer
+
 WHERE
-    COALESCE(src._expiration_date, '9999-12-31'::timestamp without time zone) > NOW() AND any_field_name->>'bronwaarde' IS NOT NULL AND rel.dst_id IS NULL AND (src._application = 'applicationA' OR src._application = 'applicationB')
+    src._date_deleted IS NULL AND rel.dst_id IS NULL AND rel._date_deleted IS NULL AND (src._application = 'applicationA' OR src._application = 'applicationB')
 """
             self.assertEqual(result, expect)
