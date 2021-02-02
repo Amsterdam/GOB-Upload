@@ -1,10 +1,11 @@
 from unittest import TestCase
-from unittest.mock import patch, MagicMock, call
 
-from gobcore.model.metadata import FIELD
-from gobcore.exceptions import GOBException
 from datetime import date, datetime
-from gobupload.relate.update import Relater, RelateException, StartValiditiesTable
+from gobcore.exceptions import GOBException
+from gobcore.model.metadata import FIELD
+from unittest.mock import MagicMock, call, patch
+
+from gobupload.relate.update import EventCreator, RelateException, Relater, StartValiditiesTable
 
 
 class MockModel:
@@ -121,6 +122,134 @@ GROUP BY _id, volgnummer
         self.assertEqual('catalog_name_collection_name_table', res.from_table)
         self.assertEqual('table_name', res.name)
 
+
+class TestEventCreator(TestCase):
+    def test_get_modifications(self):
+        ec = EventCreator(False)
+
+        row = {
+            'rel_a': 'a field',
+            'rel_b': 'b field',
+            'rel_c': 'c field',
+            'a': 'a field',
+            'b': 'b field',
+            'c': 'changed field',
+        }
+
+        self.assertEqual([], ec._get_modifications(row, ['a', 'b']))
+
+        self.assertEqual([
+            {
+                'old_value': 'c field',
+                'new_value': 'changed field',
+                'key': 'c'
+            }
+        ], ec._get_modifications(row, ['a', 'b', 'c']))
+
+    @patch('gobupload.relate.update.ADD')
+    @patch('gobupload.relate.update.MODIFY')
+    @patch('gobupload.relate.update.DELETE')
+    @patch('gobupload.relate.update.CONFIRM')
+    def test_create_event(self, mock_confirm, mock_delete, mock_modify, mock_add):
+        ec = EventCreator(False)
+
+        # ADD event (rel row not present)
+        row = {
+            'rel_id': None,
+            '_source_id': 'SOURCE ID',
+            'a': 'val',
+            'b': 'val',
+            'rel_deleted': None,
+        }
+        event = ec.create_event(row)
+        self.assertEqual(mock_add.create_event.return_value, event)
+        mock_add.create_event.assert_called_with('SOURCE ID', 'SOURCE ID', {
+            '_source_id': 'SOURCE ID',
+            'a': 'val',
+            'b': 'val',
+        })
+
+        # ADD event (rel row present, but previously deleted)
+        row = {
+            'rel_id': 'some existing rel id',
+            '_source_id': 'SOURCE ID',
+            'a': 'val',
+            'b': 'val',
+            'rel_deleted': 'some date',
+            '_last_event': 'last event'
+        }
+        event = ec.create_event(row)
+        self.assertEqual(mock_add.create_event.return_value, event)
+        mock_add.create_event.assert_called_with('SOURCE ID', 'SOURCE ID', {
+            '_source_id': 'SOURCE ID',
+            'a': 'val',
+            'b': 'val',
+            '_last_event': 'last event'
+        })
+
+        # DELETE EVENT (src not present)
+        row = {
+            'rel_id': 'rel id',
+            '_source_id': 'SOURCE ID',
+            'a': 'val',
+            'b': 'val',
+            'src_id': None,
+            '_last_event': 'last',
+            'src_deleted': None,
+            'rel_deleted': None,
+        }
+        event = ec.create_event(row)
+        self.assertEqual(mock_delete.create_event.return_value, event)
+        mock_delete.create_event.assert_called_with('rel id', 'rel id', {'_last_event': 'last'})
+
+        # DELETE EVENT (src marked as deleted)
+        row = {
+            'rel_id': 'rel id',
+            '_source_id': 'SOURCE ID',
+            'a': 'val',
+            'b': 'val',
+            'src_id': 'src id',
+            '_last_event': 'last',
+            'src_deleted': True,
+            'rel_deleted': None,
+        }
+        event = ec.create_event(row)
+        self.assertEqual(mock_delete.create_event.return_value, event)
+        mock_delete.create_event.assert_called_with('rel id', 'rel id', {'_last_event': 'last'})
+
+        # MODIFY EVENT (hash differs, and modifications detected)
+        ec._get_hash = lambda x: 'THE HASH'
+        ec._get_modifications = lambda a, b: ['a']
+        row = {
+            'rel_id': 'rel id',
+            'src_deleted': None,
+            'src_id': 'src id',
+            'rel__hash': 'DIFFERENT HASH',
+            '_last_event': 'last',
+            'rel_deleted': None,
+        }
+        event = ec.create_event(row)
+        self.assertEqual(mock_modify.create_event.return_value, event)
+        mock_modify.create_event.assert_called_with('rel id', 'rel id', {
+            'modifications': ['a'],
+            '_last_event': 'last',
+            '_hash': 'THE HASH'
+        })
+
+        # CONFIRM EVENT
+        row = {
+            'rel_id': 'rel id',
+            'src_deleted': None,
+            'src_id': 'src id',
+            'rel__hash': 'THE HASH',
+            '_last_event': 'last',
+            'rel_deleted': None,
+        }
+        event = ec.create_event(row)
+        self.assertEqual(mock_confirm.create_event.return_value, event)
+        mock_confirm.create_event.assert_called_with('rel id', 'rel id', {'_last_event': 'last'})
+
+
 @patch("gobupload.relate.update.logger", MagicMock())
 @patch("gobupload.relate.update.Relater.model", MockModel())
 @patch("gobupload.relate.update.Relater.sources", MockSources())
@@ -143,7 +272,8 @@ class TestRelaterInit(TestCase):
         self.assertEqual('src_collection_name', e.src_collection_name)
         self.assertEqual('src_field_name', e.src_field_name)
         self.assertEqual(MockModel().get_collection('', 'src_collection_name'), e.src_collection)
-        self.assertEqual(MockModel().get_collection('', 'src_collection_name')['all_fields']['src_field_name'], e.src_field)
+        self.assertEqual(MockModel().get_collection('', 'src_collection_name')['all_fields']['src_field_name'],
+                         e.src_field)
         self.assertEqual('dst_catalog_name_dst_collection_name_table', e.dst_table_name)
         self.assertEqual(True, e.src_has_states)
         self.assertEqual(False, e.dst_has_states)
@@ -201,22 +331,6 @@ class TestRelater(TestCase):
             relater.dst_has_states = dst_has_states
             self.assertEqual(result, relater._validity_select_expressions_src())
 
-    def test_validity_select_expressions_dst(self):
-        test_cases = [
-            (True, True, ('GREATEST(src_bg.begin_geldigheid, dst_bg.begin_geldigheid, src.provided_begin_geldigheid)',
-                          'LEAST(src.eind_geldigheid, dst.eind_geldigheid)')),
-            (True, False, ('GREATEST(src_bg.begin_geldigheid, src.provided_begin_geldigheid)', 'src.eind_geldigheid')),
-            (False, True, ('GREATEST(dst_bg.begin_geldigheid, src.provided_begin_geldigheid)', 'dst.eind_geldigheid')),
-            (False, False, ('src.provided_begin_geldigheid', 'NULL')),
-        ]
-
-        relater = self._get_relater()
-
-        for src_has_states, dst_has_states, result in test_cases:
-            relater.src_has_states = src_has_states
-            relater.dst_has_states = dst_has_states
-            self.assertEqual(result, relater._validity_select_expressions_dst())
-
     def test_select_aliases(self):
         relater = self._get_relater()
         relater.select_aliases = ['a']
@@ -236,19 +350,15 @@ class TestRelater(TestCase):
             'dst_volgnummer',
         ], relater._select_aliases())
 
-        relater.exclude_relation_table = True
-
         self.assertEqual([
             'a',
             'src_volgnummer',
             'dst_volgnummer',
-        ], relater._select_aliases())
+        ], relater._select_aliases(True))
 
     def test_build_select_expressions(self):
         relater = self._get_relater()
-        relater.src_has_states = False
-        relater.dst_has_states = False
-        relater._select_aliases = lambda: ['a', 'b']
+        relater._select_aliases = lambda x: ['a', 'b']
 
         mapping = {'a': 'some a', 'b': 'some b'}
         self.assertEqual([
@@ -272,51 +382,43 @@ class TestRelater(TestCase):
         relater._source_value_ref = lambda: 'SOURCE VALUE'
         relater._build_select_expressions = MagicMock()
         relater._validity_select_expressions_src = lambda: ('SRC_START_VALIDITY', 'SRC_END_VALIDITY')
-        result = relater._select_expressions_src()
-        self.assertEqual(relater._build_select_expressions.return_value, result)
-
-    def test_select_expressions_dst(self):
-        relater = self._get_relater()
-        relater._get_id = lambda _: 'ID'
-        relater._get_derivation = lambda: 'DERIVATION'
-        relater._source_value_ref = lambda: 'SOURCE VALUE'
-        relater._build_select_expressions = MagicMock()
-        relater._validity_select_expressions_dst = lambda: ('DST_START_VALIDITY', 'DST_END_VALIDITY')
-        result = relater._select_expressions_dst()
+        result = relater._select_expressions_src(123, 456)
         self.assertEqual(relater._build_select_expressions.return_value, result)
 
     def test_select_expressions_rel_delete(self):
         relater = self._get_relater()
         res = relater._select_expressions_rel_delete()
-        expected = ['NULL AS _version',
-                    'NULL AS _application',
-                    'NULL AS _source_id',
-                    'NULL AS _source',
-                    'NULL AS _expiration_date',
-                    'NULL AS id',
-                    'NULL AS derivation',
-                    'NULL AS src_source',
-                    'NULL AS src_id',
-                    'NULL AS src_last_event',
-                    'NULL AS dst_source',
-                    'NULL AS dst_id',
-                    'NULL AS bronwaarde',
-                    'NULL AS _last_src_event',
-                    'NULL AS _last_dst_event',
-                    'NULL AS begin_geldigheid',
-                    'NULL AS eind_geldigheid',
-                    'NULL AS src_deleted',
-                    'NULL AS row_number',
-                    'rel._last_event AS _last_event',
-                    'NULL AS rel_deleted',
-                    'rel.id AS rel_id',
-                    'rel.dst_id AS rel_dst_id',
-                    'rel.dst_volgnummer AS rel_dst_volgnummer',
-                    'rel._expiration_date AS rel__expiration_date',
-                    'rel.begin_geldigheid AS rel_begin_geldigheid',
-                    'rel.eind_geldigheid AS rel_eind_geldigheid',
-                    'rel._hash AS rel__hash',
-                    'NULL AS src_volgnummer']
+        expected = [
+            'NULL AS _version',
+            'NULL AS _application',
+            'NULL AS _source_id',
+            'NULL AS _source',
+            'NULL::timestamp without time zone AS _expiration_date',
+            'NULL AS id',
+            'NULL AS derivation',
+            'NULL AS src_source',
+            'NULL AS src_id',
+            'NULL::integer AS src_last_event',
+            'NULL AS dst_source',
+            'NULL AS dst_id',
+            'NULL AS bronwaarde',
+            'NULL::integer AS _last_src_event',
+            'NULL::integer AS _last_dst_event',
+            'NULL::timestamp without time zone AS begin_geldigheid',
+            'NULL::timestamp without time zone AS eind_geldigheid',
+            'NULL::timestamp without time zone AS src_deleted',
+            'NULL::integer AS row_number',
+            'rel._last_event AS _last_event',
+            'NULL::timestamp without time zone AS rel_deleted',
+            'rel.id AS rel_id',
+            'rel.dst_id AS rel_dst_id',
+            'rel.dst_volgnummer AS rel_dst_volgnummer',
+            'rel._expiration_date AS rel__expiration_date',
+            'rel.begin_geldigheid AS rel_begin_geldigheid',
+            'rel.eind_geldigheid AS rel_eind_geldigheid',
+            'rel._hash AS rel__hash',
+            'NULL::integer AS src_volgnummer'
+        ]
 
         self.assertEqual(expected, res)
 
@@ -348,7 +450,8 @@ END"""
         relater.relation_specs = [{
             'multiple_allowed': False,
         }]
-        self.assertEqual("src._id || '.' || src.volgnummer || '.' || src._source || '.' || (BRONWAARDE)", relater._get_id())
+        self.assertEqual("src._id || '.' || src.volgnummer || '.' || src._source || '.' || (BRONWAARDE)",
+                         relater._get_id())
 
     def test_get_id_for_dst(self):
         relater = self._get_relater()
@@ -393,10 +496,12 @@ END"""
         relater = self._get_relater()
         relater.is_many = False
 
-        self.assertEqual("(src.src_field_name->>'begin_geldigheid')::timestamp without time zone", relater._provided_start_validity())
+        self.assertEqual("(src.src_field_name->>'begin_geldigheid')::timestamp without time zone",
+                         relater._provided_start_validity())
 
         relater.is_many = True
-        self.assertEqual("(json_arr_elm.item->>'begin_geldigheid')::timestamp without time zone", relater._provided_start_validity())
+        self.assertEqual("(json_arr_elm.item->>'begin_geldigheid')::timestamp without time zone",
+                         relater._provided_start_validity())
 
     def test_geo_resolve(self):
         expected = "ST_IsValid(dst.dst_attribute) AND " \
@@ -491,7 +596,6 @@ END"""
         ]
         self.assertEqual(expected, relater._src_dst_match('src_val_ref'))
 
-
     def test_table_outer_join_on(self):
         relater = self._get_relater()
         relater.dst_has_states = False
@@ -519,7 +623,7 @@ END"""
             "src_dst.src_id = src._id",
             "src_dst._source = src._source",
             "src_dst.bronwaarde = json_obj_ref->>'bronwaarde'",
-            "((src._application = 'applicationA' AND src_dst.row_number = 1) OR (src._application = 'applicationB'))"
+            "src_dst.dst_id IS NOT NULL",
         ]
         self.assertEqual(expected, relater._src_dst_join_on())
 
@@ -529,16 +633,7 @@ END"""
             "src_dst.src_volgnummer = src.volgnummer",
             "src_dst._source = src._source",
             "src_dst.bronwaarde = json_obj_ref->>'bronwaarde'",
-            "((src._application = 'applicationA' AND src_dst.row_number = 1) OR (src._application = 'applicationB'))"
-        ]
-        self.assertEqual(expected, relater._src_dst_join_on())
-
-        relater.exclude_relation_table = True
-        expected = [
-            "src_dst.src_id = src._id",
-            "src_dst.src_volgnummer = src.volgnummer",
-            "src_dst._source = src._source",
-            "src_dst.bronwaarde = json_obj_ref->>'bronwaarde'"
+            "src_dst.dst_id IS NOT NULL",
         ]
         self.assertEqual(expected, relater._src_dst_join_on())
 
@@ -606,11 +701,6 @@ END"""
                    "ON json_arr_elm->>'bronwaarde' IS NOT NULL"
         self.assertEqual(expected, relater._join_array_elements())
 
-    def test_src_dst_select(self):
-        relater = self._get_relater()
-
-        self.assertEqual('SELECT * FROM src_entities WHERE _date_deleted IS NULL', relater._src_dst_select())
-
     def _get_src_dst_join_mocked_relater(self):
         relater = self._get_relater()
         relater._valid_geo_src_check = lambda: 'CHECK_VALID_GEO_SRC'
@@ -629,16 +719,16 @@ END"""
         relater.is_many = False
 
         expected = """
-LEFT JOIN (
+INNER JOIN (
     SELECT
         SRC_DST SELECT EXPRESSION1,
     SRC_DST SELECT EXPRESSION2
     FROM (
-        SRC_DST_SELECT
+        SELECT * FROM src_entities WHERE _date_deleted IS NULL
     ) src
     
     
-    LEFT JOIN dst_catalog_name_dst_collection_name_table dst ON DST_TABLE_INNER_JOIN_ON1 AND
+    LEFT JOIN (DST ENTITIES) dst ON DST_TABLE_INNER_JOIN_ON1 AND
     DST_TABLE_INNER_JOIN_ON2 AND
     dst._date_deleted IS NULL
     GROUP BY SRC_DST_GROUP_BY1,
@@ -647,7 +737,7 @@ LEFT JOIN (
     SRC_DST_JOIN_ON2
 """
 
-        result = relater._src_dst_join()
+        result = relater._src_dst_join('DST ENTITIES')
         self.assertEqual(expected, result)
 
     def test_src_dst_join_no_geo_manyref(self):
@@ -656,16 +746,16 @@ LEFT JOIN (
         relater.is_many = True
 
         expected = """
-LEFT JOIN (
+INNER JOIN (
     SELECT
         SRC_DST SELECT EXPRESSION1,
     SRC_DST SELECT EXPRESSION2
     FROM (
-        SRC_DST_SELECT
+        SELECT * FROM src_entities WHERE _date_deleted IS NULL
     ) src
     
     ARRAY_ELEMENTS
-    LEFT JOIN dst_catalog_name_dst_collection_name_table dst ON DST_TABLE_INNER_JOIN_ON1 AND
+    LEFT JOIN (DST ENTITIES) dst ON DST_TABLE_INNER_JOIN_ON1 AND
     DST_TABLE_INNER_JOIN_ON2 AND
     dst._date_deleted IS NULL
     GROUP BY SRC_DST_GROUP_BY1,
@@ -674,7 +764,7 @@ LEFT JOIN (
     SRC_DST_JOIN_ON2
 """
 
-        result = relater._src_dst_join()
+        result = relater._src_dst_join("DST ENTITIES")
         self.assertEqual(expected, result)
 
     def test_src_dst_join_geo_singleref(self):
@@ -683,16 +773,16 @@ LEFT JOIN (
         relater.is_many = False
 
         expected = """
-LEFT JOIN (
+INNER JOIN (
     SELECT
         SRC_DST SELECT EXPRESSION1,
     SRC_DST SELECT EXPRESSION2
     FROM (
-        SRC_DST_SELECT
+        SELECT * FROM src_entities WHERE _date_deleted IS NULL
     ) src
     JOIN (SELECT * FROM src_catalog_name_src_collection_name_table WHERE (CHECK_VALID_GEO_SRC)) valid_src ON src._gobid = valid_src._gobid
     
-    LEFT JOIN dst_catalog_name_dst_collection_name_table dst ON DST_TABLE_INNER_JOIN_ON1 AND
+    LEFT JOIN (DST ENTITIES) dst ON DST_TABLE_INNER_JOIN_ON1 AND
     DST_TABLE_INNER_JOIN_ON2 AND
     dst._date_deleted IS NULL
     GROUP BY SRC_DST_GROUP_BY1,
@@ -701,7 +791,7 @@ LEFT JOIN (
     SRC_DST_JOIN_ON2
 """
 
-        result = relater._src_dst_join()
+        result = relater._src_dst_join("DST ENTITIES")
         self.assertEqual(expected, result)
 
     def test_src_dst_join_geo_manyref(self):
@@ -710,16 +800,16 @@ LEFT JOIN (
         relater.is_many = True
 
         expected = """
-LEFT JOIN (
+INNER JOIN (
     SELECT
         SRC_DST SELECT EXPRESSION1,
     SRC_DST SELECT EXPRESSION2
     FROM (
-        SRC_DST_SELECT
+        SELECT * FROM src_entities WHERE _date_deleted IS NULL
     ) src
     JOIN (SELECT * FROM src_catalog_name_src_collection_name_table WHERE (CHECK_VALID_GEO_SRC)) valid_src ON src._gobid = valid_src._gobid
     ARRAY_ELEMENTS
-    LEFT JOIN dst_catalog_name_dst_collection_name_table dst ON DST_TABLE_INNER_JOIN_ON1 AND
+    LEFT JOIN (DST ENTITIES) dst ON DST_TABLE_INNER_JOIN_ON1 AND
     DST_TABLE_INNER_JOIN_ON2 AND
     dst._date_deleted IS NULL
     GROUP BY SRC_DST_GROUP_BY1,
@@ -728,7 +818,7 @@ LEFT JOIN (
     SRC_DST_JOIN_ON2
 """
 
-        result = relater._src_dst_join()
+        result = relater._src_dst_join("DST ENTITIES")
         self.assertEqual(expected, result)
 
     def test_row_number_partition(self):
@@ -780,22 +870,25 @@ LEFT JOIN (
     )
 """, relater._select_rest_src())
 
-    def test_cleanup_tmp_tables(self):
+    @patch("gobupload.relate.update._execute")
+    def test_cleanup_tmp_tables(self, mock_execute):
         relater = self._get_relater()
         relater.src_intv_tmp_table = MagicMock()
         relater.dst_intv_tmp_table = MagicMock()
+        relater.result_table_name = 'RESULT TABLE NAME'
 
         relater._cleanup_tmp_tables()
         relater.src_intv_tmp_table.drop.assert_called_once()
         relater.dst_intv_tmp_table.drop.assert_called_once()
+        mock_execute.assert_called_with("DROP TABLE RESULT TABLE NAME")
 
     @patch("gobupload.relate.update.logger", MagicMock())
-    @patch("gobupload.relate.update._execute")
-    def test_create_tmp_tables(self, mock_execute):
+    def test_create_tmp_tables(self):
         relater = self._get_relater()
         relater._start_validity_per_seqnr = lambda tablename: "START_VALIDITIES_" + tablename
         relater.src_intv_tmp_table = MagicMock()
         relater.dst_intv_tmp_table = MagicMock()
+        relater._create_tmp_result_table = MagicMock()
 
         relater.src_table_name = 'src_table_name'
         relater.dst_table_name = 'dst_table_name'
@@ -806,9 +899,11 @@ LEFT JOIN (
 
         relater.src_intv_tmp_table.create.assert_called_once()
         relater.dst_intv_tmp_table.create.assert_called_once()
+        relater._create_tmp_result_table.assert_called_once()
 
         relater.src_intv_tmp_table.create.reset_mock()
         relater.dst_intv_tmp_table.create.reset_mock()
+        relater._create_tmp_result_table.reset_mock()
         relater.src_has_states = True
         relater.dst_has_states = False
 
@@ -816,9 +911,11 @@ LEFT JOIN (
 
         relater.src_intv_tmp_table.create.assert_called_once()
         relater.dst_intv_tmp_table.create.assert_not_called()
+        relater._create_tmp_result_table.assert_called_once()
 
         relater.src_intv_tmp_table.create.reset_mock()
         relater.dst_intv_tmp_table.create.reset_mock()
+        relater._create_tmp_result_table.reset_mock()
         relater.src_has_states = False
         relater.dst_has_states = True
 
@@ -826,12 +923,14 @@ LEFT JOIN (
 
         relater.src_intv_tmp_table.create.assert_not_called()
         relater.dst_intv_tmp_table.create.assert_called_once()
+        relater._create_tmp_result_table.assert_called_once()
 
         relater.src_table_name = 'src_table_name'
-        relater.dst_table_name = 'src_table_name' # same table name, only create one tmp table
+        relater.dst_table_name = 'src_table_name'  # same table name, only create one tmp table
 
         relater.src_intv_tmp_table.create.reset_mock()
         relater.dst_intv_tmp_table.create.reset_mock()
+        relater._create_tmp_result_table.reset_mock()
         relater.src_has_states = True
         relater.dst_has_states = True
 
@@ -843,150 +942,93 @@ LEFT JOIN (
         self.assertEqual(relater.src_intv_tmp_table, relater.dst_intv_tmp_table)
 
         relater.src_intv_tmp_table.create.assert_called_once()
+        relater._create_tmp_result_table.assert_called_once()
         # Don't check dst_intv_tmp_table, because that is the same object as src_intv_tmp_table now
 
-    def test_changed_source_ids(self):
+    @patch("gobupload.relate.update._execute")
+    def test_create_tmp_result_table(self, mock_execute):
         relater = self._get_relater()
-        expected = f"""
-SELECT e.source_id
-FROM events e
-INNER JOIN jsonb_array_elements(e.contents -> 'modifications') modifications
-ON modifications ->> 'key' IN ('begin_geldigheid', 'eind_geldigheid', '_source', 'attrA', 'attrB')
-WHERE catalogue = 'CATALOG'
-  AND entity = 'COLLECTION'
-  AND eventid > LAST_EVENTID
-  AND action = 'MODIFY'
-UNION
-SELECT e.source_id
-FROM events e
-WHERE catalogue = 'CATALOG'
-  AND entity = 'COLLECTION'
-  AND eventid > LAST_EVENTID
-  AND action IN ('ADD', 'DELETE')
-"""
+        relater.result_table_name = "tmp_table_name"
+        relater.dst_has_states = True
+        relater.src_has_states = True
+        relater._create_tmp_result_table()
 
-        self.assertEqual(expected, relater._changed_source_ids('CATALOG', 'COLLECTION', 'LAST_EVENTID', ['attrA', 'attrB']))
+        query = """CREATE TABLE IF NOT EXISTS tmp_table_name (
+    rowid serial,
+    _version varchar,
+    _application varchar,
+    _source_id varchar,
+    _source varchar,
+    _expiration_date timestamp,
+    id varchar,
+    derivation varchar,
+    src_source varchar,
+    src_id varchar,
+    src_last_event integer,
+    dst_source varchar,
+    dst_id varchar,
+    bronwaarde varchar,
+    _last_src_event integer,
+    _last_dst_event integer,
+    begin_geldigheid timestamp,
+    eind_geldigheid timestamp,
+    src_deleted timestamp,
+    row_number integer,
+    _last_event integer,
+    rel_deleted timestamp,
+    rel_id varchar,
+    rel_dst_id varchar,
+    rel_dst_volgnummer integer,
+    rel__expiration_date timestamp,
+    rel_begin_geldigheid timestamp,
+    rel_eind_geldigheid timestamp,
+    rel__hash varchar,
+    src_volgnummer integer,
+    dst_volgnummer integer
+)"""
 
-    def test_src_entities(self):
+        mock_execute.assert_has_calls([
+            call(query),
+            call("TRUNCATE tmp_table_name"),
+        ])
+
+    def test_src_entities_range(self):
         relater = self._get_relater()
         relater._source_value_ref = lambda: 'SOURCE_VAL_REF'
-        relater._changed_source_ids = MagicMock(return_value='CHANGED_SRC_IDS')
-        relater.relation_specs = [{'source_attribute': 'attrA'}, {'source_attribute': 'attrB'}, {}]
         relater.is_many = True
         expected = f"""
 SELECT * FROM src_catalog_name_src_collection_name_table src
-WHERE src._source_id IN (CHANGED_SRC_IDS)
 
 """
-        self.assertEqual(expected, relater._src_entities())
-
-        relater._changed_source_ids.assert_called_with(
-            'src_catalog_name',
-            'src_collection_name',
-            "(SELECT COALESCE(MAX(_last_src_event), 0) FROM rel_src_catalog_name_src_collection_name_src_field_name)",
-            ['src_field_name', 'attrA', 'attrB']
-        )
-        expected = f"""
-SELECT * FROM src_catalog_name_src_collection_name_table src
-
-ORDER BY src._last_event LIMIT 30000
-"""
-        self.assertEqual(expected, relater._src_entities(True))
-
+        self.assertEqual(expected, relater._src_entities_range(0))
 
         relater.is_many = False
+        expected = f"""
+SELECT * FROM src_catalog_name_src_collection_name_table src
+WHERE SOURCE_VAL_REF IS NOT NULL
+"""
+        self.assertEqual(expected, relater._src_entities_range(0))
 
         expected = f"""
 SELECT * FROM src_catalog_name_src_collection_name_table src
-WHERE SOURCE_VAL_REF IS NOT NULL AND src._source_id IN (CHANGED_SRC_IDS)
-
+WHERE SOURCE_VAL_REF IS NOT NULL AND src._last_event > 1 AND src._last_event <= 100
 """
-        self.assertEqual(expected, relater._src_entities())
-        relater.is_many = True
+        self.assertEqual(expected, relater._src_entities_range(1, 100))
 
-        relater.exclude_relation_table = True
-        expected = f"""
-SELECT * FROM src_catalog_name_src_collection_name_table src
-
-
-"""
-        self.assertEqual(expected, relater._src_entities())
-
-        relater.exclude_relation_table = False
-        relater.min_src_event_id = 204
-        relater.max_src_event_id = 24904
+    def test_dst_entities_range(self):
+        relater = self._get_relater()
 
         expected = f"""
-SELECT * FROM src_catalog_name_src_collection_name_table src
-WHERE src._last_event > 204 AND src._last_event <= 24904
-ORDER BY src._last_event LIMIT 30000
+SELECT * FROM dst_catalog_name_dst_collection_name_table dst
+
 """
-        self.assertEqual(expected, relater._src_entities(True))
+        self.assertEqual(expected, relater._dst_entities_range(0))
 
-    def test_dst_entities(self):
-        relater = self._get_relater()
-        relater._changed_source_ids = MagicMock(return_value='CHANGED_SOURCE_IDS')
-        relater.relation_specs = [{'destination_attribute': 'attrA'}, {'destination_attribute': 'attrB'}]
-        expected = f"SELECT * FROM dst_catalog_name_dst_collection_name_table WHERE _source_id IN (CHANGED_SOURCE_IDS)"
-        self.assertEqual(expected, relater._dst_entities())
-        relater._changed_source_ids.assert_called_with(
-            'dst_catalog_name',
-            'dst_collection_name',
-            '(SELECT COALESCE(MAX(_last_dst_event), 0) FROM rel_src_catalog_name_src_collection_name_src_field_name)',
-            ['attrA', 'attrB']
-        )
-
-        relater.exclude_relation_table = True
-        expected = f"SELECT * FROM dst_catalog_name_dst_collection_name_table"
-        self.assertEqual(expected, relater._dst_entities())
-
-    def test_with_src_dst_entities(self):
-        relater = self._get_relater()
-        relater._src_entities = lambda initial: 'SRC_ENTITIES_INITIAL' if initial else 'SRC_ENTITIES'
-        relater._dst_entities = lambda: 'DST_ENTITIES'
-
-        self.assertEqual("""
--- All changed source entities
-src_entities AS (SRC_ENTITIES)""", relater._with_src_entities())
-
-        self.assertEqual("""
--- All changed source entities
-src_entities AS (SRC_ENTITIES_INITIAL)""", relater._with_src_entities(True))
-
-        self.assertEqual("""
--- All changed destination entities
-dst_entities AS (DST_ENTITIES)""", relater._with_dst_entities())
-
-    def test_with_max_src_event(self):
-        relater = self._get_relater()
-        self.assertTrue(
-            "max_src_event AS (SELECT MAX(_last_event) _last_event FROM src_catalog_name_src_collection_name_table)"
-            in relater._with_max_src_event()
-        )
-
-        relater.max_src_event_id = 284024
-
-        self.assertTrue(
-            "max_src_event AS (SELECT 284024 _last_event)" in relater._with_max_src_event()
-        )
-
-    def test_with_max_dst_event(self):
-        relater = self._get_relater()
-        self.assertTrue(
-            "max_dst_event AS (SELECT MAX(_last_event) _last_event FROM dst_catalog_name_dst_collection_name_table)"
-            in relater._with_max_dst_event()
-        )
-
-    def test_with_queries(self):
-        relater = self._get_relater()
-        relater._with_src_entities = lambda initial: 'SRC ENTITIES' + (' INITIAL' if initial else '')
-        relater._with_dst_entities = lambda: 'DST ENTITIES'
-        relater._with_max_src_event = lambda: 'MAX SRC EVENT'
-        relater._with_max_dst_event = lambda: 'MAX DST EVENT'
-        relater._start_validities = lambda: []
-        self.assertTrue('WITH SRC ENTITIES,MAX SRC EVENT,MAX DST EVENT,DST ENTITIES' in relater._with_queries())
-
-        self.assertTrue('WITH SRC ENTITIES INITIAL,MAX SRC EVENT,MAX DST EVENT' in relater._with_queries(True))
+        expected = f"""
+SELECT * FROM dst_catalog_name_dst_collection_name_table dst
+WHERE dst._last_event > 1 AND dst._last_event <= 100
+"""
+        self.assertEqual(expected, relater._dst_entities_range(1, 100))
 
     def test_join_src_geldigheid(self):
         relater = self._get_relater()
@@ -1009,16 +1051,6 @@ dst_entities AS (DST_ENTITIES)""", relater._with_dst_entities())
         self.assertEqual("LEFT JOIN dst_intv_tmp_table_name dst_bg "
                          "ON dst_bg._id = dst._id AND dst_bg.volgnummer = dst.volgnummer",
                          relater._join_dst_geldigheid())
-
-    def test_join_max_event_ids(self):
-        relater = self._get_relater()
-        relater.src_table_name = 'SRC TABLE'
-        relater.dst_table_name = 'DST TABLE'
-
-        self.assertEqual(f"""
-JOIN max_src_event ON TRUE
-JOIN max_dst_event ON TRUE
-""", relater._join_max_event_ids())
 
     def test_join_rel(self):
         relater = self._get_relater()
@@ -1051,12 +1083,11 @@ LEFT JOIN (
             relater._get_where()
         )
 
-        relater.exclude_relation_table = True
         self.assertEqual(
             "WHERE (src._id IS NOT NULL) AND dst._date_deleted IS NULL "
             "AND ((src._application = 'applicationA' AND row_number > 1)) "
             "AND ((src._application = 'applicationA') OR (src._application = 'applicationB' AND dst._id IS NOT NULL))",
-            relater._get_where()
+            relater._get_where(True)
         )
 
     def test_switch_for_specs(self):
@@ -1078,7 +1109,7 @@ LEFT JOIN (
         # Attribute is not equal, return OR expression
         res = relater._switch_for_specs('some_attr', lambda spec: spec['some_attr'] * 3)
         self.assertEqual("((src._application = 'A' AND aaa) OR (src._application = 'B' AND bbb))", res)
-        
+
         # One spec resolves to TRUE, simplify the TRUE.
         # Other spec resolves to FALSE, leave out application expression
         res = relater._switch_for_specs('some_attr', lambda spec: 'FALSE' if spec['some_attr'] != 'a' else 'TRUE')
@@ -1088,26 +1119,47 @@ LEFT JOIN (
         res = relater._switch_for_specs('some_attr', lambda spec: 'FALSE')
         self.assertEqual('FALSE', res)
 
+    def test_create_delete_events_query(self):
+        relater = self._get_relater()
+        relater._src_entities_range = lambda min, max: f"SRC ENTITIES {min}-{max}"
+        relater._dst_entities_range = lambda min, max: f"DST ENTITIES {min}-{max}"
+        relater._select_expressions_rel_delete = MagicMock(return_value=['EXPR1', 'EXPR2'])
+
+        # Test 1
+        relater.src_has_states = True
+        relater.dst_has_states = False
+
+        expected = f"""\
+SELECT EXPR1,
+    EXPR2 FROM rel_src_catalog_name_src_collection_name_src_field_name rel WHERE (src_id, src_volgnummer) IN (SELECT _id, volgnummer FROM (SRC ENTITIES 1-2) q) AND rel.id NOT IN (SELECT rel_id FROM tmp_src_catalog_name_srcabbr_src_field_name_result WHERE rel_id IS NOT NULL) AND rel._date_deleted IS NULL
+UNION
+SELECT EXPR1,
+    EXPR2 FROM rel_src_catalog_name_src_collection_name_src_field_name rel WHERE dst_id IN (SELECT _id FROM (DST ENTITIES 3-4) q) AND rel.id NOT IN (SELECT rel_id FROM tmp_src_catalog_name_srcabbr_src_field_name_result WHERE rel_id IS NOT NULL) AND rel._date_deleted IS NULL"""
+        self.assertEqual(expected, relater._create_delete_events_query(1, 2, 3, 4))
+
+        # Test 2. Switch states
+        relater.src_has_states = False
+        relater.dst_has_states = True
+
+        expected = f"""\
+SELECT EXPR1,
+    EXPR2 FROM rel_src_catalog_name_src_collection_name_src_field_name rel WHERE src_id IN (SELECT _id FROM (SRC ENTITIES 1-2) q) AND rel.id NOT IN (SELECT rel_id FROM tmp_src_catalog_name_srcabbr_src_field_name_result WHERE rel_id IS NOT NULL) AND rel._date_deleted IS NULL
+UNION
+SELECT EXPR1,
+    EXPR2 FROM rel_src_catalog_name_src_collection_name_src_field_name rel WHERE (dst_id, dst_volgnummer) IN (SELECT _id, volgnummer FROM (DST ENTITIES 3-4) q) AND rel.id NOT IN (SELECT rel_id FROM tmp_src_catalog_name_srcabbr_src_field_name_result WHERE rel_id IS NOT NULL) AND rel._date_deleted IS NULL"""
+        self.assertEqual(expected, relater._create_delete_events_query(1, 2, 3, 4))
+
     def _get_get_query_mocked_relater(self):
         relater = self._get_relater()
         relater._dst_table_outer_join_on = lambda: ['DST_TABLE_OUTER_JOIN_ON1', 'DST_TABLE_OUTER_JOIN_ON2']
-        relater._select_expressions_src = lambda: ['SELECT_EXPRESSION1SRC', 'SELECT_EXPRESSION2SRC']
+        relater._select_expressions_src = lambda max_src, max_dst, conflicts: [f'SELECT_EXPRESSION1SRC{max_src}', f'SELECT_EXPRESSION2SRC{max_dst}', 'CONFLICTS' if conflicts else 'FULL']
         relater._select_expressions_dst = lambda: ['SELECT_EXPRESSION1DST', 'SELECT_EXPRESSION2DST']
         relater._join_array_elements = lambda: 'ARRAY_ELEMENTS'
-        relater._src_dst_join = lambda: 'SRC_DST_JOIN'
-        relater._start_validities = lambda: 'SEQNR_BEGIN_GELDIGHEID'
+        relater._src_dst_join = lambda dst_entities: 'SRC_DST_JOIN ' + dst_entities
         relater._join_src_geldigheid = lambda: 'JOIN_SRC_GELDIGHEID'
         relater._join_dst_geldigheid = lambda: 'JOIN_DST_GELDIGHEID'
-        relater._with_queries = lambda x: 'WITH QUERIES'
-        relater._get_where = lambda: 'WHERE CLAUSE'
+        relater._get_where = lambda is_conflicts: 'WHERE CLAUSE ' + ("CONFLICTS" if is_conflicts else "FULL")
         relater._join_rel = lambda: 'JOIN REL'
-        relater._join_max_event_ids = lambda: 'JOIN MAX EVENTIDS'
-        relater._select_rest_src = lambda: 'REST SRC'
-        relater._select_aliases = lambda: ['SELECT_ALIAS1', 'SELECT_ALIAS2']
-        relater._row_number_partition = lambda x: 'ROW_NUMBER_PARTITION(' + x + ')' if x else 'ROW_NUMBER_PARTITION'
-        relater._src_dst_match = lambda x: ['SRC_DST_MATCH1(' + x + ')', 'SRC_DST_MATCH2(' + x + ')'] if x \
-            else ['SRC_DST_MATCH1', 'SRC_DST_MATCH2']
-        relater._union_deleted_relations = lambda src_or_dst: 'UNION_DELETED_' + src_or_dst
 
         return relater
 
@@ -1116,60 +1168,24 @@ LEFT JOIN (
         relater.is_many = False
 
         expected = """
-WITH QUERIES,
-src_side AS (
-    -- Relate all changed src entities
-    SELECT
-        SELECT_EXPRESSION1SRC,
-    SELECT_EXPRESSION2SRC
-    FROM src_entities src
-    
-    SRC_DST_JOIN
-    LEFT JOIN dst_catalog_name_dst_collection_name_table dst
-        ON DST_TABLE_OUTER_JOIN_ON1 AND
-    DST_TABLE_OUTER_JOIN_ON2
-    JOIN REL
-    JOIN_SRC_GELDIGHEID
-    JOIN_DST_GELDIGHEID
-    JOIN MAX EVENTIDS
-    WHERE CLAUSE
-)
-,
-dst_side AS (
-    -- Relate all changed dst entities, but exclude relations that are also related in src_side
-    SELECT
-        SELECT_ALIAS1,
-    SELECT_ALIAS2
-    FROM (
-    SELECT
-        SELECT_EXPRESSION1DST,
-    SELECT_EXPRESSION2DST,
-        ROW_NUMBER_PARTITION(src.bronwaarde) AS row_number
-    FROM dst_entities dst
-    INNER JOIN (REST SRC) src
-        ON SRC_DST_MATCH1(src.bronwaarde) AND
-    SRC_DST_MATCH2(src.bronwaarde)
-    LEFT JOIN rel_src_catalog_name_src_collection_name_src_field_name rel
-        ON rel.src_id=src._id AND rel.src_volgnummer = src.volgnummer
-        AND rel.src_source = src._source AND rel.bronwaarde = src.bronwaarde
-         AND ((src._application = 'applicationA') OR (src._application = 'applicationB' AND rel.dst_id = dst._id))
-    JOIN_SRC_GELDIGHEID
-    JOIN_DST_GELDIGHEID
-    JOIN MAX EVENTIDS
-    WHERE CLAUSE
-    ) q
-)
+WITH
+src_entities AS (SRC ENTITIES)
+SELECT
+    SELECT_EXPRESSION1SRC50,
+    SELECT_EXPRESSION2SRC100,
+    FULL
+FROM src_entities src
 
--- All relations for changed src entities
-SELECT * FROM src_side
-UNION_DELETED_src
-UNION ALL
--- All relations for changed dst entities
-SELECT * FROM dst_side
-UNION_DELETED_dst
+SRC_DST_JOIN DST ENTITIES
+LEFT JOIN dst_catalog_name_dst_collection_name_table dst ON DST_TABLE_OUTER_JOIN_ON1 AND
+    DST_TABLE_OUTER_JOIN_ON2
+JOIN REL
+JOIN_SRC_GELDIGHEID
+JOIN_DST_GELDIGHEID
+WHERE CLAUSE FULL
 """
 
-        result = relater.get_query()
+        result = relater.get_query("SRC ENTITIES", "DST ENTITIES", 50, 100)
         self.assertEqual(result, expected)
 
     def test_get_query_manyref(self):
@@ -1178,289 +1194,68 @@ UNION_DELETED_dst
         self.maxDiff = None
 
         expected = """
-WITH QUERIES,
-src_side AS (
-    -- Relate all changed src entities
-    SELECT
-        SELECT_EXPRESSION1SRC,
-    SELECT_EXPRESSION2SRC
-    FROM src_entities src
-    ARRAY_ELEMENTS
-    SRC_DST_JOIN
-    LEFT JOIN dst_catalog_name_dst_collection_name_table dst
-        ON DST_TABLE_OUTER_JOIN_ON1 AND
+WITH
+src_entities AS (SRC ENTITIES)
+SELECT
+    SELECT_EXPRESSION1SRC50,
+    SELECT_EXPRESSION2SRC100,
+    FULL
+FROM src_entities src
+ARRAY_ELEMENTS
+SRC_DST_JOIN DST ENTITIES
+LEFT JOIN dst_catalog_name_dst_collection_name_table dst ON DST_TABLE_OUTER_JOIN_ON1 AND
     DST_TABLE_OUTER_JOIN_ON2
-    JOIN REL
-    JOIN_SRC_GELDIGHEID
-    JOIN_DST_GELDIGHEID
-    JOIN MAX EVENTIDS
-    WHERE CLAUSE
-)
-,
-dst_side AS (
-    -- Relate all changed dst entities, but exclude relations that are also related in src_side
-    SELECT
-        SELECT_ALIAS1,
-    SELECT_ALIAS2
-    FROM (
-    SELECT
-        SELECT_EXPRESSION1DST,
-    SELECT_EXPRESSION2DST,
-        ROW_NUMBER_PARTITION(src.bronwaarde) AS row_number
-    FROM dst_entities dst
-    INNER JOIN (REST SRC) src
-        ON SRC_DST_MATCH1(src.bronwaarde) AND
-    SRC_DST_MATCH2(src.bronwaarde)
-    LEFT JOIN rel_src_catalog_name_src_collection_name_src_field_name rel
-        ON rel.src_id=src._id AND rel.src_volgnummer = src.volgnummer
-        AND rel.src_source = src._source AND rel.bronwaarde = src.bronwaarde
-         AND ((src._application = 'applicationA') OR (src._application = 'applicationB' AND rel.dst_id = dst._id))
-    JOIN_SRC_GELDIGHEID
-    JOIN_DST_GELDIGHEID
-    JOIN MAX EVENTIDS
-    WHERE CLAUSE
-    ) q
-)
-
--- All relations for changed src entities
-SELECT * FROM src_side
-UNION_DELETED_src
-UNION ALL
--- All relations for changed dst entities
-SELECT * FROM dst_side
-UNION_DELETED_dst
+JOIN REL
+JOIN_SRC_GELDIGHEID
+JOIN_DST_GELDIGHEID
+WHERE CLAUSE FULL
 """
-        result = relater.get_query()
+        result = relater.get_query("SRC ENTITIES", "DST ENTITIES", 50, 100)
         self.assertEqual(result, expected)
 
-    def test_get_conflicts_query(self):
-        relater = self._get_get_query_mocked_relater()
-        relater._prepare_query = MagicMock()
-        relater.is_many = False
-
-        expected = """
-WITH QUERIES,
-src_side AS (
-    -- Relate all changed src entities
-    SELECT
-        SELECT_EXPRESSION1SRC,
-    SELECT_EXPRESSION2SRC
-    FROM src_entities src
-    
-    SRC_DST_JOIN
-    LEFT JOIN dst_catalog_name_dst_collection_name_table dst
-        ON DST_TABLE_OUTER_JOIN_ON1 AND
-    DST_TABLE_OUTER_JOIN_ON2
-    
-    JOIN_SRC_GELDIGHEID
-    JOIN_DST_GELDIGHEID
-    JOIN MAX EVENTIDS
-    WHERE CLAUSE
-)
-
--- All relations for changed src entities
-SELECT * FROM src_side
-"""
-        result = relater.get_conflicts_query()
-        self.assertEqual(result, expected)
-
-    @patch("gobupload.relate.update._execute")
-    def test_get_conflicts(self, mock_execute):
-        relater = self._get_relater()
-        relater._prepare_query = MagicMock()
-        relater._cleanup = MagicMock()
-        relater.get_conflicts_query = MagicMock()
-        mock_execute.return_value = iter(['a', 'b', 'c'])
-
-        result = list(relater.get_conflicts())
-        self.assertEqual(['a', 'b', 'c'], result)
-        mock_execute.assert_called_with(relater.get_conflicts_query.return_value, stream=True, max_row_buffer=25000)
-        relater._prepare_query.assert_called_once()
-        relater._cleanup.assert_called_once()
-
-    def test_union_deleted_relations(self):
-        relater = self._get_relater()
-        relater._select_expressions_rel_delete = lambda: ['EXPRESSION1', 'EXPRESSION2']
-
-        self.assertEqual("""
-UNION ALL
--- Add all relations for entities in src_entities that should be deleted
--- These are all current relations that are referenced by src_entities but are not in src_side
--- anymore.
-SELECT EXPRESSION1,
-    EXPRESSION2
-FROM rel_src_catalog_name_src_collection_name_src_field_name rel
-WHERE (src_id, src_volgnummer) IN (SELECT _id, volgnummer FROM src_entities) AND rel.id NOT IN (SELECT rel_id FROM src_side WHERE rel_id IS NOT NULL)
-    AND rel._date_deleted IS NULL
-""", relater._union_deleted_relations('src'))
-
-        self.assertEqual("""
-UNION ALL
--- Add all relations for entities in dst_entities that should be deleted
--- These are all current relations that are referenced by dst_entities but are not in dst_side
--- anymore.
-SELECT EXPRESSION1,
-    EXPRESSION2
-FROM rel_src_catalog_name_src_collection_name_src_field_name rel
-WHERE dst_id IN (SELECT _id FROM dst_entities) AND rel.id NOT IN (SELECT rel_id FROM src_side WHERE rel_id IS NOT NULL UNION ALL SELECT rel_id FROM dst_side WHERE rel_id IS NOT NULL)
-    AND rel._date_deleted IS NULL
-""", relater._union_deleted_relations('dst'))
-
-    def test_get_query_initial_load(self):
+    def test_get_query_conflicts_query(self):
         relater = self._get_get_query_mocked_relater()
         relater.is_many = False
 
         expected = """
-WITH QUERIES,
-src_side AS (
-    -- Relate all changed src entities
-    SELECT
-        SELECT_EXPRESSION1SRC,
-    SELECT_EXPRESSION2SRC
-    FROM src_entities src
-    
-    SRC_DST_JOIN
-    LEFT JOIN dst_catalog_name_dst_collection_name_table dst
-        ON DST_TABLE_OUTER_JOIN_ON1 AND
-    DST_TABLE_OUTER_JOIN_ON2
-    JOIN REL
-    JOIN_SRC_GELDIGHEID
-    JOIN_DST_GELDIGHEID
-    JOIN MAX EVENTIDS
-    WHERE CLAUSE
-)
+WITH
+src_entities AS (SRC ENTITIES)
+SELECT
+    SELECT_EXPRESSION1SRC50,
+    SELECT_EXPRESSION2SRC100,
+    CONFLICTS
+FROM src_entities src
 
--- All relations for changed src entities
-SELECT * FROM src_side
-UNION_DELETED_src"""
-        result = relater.get_query(True)
+SRC_DST_JOIN DST ENTITIES
+LEFT JOIN dst_catalog_name_dst_collection_name_table dst ON DST_TABLE_OUTER_JOIN_ON1 AND
+    DST_TABLE_OUTER_JOIN_ON2
+
+JOIN_SRC_GELDIGHEID
+JOIN_DST_GELDIGHEID
+WHERE CLAUSE CONFLICTS
+"""
+        result = relater.get_query("SRC ENTITIES", "DST ENTITIES", 50, 100, True)
         self.assertEqual(result, expected)
 
-    def test_get_modifications(self):
+    def test_get_full_query(self):
         relater = self._get_relater()
+        relater._get_max_src_event = MagicMock()
+        relater._get_max_dst_event = MagicMock()
+        relater._src_entities_range = MagicMock()
+        relater._dst_entities_range = MagicMock()
+        relater.get_query = MagicMock()
 
-        row = {
-            'rel_a': 'a field',
-            'rel_b': 'b field',
-            'rel_c': 'c field',
-            'a': 'a field',
-            'b': 'b field',
-            'c': 'changed field',
-        }
+        self.assertEqual(relater.get_query.return_value, relater.get_full_query('TrueOrFalse'))
+        relater.get_query.assert_called_with(
+            relater._src_entities_range.return_value,
+            relater._dst_entities_range.return_value,
+            relater._get_max_src_event.return_value,
+            relater._get_max_dst_event.return_value,
+            'TrueOrFalse',
+        )
 
-        self.assertEqual([], relater._get_modifications(row, ['a', 'b']))
-
-        self.assertEqual([
-            {
-                'old_value': 'c field',
-                'new_value': 'changed field',
-                'key': 'c'
-            }
-        ], relater._get_modifications(row, ['a', 'b', 'c']))
-
-    @patch('gobupload.relate.update.ADD')
-    @patch('gobupload.relate.update.MODIFY')
-    @patch('gobupload.relate.update.DELETE')
-    @patch('gobupload.relate.update.CONFIRM')
-    def test_create_event(self, mock_confirm, mock_delete, mock_modify, mock_add):
-        relater = self._get_relater()
-        relater.dst_has_states = False
-
-        # ADD event (rel row not present)
-        row = {
-            'rel_id': None,
-            '_source_id': 'SOURCE ID',
-            'a': 'val',
-            'b': 'val',
-            'rel_deleted': None,
-        }
-        event = relater._create_event(row)
-        self.assertEqual(mock_add.create_event.return_value, event)
-        mock_add.create_event.assert_called_with('SOURCE ID', 'SOURCE ID', {
-            '_source_id': 'SOURCE ID',
-            'a': 'val',
-            'b': 'val',
-        })
-
-        # ADD event (rel row present, but previously deleted)
-        row = {
-            'rel_id': 'some existing rel id',
-            '_source_id': 'SOURCE ID',
-            'a': 'val',
-            'b': 'val',
-            'rel_deleted': 'some date',
-            '_last_event': 'last event'
-        }
-        event = relater._create_event(row)
-        self.assertEqual(mock_add.create_event.return_value, event)
-        mock_add.create_event.assert_called_with('SOURCE ID', 'SOURCE ID', {
-            '_source_id': 'SOURCE ID',
-            'a': 'val',
-            'b': 'val',
-            '_last_event': 'last event'
-        })
-
-        # DELETE EVENT (src not present)
-        row = {
-            'rel_id': 'rel id',
-            '_source_id': 'SOURCE ID',
-            'a': 'val',
-            'b': 'val',
-            'src_id': None,
-            '_last_event': 'last',
-            'src_deleted': None,
-            'rel_deleted': None,
-        }
-        event = relater._create_event(row)
-        self.assertEqual(mock_delete.create_event.return_value, event)
-        mock_delete.create_event.assert_called_with('rel id', 'rel id', {'_last_event': 'last'})
-
-        # DELETE EVENT (src marked as deleted)
-        row = {
-            'rel_id': 'rel id',
-            '_source_id': 'SOURCE ID',
-            'a': 'val',
-            'b': 'val',
-            'src_id': 'src id',
-            '_last_event': 'last',
-            'src_deleted': True,
-            'rel_deleted': None,
-        }
-        event = relater._create_event(row)
-        self.assertEqual(mock_delete.create_event.return_value, event)
-        mock_delete.create_event.assert_called_with('rel id', 'rel id', {'_last_event': 'last'})
-
-        # MODIFY EVENT (hash differs, and modifications detected)
-        relater._get_hash = lambda x: 'THE HASH'
-        relater._get_modifications = lambda a, b: ['a']
-        row = {
-            'rel_id': 'rel id',
-            'src_deleted': None,
-            'src_id': 'src id',
-            'rel__hash': 'DIFFERENT HASH',
-            '_last_event': 'last',
-            'rel_deleted': None,
-        }
-        event = relater._create_event(row)
-        self.assertEqual(mock_modify.create_event.return_value, event)
-        mock_modify.create_event.assert_called_with('rel id', 'rel id', {
-            'modifications': ['a'],
-            '_last_event': 'last',
-            '_hash': 'THE HASH'
-        })
-
-        # CONFIRM EVENT
-        row = {
-            'rel_id': 'rel id',
-            'src_deleted': None,
-            'src_id': 'src id',
-            'rel__hash': 'THE HASH',
-            '_last_event': 'last',
-            'rel_deleted': None,
-        }
-        event = relater._create_event(row)
-        self.assertEqual(mock_confirm.create_event.return_value, event)
-        mock_confirm.create_event.assert_called_with('rel id', 'rel id', {'_last_event': 'last'})
+        relater._src_entities_range.assert_called_with(0, relater._get_max_src_event.return_value)
+        relater._dst_entities_range.assert_called_with()
 
     def test_format_relation(self):
         rows = [
@@ -1491,8 +1286,9 @@ UNION_DELETED_src"""
     @patch("gobupload.relate.update._FORCE_FULL_RELATE_THRESHOLD", 1.0)
     def test_force_full_relate(self):
         relater = self._get_relater()
-        relater._src_entities = MagicMock()
-        relater._dst_entities = MagicMock()
+        relater._get_changed_ranges = MagicMock(return_value=(1, 2, 3, 4))
+        relater._src_entities_range = MagicMock()
+        relater._dst_entities_range = MagicMock()
 
         testcases = [
             # ([ total_src, total_dst, changed_src, changed_dst], result)
@@ -1547,29 +1343,67 @@ UNION_DELETED_src"""
         self.assertEqual(2480, relater._get_max_src_event())
         mock_execute.assert_called_with("SELECT MAX(_last_event) FROM src_table")
 
-    def test_get_paged_updates(self):
+    @patch("gobupload.relate.update._execute")
+    def test_get_max_dst_event(self, mock_execute):
         relater = self._get_relater()
-        relater._get_max_src_event = MagicMock(return_value=4024)
-        relater._query_results = MagicMock(side_effect=[
-            [{'src_last_event': 1}, {'src_last_event': 2}],
-            [{'src_last_event': 3}, {'src_last_event': 4}],
-            []
-        ])
+        relater.dst_table_name = 'dst_table'
 
-        result = list(relater._get_paged_updates())
-        self.assertEqual([{'src_last_event': 1}, {'src_last_event': 2}, {'src_last_event': 3},
-                          {'src_last_event': 4}], result)
+        mock_execute.return_value = iter([(2480,)])
 
-        self.assertEqual(relater.max_src_event_id, 4024)
-        self.assertEqual(relater.min_src_event_id, 4)
-        self.assertEqual(3, relater._query_results.call_count)
+        self.assertEqual(2480, relater._get_max_dst_event())
+        mock_execute.assert_called_with("SELECT MAX(_last_event) FROM dst_table")
 
-    @patch("gobupload.relate.logger", MagicMock())
-    def test_prepare_updates(self):
+    @patch("gobupload.relate.update._execute")
+    def test_get_min_src_event(self, mock_execute):
         relater = self._get_relater()
-        relater._create_tmp_tables = MagicMock()
-        relater._prepare_query()
-        relater._create_tmp_tables.assert_called_once()
+        relater.relation_table = 'rel_table'
+
+        mock_execute.return_value = iter([(2480,)])
+
+        self.assertEqual(2480, relater._get_min_src_event())
+        mock_execute.assert_called_with("SELECT MAX(_last_src_event) FROM rel_table")
+
+    @patch("gobupload.relate.update._execute")
+    def test_get_min_dst_event(self, mock_execute):
+        relater = self._get_relater()
+        relater.relation_table = 'rel_table'
+
+        mock_execute.return_value = iter([(2480,)])
+
+        self.assertEqual(2480, relater._get_min_dst_event())
+        mock_execute.assert_called_with("SELECT MAX(_last_dst_event) FROM rel_table")
+
+    @patch("gobupload.relate.update._execute")
+    def test_get_next_max_src_event(self, mock_execute):
+        relater = self._get_relater()
+        relater.src_table_name = "src_table"
+        start_eventid = 0
+        max_rows = 400
+        max_eventid = 200
+
+        mock_execute.return_value = iter([(300,)])
+        self.assertEqual(300, relater._get_next_max_src_event(start_eventid, max_rows, max_eventid))
+        mock_execute.assert_called_with(
+            "SELECT _last_event FROM src_table WHERE _last_event > 0 AND _last_event <= 200 ORDER BY _last_event OFFSET 400 - 1 LIMIT 1")
+
+        mock_execute.return_value = iter([])
+        self.assertEqual(200, relater._get_next_max_src_event(start_eventid, max_rows, max_eventid))
+
+    @patch("gobupload.relate.update._execute")
+    def test_get_next_max_dst_event(self, mock_execute):
+        relater = self._get_relater()
+        relater.dst_table_name = "dst_table"
+        start_eventid = 0
+        max_rows = 400
+        max_eventid = 200
+
+        mock_execute.return_value = iter([(300,)])
+        self.assertEqual(300, relater._get_next_max_dst_event(start_eventid, max_rows, max_eventid))
+        mock_execute.assert_called_with(
+            "SELECT _last_event FROM dst_table WHERE _last_event > 0 AND _last_event <= 200 ORDER BY _last_event OFFSET 400 - 1 LIMIT 1")
+
+        mock_execute.return_value = iter([])
+        self.assertEqual(200, relater._get_next_max_dst_event(start_eventid, max_rows, max_eventid))
 
     @patch("gobupload.relate.logger", MagicMock())
     def test_cleanup(self):
@@ -1578,46 +1412,212 @@ UNION_DELETED_src"""
         relater._cleanup()
         relater._cleanup_tmp_tables.assert_called_once()
 
+    def test_get_chunks(self):
+        relater = self._get_relater()
+
+        relater._src_entities_range = MagicMock(side_effect=lambda min, max: f"src_{min}-{max}")
+        relater._dst_entities_range = MagicMock(side_effect=lambda min=0, max=99: f"dst{min}-{max}")
+        relater._get_next_max_src_event = MagicMock(side_effect=[5, 10, 15])
+        relater._get_next_max_dst_event = MagicMock(side_effect=[20, 30, 40])
+
+        res = list(relater._get_chunks(1, 14, 2, 38))
+
+        expected = [
+            ('src_1-5', 'dst0-99'),
+            ('src_5-10', 'dst0-99'),
+            ('src_10-15', 'dst0-99'),
+            ('src_0-1', 'dst2-20'),
+            ('src_0-1', 'dst20-30'),
+            ('src_0-1', 'dst30-40'),
+        ]
+        self.assertEqual(expected, res)
+
+        # Do again, but force only src side
+        relater._get_next_max_src_event = MagicMock(side_effect=[5, 10, 15])
+        relater._get_next_max_dst_event = MagicMock(side_effect=[20, 30, 40])
+        res = list(relater._get_chunks(1, 14, 2, 51, True))
+
+        expected = [
+            ('src_1-5', 'dst0-99'),
+            ('src_5-10', 'dst0-99'),
+            ('src_10-15', 'dst0-99'),
+        ]
+        self.assertEqual(expected, res)
+
+    def test_get_updates_chunked(self):
+        relater = self._get_relater()
+        relater.get_query = MagicMock()
+        relater._query_into_results_table = MagicMock()
+        relater._remove_duplicate_rows = MagicMock()
+
+        relater._get_chunks = MagicMock(return_value=[
+            ('src 1', 'dst 1'),
+            ('src 2', 'dst 2'),
+        ])
+        start_src_event = 1
+        max_src_event = 2
+        start_dst_event = 3
+        max_dst_event = 4
+
+        # Default args
+        relater._get_updates_chunked(start_src_event, max_src_event, start_dst_event, max_dst_event)
+        relater._get_chunks.assert_called_with(start_src_event, max_src_event, start_dst_event, max_dst_event,
+                                               only_src_side=False)
+        relater.get_query.assert_has_calls([
+            call('src 1', 'dst 1', max_src_event, max_dst_event, is_conflicts_query=False),
+            call('src 2', 'dst 2', max_src_event, max_dst_event, is_conflicts_query=False),
+        ])
+        relater._query_into_results_table.assert_called_with(relater.get_query.return_value, False)
+        relater._remove_duplicate_rows.assert_called_once()
+
+        # With only_src_side and is_conflicts_query set
+        relater.get_query.reset_mock()
+        relater._remove_duplicate_rows.reset_mock()
+
+        relater._get_updates_chunked(start_src_event, max_src_event, start_dst_event, max_dst_event,
+                                     only_src_side=True, is_conflicts_query=True)
+        relater._get_chunks.assert_called_with(start_src_event, max_src_event, start_dst_event, max_dst_event,
+                                               only_src_side=True)
+        relater.get_query.assert_has_calls([
+            call('src 1', 'dst 1', max_src_event, max_dst_event, is_conflicts_query=True),
+            call('src 2', 'dst 2', max_src_event, max_dst_event, is_conflicts_query=True),
+        ])
+        relater._query_into_results_table.assert_called_with(relater.get_query.return_value, True)
+        relater._remove_duplicate_rows.assert_called_once()
+
+    @patch("gobupload.relate.update._execute")
+    def test_remove_duplicate_rows(self, mock_execute):
+        relater = self._get_relater()
+        relater.dst_has_states = False
+
+        relater._remove_duplicate_rows()
+        mock_execute.assert_called_with(
+            "DELETE FROM tmp_src_catalog_name_srcabbr_src_field_name_result WHERE rowid IN (  "
+            "SELECT rowid   FROM ("
+            "    SELECT rowid, row_number() OVER (PARTITION BY id ORDER BY dst_id) rn"
+            "     FROM tmp_src_catalog_name_srcabbr_src_field_name_result  ) q WHERE rn > 1)")
+
+        relater.dst_has_states = True
+        relater._remove_duplicate_rows()
+        mock_execute.assert_called_with(
+            "DELETE FROM tmp_src_catalog_name_srcabbr_src_field_name_result WHERE rowid IN (  "
+            "SELECT rowid   FROM ("
+            "    SELECT rowid, row_number() OVER (PARTITION BY id ORDER BY dst_id, dst_volgnummer DESC) rn"
+            "     FROM tmp_src_catalog_name_srcabbr_src_field_name_result  ) q WHERE rn > 1)")
+
+    @patch("gobupload.relate.update._execute")
+    def test_query_into_results_table(self, mock_execute):
+        relater = self._get_relater()
+        relater.result_table_name = "result_table"
+        relater._select_aliases = lambda is_conflicts: ["columnA", "columnB"] if is_conflicts else ["columnC",
+                                                                                                    "columnD"]
+
+        relater._query_into_results_table("the query", False)
+        mock_execute.assert_called_with("INSERT INTO result_table (columnC, columnD) (the query)")
+
+        relater._query_into_results_table("the query", True)
+        mock_execute.assert_called_with("INSERT INTO result_table (columnA, columnB) (the query)")
+
     @patch("gobupload.relate.logger", MagicMock())
     def test_get_updates(self):
         relater = self._get_relater()
-        relater._prepare_query = MagicMock()
+        relater._create_tmp_tables = MagicMock()
         relater._cleanup = MagicMock()
-        relater._get_paged_updates = MagicMock(return_value=iter(['paged_update1', 'paged_update2']))
-        relater._query_results = MagicMock(return_value=iter(['nonpaged_update1', 'nonpaged_update2']))
+        relater._get_changed_ranges = MagicMock(return_value=(1, 2, 3, 4))
+        relater._get_updates_full = MagicMock()
+        relater._get_updates_chunked = MagicMock()
+        relater._create_delete_events_query = MagicMock()
+        relater._query_into_results_table = MagicMock()
+        relater._read_results = MagicMock(return_value=[{'a': 1}, {'b': 2}])
 
-        self.assertEqual(['paged_update1', 'paged_update2'], list(relater._get_updates(True)))
-        self.assertEqual(['nonpaged_update1', 'nonpaged_update2'], list(relater._get_updates(False)))
+        # Update run
+        res = relater._get_updates()
+        self.assertEqual(relater._read_results.return_value, list(res))
 
-        relater._query_results.assert_called_with(False)
-        relater._prepare_query.assert_called()
+        relater._get_updates_chunked.assert_called_with(1, 2, 3, 4)
+        relater._get_updates_full.assert_not_called()
+        relater._query_into_results_table.assert_called_with(relater._create_delete_events_query.return_value)
+        relater._create_delete_events_query.assert_called_with(1, 2, 3, 4)
+
+        relater._create_tmp_tables.assert_called()
+        relater._cleanup.assert_called()
+
+        # Initial load
+        relater._get_updates_chunked.reset_mock()
+        relater._get_updates_full.reset_mock()
+        relater._query_into_results_table.reset_mock()
+        relater._create_delete_events_query.reset_mock()
+        relater._create_tmp_tables.reset_mock()
+        relater._cleanup.reset_mock()
+        res = relater._get_updates(True)
+        self.assertEqual(relater._read_results.return_value, list(res))
+
+        relater._get_updates_full.assert_called_with(2, 4)
+        relater._get_updates_chunked.assert_not_called()
+        relater._query_into_results_table.assert_called_with(relater._create_delete_events_query.return_value)
+        relater._create_delete_events_query.assert_called_with(1, 2, 3, 4)
+
+        relater._create_tmp_tables.assert_called()
         relater._cleanup.assert_called()
 
     @patch("gobupload.relate.update._execute")
-    def test_query_results(self, mock_execute):
+    def test_read_results(self, mock_execute):
         relater = self._get_relater()
-        relater.get_query = MagicMock()
-        mock_execute.return_value.__iter__.return_value = [{'a': 1}, {'b': 2}, {'c': 3}]
+        relater.result_table_name = "result_table"
 
-        self.assertEqual([{'a': 1}, {'b': 2}, {'c': 3}], list(relater._query_results('true_or_false')))
+        mock_execute.return_value = iter(['a', 'b'])
+        self.assertEqual(['a', 'b'], list(relater._read_results()))
+        mock_execute.assert_called_with("SELECT * FROM result_table", stream=True, max_row_buffer=25000)
 
-        relater.get_query.assert_called_with('true_or_false')
+    def test_get_cahnged_ranges(self):
+        relater = self._get_relater()
+        relater._get_min_src_event = MagicMock()
+        relater._get_min_dst_event = MagicMock()
+        relater._get_max_src_event = MagicMock()
+        relater._get_max_dst_event = MagicMock()
 
-        # Assert re-raise exception
-        mock_execute.return_value.__iter__.side_effect = Exception('mocked exception')
-        with self.assertRaises(Exception):
-            result = relater.update()
+        self.assertEqual((
+            relater._get_min_src_event.return_value,
+            relater._get_max_src_event.return_value,
+            relater._get_min_dst_event.return_value,
+            relater._get_max_dst_event.return_value,
+        ), relater._get_changed_ranges())
 
+    def test_get_updates_full(self):
+        relater = self._get_relater()
+        relater._get_updates_chunked = MagicMock()
+        relater._get_updates_full(100, 200)
+        relater._get_updates_chunked.assert_called_with(0, 100, 0, 200, only_src_side=True, is_conflicts_query=False)
+
+        relater._get_updates_full(100, 200, True)
+        relater._get_updates_chunked.assert_called_with(0, 100, 0, 200, only_src_side=True, is_conflicts_query=True)
+
+    def test_get_conflicts(self):
+        relater = self._get_relater()
+        relater._create_tmp_tables = MagicMock()
+        relater._get_max_src_event = MagicMock(return_value=50)
+        relater._get_max_dst_event = MagicMock(return_value=60)
+        relater._get_updates_full = MagicMock()
+        relater._read_results = MagicMock(return_value=iter(['a', 'b']))
+        relater._cleanup = MagicMock()
+
+        self.assertEqual(['a', 'b'], list(relater.get_conflicts()))
+        relater._create_tmp_tables.assert_called_once()
+        relater._cleanup.assert_called_once()
+        relater._get_updates_full.assert_called_with(50, 60, True)
+
+    @patch("gobupload.relate.update.EventCreator")
     @patch("gobupload.relate.update.EventCollector")
     @patch("gobupload.relate.update.ContentsWriter")
     @patch("gobupload.relate.update.ProgressTicker", MagicMock())
-    def test_update(self, mock_contents_writer, mock_event_collector):
+    def test_update(self, mock_contents_writer, mock_event_collector, mock_event_creator):
         relater = self._get_relater()
         relater._is_initial_load = MagicMock()
-        relater._create_event = MagicMock(side_effect=lambda x: x)
         relater._get_updates = MagicMock(return_value=iter([{'a': 1}, {'b': 2}, {'c': 3}]))
         relater._format_relation = MagicMock(side_effect=lambda x: x)
         relater._check_preconditions = MagicMock()
+
+        mock_event_creator.return_value.create_event.side_effect = lambda x: x
 
         result = relater.update()
 
