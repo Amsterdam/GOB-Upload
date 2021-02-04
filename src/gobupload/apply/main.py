@@ -26,7 +26,7 @@ def apply_events(storage, last_events, start_after, stats):
     :param stats: update statitics for this action
     :return:
     """
-    with ActiveGarbageCollection("Apply events"), storage.get_session():
+    with ActiveGarbageCollection("Apply events"), storage.get_session() as session:
         logger.info(f"Apply events")
 
         PROCESS_PER = 10000
@@ -41,6 +41,9 @@ def apply_events(storage, last_events, start_after, stats):
                         action = gob_event.action
                         stats.add_applied(action, count)
                         start_after = event.eventid
+
+                        # Remove event from session, to avoid trying to update event db object
+                        session.expunge(event)
 
                     event_applicator.apply_all()
 
