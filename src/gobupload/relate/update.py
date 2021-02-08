@@ -4,26 +4,22 @@ See README.md in this directory for explanation of this file.
 
 import hashlib
 import json
-
 from datetime import date, datetime
-from typing import List
-
+from gobcore.events.import_events import ADD, CONFIRM, DELETE, MODIFY
 from gobcore.exceptions import GOBException
-from gobcore.events.import_events import ADD, DELETE, CONFIRM, MODIFY
-from gobcore.message_broker.offline_contents import ContentsWriter
-
 from gobcore.logging.logger import logger
+from gobcore.message_broker.offline_contents import ContentsWriter
 from gobcore.model import GOBModel
 from gobcore.model.metadata import FIELD
 from gobcore.model.relations import get_relation_name
 from gobcore.sources import GOBSources
-from gobcore.utils import ProgressTicker
 from gobcore.typesystem.json import GobTypeJSONEncoder
+from gobcore.utils import ProgressTicker
 
-from gobupload.relate.exceptions import RelateException
-from gobupload.storage.execute import _execute
 from gobupload.compare.event_collector import EventCollector
 from gobupload.config import DEBUG
+from gobupload.relate.exceptions import RelateException
+from gobupload.storage.execute import _execute
 from gobupload.utils import random_string
 
 EQUALS = 'equals'
@@ -147,6 +143,78 @@ GROUP BY {FIELD.ID}, {FIELD.SEQNR}
         return cls(from_table, table_name)
 
 
+class EventCreator:
+
+    def __init__(self, dst_has_states: bool):
+        self.dst_has_states = dst_has_states
+
+    def _get_modifications(self, row: dict, compare_fields: list):
+        modifications = []
+
+        for field in compare_fields:
+            old_value = row[f"rel_{field}"]
+            new_value = row[field]
+
+            if old_value != new_value:
+                modifications.append({
+                    'old_value': old_value,
+                    'new_value': new_value,
+                    'key': field,
+                })
+
+        return modifications
+
+    def _get_hash(self, row: dict):
+        return hashlib.md5(
+            (json.dumps(row, sort_keys=True, cls=GobTypeJSONEncoder) + row[FIELD.APPLICATION]).encode('utf-8')
+        ).hexdigest()
+
+    def create_event(self, row: dict):
+        compare_fields = [
+            'dst_id',
+            FIELD.EXPIRATION_DATE,
+            FIELD.START_VALIDITY,
+            FIELD.END_VALIDITY,
+        ]
+
+        if self.dst_has_states:
+            compare_fields.append('dst_volgnummer')
+
+        if row['rel_id'] is None or row['rel_deleted'] is not None:
+            # No relation yet, or previously deleted relation. Create ADD
+            ignore_fields = [
+                                'src_deleted',
+                                'rel_deleted',
+                                'src_last_event',
+                                'rel_id',
+                                f'rel_{FIELD.HASH}',
+                                'rel_dst_volgnummer',
+                                'rowid',
+                            ] + [f"rel_{field}" for field in compare_fields]
+
+            data = {k: v for k, v in row.items() if k not in ignore_fields}
+            return ADD.create_event(row[FIELD.SOURCE_ID], row[FIELD.SOURCE_ID], data)
+        elif row['src_deleted'] is not None or row['src_id'] is None:
+            data = {FIELD.LAST_EVENT: row[FIELD.LAST_EVENT]}
+            return DELETE.create_event(row['rel_id'], row['rel_id'], data)
+        else:
+            row[FIELD.HASH] = self._get_hash(row)
+            modifications = [] \
+                if row[FIELD.HASH] == row[f"rel_{FIELD.HASH}"] \
+                else self._get_modifications(row, compare_fields)
+
+            if modifications:
+                data = {
+                    'modifications': modifications,
+                    FIELD.LAST_EVENT: row[FIELD.LAST_EVENT],
+                    FIELD.HASH: row[FIELD.HASH],
+                }
+                return MODIFY.create_event(row['rel_id'], row['rel_id'], data)
+            else:
+                data = {FIELD.LAST_EVENT: row[FIELD.LAST_EVENT]}
+                return CONFIRM.create_event(row['rel_id'], row['rel_id'], data)
+
+
 class Relater:
     model = GOBModel()
     sources = GOBSources()
@@ -234,12 +302,6 @@ class Relater:
         self.relation_table = "rel_" + get_relation_name(self.model, src_catalog_name, src_collection_name,
                                                          src_field_name)
 
-        # Initally don't exclude the relation tables
-        self.exclude_relation_table = False
-
-        self.min_src_event_id = 0
-        self.max_src_event_id = None
-
         # begin_geldigheid tmp table names
         datestr = datetime.now().strftime('%Y%m%d')
         src_intv_tmp_table_name = f"tmp_{self.src_catalog_name}_{self.src_collection['abbreviation']}_intv_{datestr}" \
@@ -249,6 +311,9 @@ class Relater:
 
         self.src_intv_tmp_table = StartValiditiesTable(self.src_table_name, src_intv_tmp_table_name)
         self.dst_intv_tmp_table = StartValiditiesTable(self.dst_table_name, dst_intv_tmp_table_name)
+
+        self.result_table_name = f"tmp_{self.src_catalog_name}_{self.src_collection['abbreviation']}_" \
+                                 f"{src_field_name}_result"
 
     def _get_applications_in_src(self):
         query = f"SELECT DISTINCT {FIELD.APPLICATION} FROM {self.src_table_name}"
@@ -273,75 +338,20 @@ class Relater:
 
         return start, end
 
-    def _validity_select_expressions_dst(self):
-        if self.src_has_states and self.dst_has_states:
-            start = f"GREATEST(src_bg.{FIELD.START_VALIDITY}, dst_bg.{FIELD.START_VALIDITY}, " \
-                    f"src.provided_{FIELD.START_VALIDITY})"
-            end = f"LEAST(src.{FIELD.END_VALIDITY}, dst.{FIELD.END_VALIDITY})"
-        elif self.src_has_states:
-            start = f"GREATEST(src_bg.{FIELD.START_VALIDITY}, src.provided_{FIELD.START_VALIDITY})"
-            end = f"src.{FIELD.END_VALIDITY}"
-        elif self.dst_has_states:
-            start = f"GREATEST(dst_bg.{FIELD.START_VALIDITY}, src.provided_{FIELD.START_VALIDITY})"
-            end = f"dst.{FIELD.END_VALIDITY}"
-        else:
-            start = f"src.provided_{FIELD.START_VALIDITY}"
-            end = "NULL"
+    def _select_aliases(self, is_conflicts_query: bool = False):
+        return self.select_aliases + (self.select_relation_aliases if not is_conflicts_query else []) \
+               + (['src_volgnummer'] if self.src_has_states else []) \
+               + (['dst_volgnummer'] if self.dst_has_states else [])
 
-        return start, end
-
-    def _select_aliases(self):
-        return self.select_aliases + (self.select_relation_aliases if not self.exclude_relation_table else []) \
-                  + (['src_volgnummer'] if self.src_has_states else []) \
-                  + (['dst_volgnummer'] if self.dst_has_states else [])
-
-    def _build_select_expressions(self, mapping: dict, exclude_aliases: list=[]):
-        aliases = self._select_aliases()
-
-        aliases = [i for i in aliases if i not in exclude_aliases]
+    def _build_select_expressions(self, mapping: dict, is_conflicts_query: bool = False):
+        aliases = self._select_aliases(is_conflicts_query)
 
         assert all([alias in mapping.keys() for alias in aliases]), \
             'Missing key(s): ' + str([alias for alias in aliases if alias not in mapping.keys()])
 
         return [f'{mapping[alias]} AS {alias}' for alias in aliases]
 
-    def _select_expressions_dst(self):
-        start_validity, end_validity = self._validity_select_expressions_dst()
-
-        mapping = {
-            FIELD.VERSION: f"src.{FIELD.VERSION}",
-            FIELD.APPLICATION: f"src.{FIELD.APPLICATION}",
-            FIELD.SOURCE_ID: self._get_id_for_dst(),
-            FIELD.SOURCE: f"'{GOB}'",
-            FIELD.EXPIRATION_DATE: f"LEAST(src.{FIELD.EXPIRATION_DATE}, dst.{FIELD.EXPIRATION_DATE})",
-            "id": self._get_id_for_dst(),
-            "derivation": self._get_derivation(),
-            "src_source": f"src.{FIELD.SOURCE}",
-            "src_id": f"src.{FIELD.ID}",
-            "src_volgnummer": f"src.{FIELD.SEQNR}",
-            "src_last_event": f"src.{FIELD.LAST_EVENT}",
-            "dst_source": f"CASE WHEN dst.{FIELD.DATE_DELETED} IS NULL THEN dst.{FIELD.SOURCE} ELSE NULL END",
-            "dst_id": f"CASE WHEN dst.{FIELD.DATE_DELETED} IS NULL THEN dst.{FIELD.ID} ELSE NULL END",
-            "dst_volgnummer": f"CASE WHEN dst.{FIELD.DATE_DELETED} IS NULL THEN dst.{FIELD.SEQNR} ELSE NULL END",
-            FIELD.SOURCE_VALUE: f"src.{FIELD.SOURCE_VALUE}",
-            FIELD.LAST_SRC_EVENT: f"max_src_event.{FIELD.LAST_EVENT}",
-            FIELD.LAST_DST_EVENT: f"max_dst_event.{FIELD.LAST_EVENT}",
-            FIELD.LAST_EVENT: f"rel.{FIELD.LAST_EVENT}",
-            "src_deleted": "NULL::timestamp without time zone",
-            "rel_deleted": f"rel.{FIELD.DATE_DELETED}",
-            "rel_id": "rel.id",
-            "rel_dst_id": "rel.dst_id",
-            "rel_dst_volgnummer": "rel.dst_volgnummer",
-            f"rel_{FIELD.EXPIRATION_DATE}": f"rel.{FIELD.EXPIRATION_DATE}",
-            f"rel_{FIELD.START_VALIDITY}": f"rel.{FIELD.START_VALIDITY}",
-            f"rel_{FIELD.END_VALIDITY}": f"rel.{FIELD.END_VALIDITY}",
-            f"rel_{FIELD.HASH}": f"rel.{FIELD.HASH}",
-            FIELD.START_VALIDITY: f"CASE WHEN dst.{FIELD.ID} IS NULL THEN NULL ELSE {start_validity} END",
-            FIELD.END_VALIDITY: f"CASE WHEN dst.{FIELD.ID} IS NULL THEN NULL ELSE {end_validity} END",
-        }
-        return self._build_select_expressions(mapping, exclude_aliases=["row_number"])
-
-    def _select_expressions_src(self, exclude_relation_aliases=False):
+    def _select_expressions_src(self, max_src_event: int, max_dst_event: int, is_conflicts_query: bool = False):
         """Returns the select expressions for the src query
 
         :return:
@@ -364,8 +374,8 @@ class Relater:
             "dst_id": f"dst.{FIELD.ID}",
             "dst_volgnummer": f"dst.{FIELD.SEQNR}",
             FIELD.SOURCE_VALUE: self._source_value_ref(),
-            FIELD.LAST_SRC_EVENT: f"max_src_event.{FIELD.LAST_EVENT}",
-            FIELD.LAST_DST_EVENT: f"max_dst_event.{FIELD.LAST_EVENT}",
+            FIELD.LAST_SRC_EVENT: f"'{max_src_event}'",
+            FIELD.LAST_DST_EVENT: f"'{max_dst_event}'",
             FIELD.LAST_EVENT: f"rel.{FIELD.LAST_EVENT}",
             "src_deleted": f"src.{FIELD.DATE_DELETED}",
             "rel_deleted": f"rel.{FIELD.DATE_DELETED}",
@@ -376,19 +386,32 @@ class Relater:
             f"rel_{FIELD.START_VALIDITY}": f"rel.{FIELD.START_VALIDITY}",
             f"rel_{FIELD.END_VALIDITY}": f"rel.{FIELD.END_VALIDITY}",
             f"rel_{FIELD.HASH}": f"rel.{FIELD.HASH}",
-            FIELD.START_VALIDITY: f"CASE WHEN dst.{FIELD.ID} IS NULL THEN NULL ELSE {start_validity} END",
-            FIELD.END_VALIDITY: f"CASE WHEN dst.{FIELD.ID} IS NULL THEN NULL ELSE {end_validity} END",
+            FIELD.START_VALIDITY: f"CASE WHEN dst.{FIELD.ID} IS NULL THEN NULL::timestamp without time zone "
+                                  f"ELSE {start_validity} END",
+            FIELD.END_VALIDITY: f"CASE WHEN dst.{FIELD.ID} IS NULL THEN NULL::timestamp without time zone "
+                                f"ELSE {end_validity} END",
             "row_number": "row_number",
         }
 
-        select_expressions = self._build_select_expressions(mapping)
+        select_expressions = self._build_select_expressions(mapping, is_conflicts_query)
 
         return select_expressions
 
     def _select_expressions_rel_delete(self):
         mapping = {alias: 'NULL' for alias in self._select_aliases()}
         mapping.update({
+            FIELD.EXPIRATION_DATE: "NULL::timestamp without time zone",
             FIELD.LAST_EVENT: f"rel.{FIELD.LAST_EVENT}",
+            "src_last_event": "NULL::integer",
+            FIELD.LAST_SRC_EVENT: "NULL::integer",
+            FIELD.LAST_DST_EVENT: "NULL::integer",
+            "src_volgnummer": "NULL::integer",
+            "dst_volgnummer": "NULL::integer",
+            FIELD.START_VALIDITY: "NULL::timestamp without time zone",
+            FIELD.END_VALIDITY: "NULL::timestamp without time zone",
+            "src_deleted": "NULL::timestamp without time zone",
+            "rel_deleted": "NULL::timestamp without time zone",
+            "row_number": "NULL::integer",
             'rel_id': 'rel.id',
             'rel_dst_id': 'rel.dst_id',
             'rel_dst_volgnummer': 'rel.dst_volgnummer',
@@ -584,13 +607,7 @@ class Relater:
             f"src_dst.bronwaarde = {self._json_obj_ref()}->>'bronwaarde'",
         ]
 
-        if not self.exclude_relation_table:
-            # Add check for row_number for all sources that don't have multiple_allowed set.
-
-            join_on.append(self._switch_for_specs(
-                'multiple_allowed',
-                lambda spec: 'src_dst.row_number = 1' if not spec['multiple_allowed'] else 'TRUE'
-            ))
+        join_on.append(f"src_dst.dst_id IS NOT NULL")
 
         return join_on
 
@@ -638,10 +655,7 @@ class Relater:
         return f"JOIN jsonb_array_elements(src.{self.src_field_name}) {self.json_join_alias}(item) " \
                f"ON {self.json_join_alias}->>'{FIELD.SOURCE_VALUE}' IS NOT NULL"
 
-    def _src_dst_select(self):
-        return f"SELECT * FROM {self.src_entities_alias} WHERE {FIELD.DATE_DELETED} IS NULL"
-
-    def _src_dst_join(self):
+    def _src_dst_join(self, dst_entities: str):
         """Generated twice, once to generate relations from a subset of the src relation to all the dst relations
         (source_side='src'), and once to generate the remaining relations from a subset of the dst relations to all
         the src relations (source_side='dst') that were not included in the first step
@@ -667,15 +681,15 @@ class Relater:
             validgeo_src = ""
 
         return f"""
-LEFT JOIN (
+INNER JOIN (
     SELECT
         {self.comma_join.join(self._src_dst_select_expressions())}
     FROM (
-        {self._src_dst_select()}
+        SELECT * FROM {self.src_entities_alias} WHERE {FIELD.DATE_DELETED} IS NULL
     ) src
     {validgeo_src}
     {self._join_array_elements() if self.is_many else ""}
-    LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(join_on)}
+    LEFT JOIN ({dst_entities}) dst ON {self.and_join.join(join_on)}
     GROUP BY {self.comma_join.join(self._src_dst_group_by())}
 ) src_dst ON {self.and_join.join(self._src_dst_join_on())}
 """
@@ -719,13 +733,13 @@ LEFT JOIN (
     def _cleanup_tmp_tables(self):
         self.src_intv_tmp_table.drop()
         self.dst_intv_tmp_table.drop()
+        _execute(f"DROP TABLE {self.result_table_name}")
 
     def _create_tmp_tables(self):
         """Creates tmp tables from recursive queries to determine the begin_geldigheid for each volgnummer
 
         """
         if self.src_has_states:
-
             logger.info(f"Creating temporary table {self.src_intv_tmp_table.name}")
             self.src_intv_tmp_table.create()
 
@@ -738,139 +752,91 @@ LEFT JOIN (
                 logger.info(f"Creating temporary table {self.dst_intv_tmp_table.name}")
                 self.dst_intv_tmp_table.create()
 
-    def _changed_source_ids(self, catalogue: str, collection: str, last_eventid: str, related_attributes: List[str]):
-        """Returns a query that returns the source_ids from all events after last_eventid that are interesting for the
-        relate. These include all source_ids associated with ADD or DELETE events and all MODIFY events that include
-        modifications on columns such as START_VALIDITY, END_VALIDITY, EXPIRATION_DATE plus the attributes that are
-        used in the relate process (provided in the related_attributes list).
+        logger.info(f"Create temporary results table {self.result_table_name}")
+        self._create_tmp_result_table()
 
-        The last_eventid parameter may be any value (an integer string, but also a query that determines the
-        last_eventid)
+    def _create_tmp_result_table(self):
+        varchar = 'varchar'
+        serial = 'serial'
+        timestamp = 'timestamp'
+        integer = 'integer'
 
-        :param catalogue:
-        :param collection:
-        :param last_eventid:
-        :param related_attributes:
-        :return:
-        """
-        interesting_modifications = [FIELD.START_VALIDITY, FIELD.END_VALIDITY, FIELD.SOURCE] + related_attributes
-        keys = ", ".join([f"'{field}'" for field in interesting_modifications])
+        types = {
+            'rowid': serial,
+            FIELD.VERSION: varchar,
+            FIELD.APPLICATION: varchar,
+            FIELD.SOURCE_ID: varchar,
+            FIELD.SOURCE: varchar,
+            FIELD.EXPIRATION_DATE: timestamp,
+            'id': varchar,
+            'derivation': varchar,
+            'src_source': varchar,
+            'src_id': varchar,
+            'src_last_event': integer,
+            'dst_source': varchar,
+            'dst_id': varchar,
+            FIELD.SOURCE_VALUE: varchar,
+            FIELD.LAST_SRC_EVENT: integer,
+            FIELD.LAST_DST_EVENT: integer,
+            FIELD.START_VALIDITY: timestamp,
+            FIELD.END_VALIDITY: timestamp,
+            'src_deleted': timestamp,
+            'row_number': integer,
+            FIELD.LAST_EVENT: integer,
+            'rel_deleted': timestamp,
+            'rel_id': varchar,
+            'rel_dst_id': varchar,
+            'rel_dst_volgnummer': integer,
+            f'rel_{FIELD.EXPIRATION_DATE}': timestamp,
+            f'rel_{FIELD.START_VALIDITY}': timestamp,
+            f'rel_{FIELD.END_VALIDITY}': timestamp,
+            f'rel_{FIELD.HASH}': varchar,
+            'src_volgnummer': integer,
+            'dst_volgnummer': integer
+        }
 
-        return f"""
-SELECT e.source_id
-FROM events e
-INNER JOIN jsonb_array_elements(e.contents -> 'modifications') modifications
-ON modifications ->> 'key' IN ({keys})
-WHERE catalogue = '{catalogue}'
-  AND entity = '{collection}'
-  AND eventid > {last_eventid}
-  AND action = '{MODIFY.name}'
-UNION
-SELECT e.source_id
-FROM events e
-WHERE catalogue = '{catalogue}'
-  AND entity = '{collection}'
-  AND eventid > {last_eventid}
-  AND action IN ('{ADD.name}', '{DELETE.name}')
-"""
+        columns = ['rowid'] + self._select_aliases()
 
-    def _src_entities(self, initial_load=False):
-        limit = ''
+        column_list = ",\n".join([f"    {column} {types[column]}" for column in columns])
+        query = f"CREATE TABLE IF NOT EXISTS {self.result_table_name} (\n{column_list}\n)"
+
+        _execute(query)
+        _execute(f"TRUNCATE {self.result_table_name}")
+
+    def _src_entities_range(self, min_src_event_id: int, max_src_event_id: int = None):
         filters = []
 
         if not self.is_many:
             filters.append(f"{self._source_value_ref()} IS NOT NULL")
 
-        # min_src_event_id and max_src_event_id are used for pagination during the initial load.
-        if self.min_src_event_id:
-            filters.append(f"src.{FIELD.LAST_EVENT} > {self.min_src_event_id}")
+        if min_src_event_id:
+            filters.append(f"src.{FIELD.LAST_EVENT} > {min_src_event_id}")
 
-        if self.max_src_event_id:
-            filters.append(f"src.{FIELD.LAST_EVENT} <= {self.max_src_event_id}")
-
-        if not self.exclude_relation_table and not initial_load:
-            last_eventid = f"(SELECT COALESCE(MAX({FIELD.LAST_SRC_EVENT}), 0) FROM {self.relation_table})"
-            source_attrs = [spec['source_attribute'] for spec in self.relation_specs if 'source_attribute' in spec]
-            changed_source_ids = self._changed_source_ids(
-                self.src_catalog_name,
-                self.src_collection_name,
-                last_eventid,
-                [self.src_field_name] + source_attrs
-            )
-
-            filters.append(f"src.{FIELD.SOURCE_ID} IN ({changed_source_ids})")
-        elif not self.exclude_relation_table and initial_load:
-            # Initial load. Limit the number of src entities. Only possible for initial_load!
-            limit = f'ORDER BY src.{FIELD.LAST_EVENT} LIMIT {_MAX_ROWS_PER_SIDE}'
+        if max_src_event_id:
+            filters.append(f"src.{FIELD.LAST_EVENT} <= {max_src_event_id}")
 
         filters_str = f'WHERE {" AND ".join(filters)}' if filters else ""
 
         return f"""
 SELECT * FROM {self.src_table_name} src
 {filters_str}
-{limit}
 """
 
-    def _with_src_entities(self, initial_load=False):
-        statement = f"""
--- All changed source entities
-{self.src_entities_alias} AS ({self._src_entities(initial_load)})"""
-        return statement
+    def _dst_entities_range(self, min_dst_event_id: int = None, max_dst_event_id: int = None):
+        filters = []
 
-    def _dst_entities(self):
-        query = f"""SELECT * FROM {self.dst_table_name}"""
+        if min_dst_event_id:
+            filters.append(f"dst.{FIELD.LAST_EVENT} > {min_dst_event_id}")
 
-        if not self.exclude_relation_table:
-            last_eventid = f"(SELECT COALESCE(MAX({FIELD.LAST_DST_EVENT}), 0) FROM {self.relation_table})"
-            changed_source_ids = self._changed_source_ids(
-                self.dst_catalog_name,
-                self.dst_collection_name,
-                last_eventid,
-                [spec['destination_attribute'] for spec in self.relation_specs]
-            )
-            query += f" WHERE {FIELD.SOURCE_ID} IN ({changed_source_ids})"
-        return query
+        if max_dst_event_id:
+            filters.append(f"dst.{FIELD.LAST_EVENT} <= {max_dst_event_id}")
 
-    def _with_dst_entities(self):
-        statement = f"""
--- All changed destination entities
-{self.dst_entities_alias} AS ({self._dst_entities()})"""
+        filters_str = f'WHERE {" AND ".join(filters)}' if filters else ""
 
-        return statement
-
-    def _get_count_for(self, frm: str):
-        result = _execute(f"SELECT COUNT(*) FROM {frm} alias")
-        return next(result)[0]
-
-    def _with_max_src_event(self):
-        if self.max_src_event_id:
-            return f"""
--- Last event we're considering in this relate process
-max_src_event AS (SELECT {self.max_src_event_id} {FIELD.LAST_EVENT})"""
-
-        else:
-            return f"""
--- Last event that has updated a source entity
-max_src_event AS (SELECT MAX({FIELD.LAST_EVENT}) {FIELD.LAST_EVENT} FROM {self.src_table_name})"""
-
-    def _with_max_dst_event(self):
         return f"""
--- Last event that has updated a destination entity
-max_dst_event AS (SELECT MAX({FIELD.LAST_EVENT}) {FIELD.LAST_EVENT} FROM {self.dst_table_name})"""
-
-    def _with_queries(self, initial_load=False):
-        withs = [
-            self._with_src_entities(initial_load),
-            self._with_max_src_event(),
-            self._with_max_dst_event()
-        ]
-
-        if not initial_load:
-            withs.append(self._with_dst_entities())
-
-        return f"WITH " \
-               f"{','.join(withs)}\n" \
-               f"-- END WITH\n"
+SELECT * FROM {self.dst_table_name} dst
+{filters_str}
+"""
 
     def _join_geldigheid(self, table_name: str, alias: str, join_with: str):
         """Returns the join with the begin_geldigheid for the given volgnummer for either 'src' or 'dst' (src_bg or
@@ -885,12 +851,6 @@ max_dst_event AS (SELECT MAX({FIELD.LAST_EVENT}) {FIELD.LAST_EVENT} FROM {self.d
 
     def _join_src_geldigheid(self):
         return self._join_geldigheid(self.src_intv_tmp_table.name, 'src_bg', 'src') if self.src_has_states else ""
-
-    def _join_max_event_ids(self):
-        return f"""
-JOIN max_src_event ON TRUE
-JOIN max_dst_event ON TRUE
-"""
 
     def _join_rel_dst_clause(self):
         dst_join_clause = f"rel.dst_id = dst.{FIELD.ID}" + (f" AND rel.dst_volgnummer = dst.{FIELD.SEQNR}"
@@ -935,7 +895,7 @@ LEFT JOIN (
             lambda spec: f'row_number > 1' if not spec['multiple_allowed'] else 'FALSE'
         )
 
-    def _get_where(self):
+    def _get_where(self, is_conflicts_query: bool = False):
         """Returns WHERE clause for both sides of the UNION.
         Only include not-deleted relations or existing sources.
 
@@ -946,10 +906,10 @@ LEFT JOIN (
         """
         has_multiple_allowed_source = any([spec['multiple_allowed'] for spec in self.relation_specs])
         return f"WHERE (" \
-               + (f"rel.{FIELD.DATE_DELETED} IS NULL OR " if not self.exclude_relation_table else "") \
+               + (f"rel.{FIELD.DATE_DELETED} IS NULL OR " if not is_conflicts_query else "") \
                + f"src.{FIELD.ID} IS NOT NULL)" \
                + f" AND dst.{FIELD.DATE_DELETED} IS NULL" \
-               + (f" AND {self._filter_conflicts()}" if self.exclude_relation_table else "") \
+               + (f" AND {self._filter_conflicts()}" if is_conflicts_query else "") \
                + (f" AND {self._multiple_allowed_where()}" if has_multiple_allowed_source else "")
 
     def _multiple_allowed_where(self):
@@ -1015,183 +975,53 @@ LEFT JOIN (
         """
         return len(set([spec[attribute] for spec in self.relation_specs])) == 1
 
-    def get_conflicts_query(self):
-        self.exclude_relation_table = True
-        return self.get_query()
+    def _delete_src_or_dst_query(self, entities_query: str, src_or_dst: str):
 
-    def get_conflicts(self):
-        self._prepare_query()
-        query = self.get_conflicts_query()
-
-        yield from _execute(query, stream=True, max_row_buffer=25000)
-
-        self._cleanup()
-
-    def _union_deleted_relations(self, src_or_dst: str):
         assert src_or_dst in ('src', 'dst'), f"src_or_dst should be 'src' or 'dst', not '{src_or_dst}'"
 
-        src_or_dst_entities_alias = self.src_entities_alias if src_or_dst == 'src' else self.dst_entities_alias
         src_or_dst_has_states = self.src_has_states if src_or_dst == 'src' else self.dst_has_states
-
-        in_src_or_dst_entities = f"{src_or_dst}_id IN (SELECT {FIELD.ID} FROM {src_or_dst_entities_alias})" \
-            if not src_or_dst_has_states \
-            else f"({src_or_dst}_id, {src_or_dst}_volgnummer) IN (SELECT {FIELD.ID}, {FIELD.SEQNR} " \
-                 f"FROM {src_or_dst_entities_alias})"
-
-        # rel_id should not be in src_side and dst_side
-        rel_ids = "SELECT rel_id FROM src_side WHERE rel_id IS NOT NULL" + \
-                  (" UNION ALL SELECT rel_id FROM dst_side WHERE rel_id IS NOT NULL" if src_or_dst == 'dst' else "")
-
-        return f"""
-UNION ALL
--- Add all relations for entities in {src_or_dst_entities_alias} that should be deleted
--- These are all current relations that are referenced by {src_or_dst_entities_alias} but are not in {src_or_dst}_side
--- anymore.
-SELECT {self.comma_join.join(self._select_expressions_rel_delete())}
-FROM {self.relation_table} rel
-WHERE {in_src_or_dst_entities} AND rel.id NOT IN ({rel_ids})
-    AND rel.{FIELD.DATE_DELETED} IS NULL
-"""
-
-    def get_query(self, initial_load=False):
-        """Builds and returns the event extraction query
-
-        Omits right-hand side of the query when initial_load=True, because it
-        is unnecessary, and excluding everything on the right-hand side that is done on the left-hand-side creates
-        a heavy query.
-
-        When self.exclude_relation_table=True, the relation table will not be joined and only conflicts will
-        be returned.
-        :return:
-        """
-
-        dst_table_outer_join_on = self._dst_table_outer_join_on()
-
-        relate_dst_side = not initial_load and not self.exclude_relation_table
-
-        query = f"""
-{self._with_queries(initial_load)},
-src_side AS (
-    -- Relate all changed src entities
-    SELECT
-        {self.comma_join.join(self._select_expressions_src())}
-    FROM {self.src_entities_alias} src
-    {self._join_array_elements() if self.is_many else ""}
-    {self._src_dst_join()}
-    LEFT JOIN {self.dst_table_name} dst
-        ON {self.and_join.join(dst_table_outer_join_on)}
-    {self._join_rel() if not self.exclude_relation_table else ""}
-    {self._join_src_geldigheid()}
-    {self._join_dst_geldigheid()}
-    {self._join_max_event_ids()}
-    {self._get_where()}
-)
-"""
-
-        if relate_dst_side:
-            query += f""",
-dst_side AS (
-    -- Relate all changed dst entities, but exclude relations that are also related in src_side
-    SELECT
-        {self.comma_join.join(self._select_aliases())}
-    FROM (
-    SELECT
-        {self.comma_join.join(self._select_expressions_dst())},
-        {self._row_number_partition(f'src.{FIELD.SOURCE_VALUE}')} AS row_number
-    FROM {self.dst_entities_alias} dst
-    INNER JOIN ({self._select_rest_src()}) src
-        ON {self.and_join.join(self._src_dst_match(f'src.{FIELD.SOURCE_VALUE}'))}
-    LEFT JOIN {self.relation_table} rel
-        ON rel.src_id=src.{FIELD.ID} {f'AND rel.src_volgnummer = src.{FIELD.SEQNR}' if self.src_has_states else ''}
-        AND rel.src_source = src.{FIELD.SOURCE} AND rel.{FIELD.SOURCE_VALUE} = src.{FIELD.SOURCE_VALUE}
-        {self._join_rel_dst_clause()}
-    {self._join_src_geldigheid()}
-    {self._join_dst_geldigheid()}
-    {self._join_max_event_ids()}
-    {self._get_where()}
-    ) q
-)
-"""
-
-        query += f"""
--- All relations for changed src entities
-SELECT * FROM src_side
-""" + \
-                 (self._union_deleted_relations('src')
-                  if not self.exclude_relation_table
-                  else '') + (f"""
-UNION ALL
--- All relations for changed dst entities
-SELECT * FROM dst_side
-{self._union_deleted_relations('dst')}
-""" if relate_dst_side else "")
-
-        return query
-
-    def _get_modifications(self, row: dict, compare_fields: list):
-        modifications = []
-
-        for field in compare_fields:
-            old_value = row[f"rel_{field}"]
-            new_value = row[field]
-
-            if old_value != new_value:
-                modifications.append({
-                    'old_value': old_value,
-                    'new_value': new_value,
-                    'key': field,
-                })
-
-        return modifications
-
-    def _get_hash(self, row: dict):
-        return hashlib.md5(
-            (json.dumps(row, sort_keys=True, cls=GobTypeJSONEncoder) + row[FIELD.APPLICATION]).encode('utf-8')
-        ).hexdigest()
-
-    def _create_event(self, row: dict):
-        compare_fields = [
-            'dst_id',
-            FIELD.EXPIRATION_DATE,
-            FIELD.START_VALIDITY,
-            FIELD.END_VALIDITY,
-        ]
-
-        if self.dst_has_states:
-            compare_fields.append('dst_volgnummer')
-
-        if row['rel_id'] is None or row['rel_deleted'] is not None:
-            # No relation yet, or previously deleted relation. Create ADD
-            ignore_fields = [
-                'src_deleted',
-                'rel_deleted',
-                'src_last_event',
-                'rel_id',
-                f'rel_{FIELD.HASH}',
-                'rel_dst_volgnummer',
-            ] + [f"rel_{field}" for field in compare_fields]
-
-            data = {k: v for k, v in row.items() if k not in ignore_fields}
-            return ADD.create_event(row[FIELD.SOURCE_ID], row[FIELD.SOURCE_ID], data)
-        elif row['src_deleted'] is not None or row['src_id'] is None:
-            data = {FIELD.LAST_EVENT: row[FIELD.LAST_EVENT]}
-            return DELETE.create_event(row['rel_id'], row['rel_id'], data)
+        if src_or_dst_has_states:
+            in_entities = f"({src_or_dst}_id, {src_or_dst}_volgnummer) IN " \
+                          f"(SELECT {FIELD.ID}, {FIELD.SEQNR} FROM ({entities_query}) q)"
         else:
-            row[FIELD.HASH] = self._get_hash(row)
-            modifications = [] \
-                if row[FIELD.HASH] == row[f"rel_{FIELD.HASH}"] \
-                else self._get_modifications(row, compare_fields)
+            in_entities = f"{src_or_dst}_id IN (SELECT {FIELD.ID} FROM ({entities_query}) q)"
 
-            if modifications:
-                data = {
-                    'modifications': modifications,
-                    FIELD.LAST_EVENT: row[FIELD.LAST_EVENT],
-                    FIELD.HASH: row[FIELD.HASH],
-                }
-                return MODIFY.create_event(row['rel_id'], row['rel_id'], data)
-            else:
-                data = {FIELD.LAST_EVENT: row[FIELD.LAST_EVENT]}
-                return CONFIRM.create_event(row['rel_id'], row['rel_id'], data)
+        rel_ids = f"SELECT rel_id FROM {self.result_table_name} WHERE rel_id IS NOT NULL"
+
+        return f"SELECT {self.comma_join.join(self._select_expressions_rel_delete())} " \
+               f"FROM {self.relation_table} rel " \
+               f"WHERE {in_entities} " \
+               f"AND rel.id NOT IN ({rel_ids}) " \
+               f"AND rel.{FIELD.DATE_DELETED} IS NULL"
+
+    def _create_delete_events_query(self, min_src_event: int, max_src_event: int, min_dst_event: int,
+                                    max_dst_event: int):
+        src_side = self._delete_src_or_dst_query(self._src_entities_range(min_src_event, max_src_event), 'src')
+        dst_side = self._delete_src_or_dst_query(self._dst_entities_range(min_dst_event, max_dst_event), 'dst')
+        return f"{src_side}\nUNION\n{dst_side}"
+
+    def get_query(self, src_entities: str, dst_entities: str, max_src_event: int, max_dst_event: int,
+                  is_conflicts_query=False):
+        return f"""
+WITH
+{self.src_entities_alias} AS ({src_entities})
+SELECT
+    {self.comma_join.join(self._select_expressions_src(max_src_event, max_dst_event, is_conflicts_query))}
+FROM {self.src_entities_alias} src
+{self._join_array_elements() if self.is_many else ""}
+{self._src_dst_join(dst_entities)}
+LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(self._dst_table_outer_join_on())}
+{self._join_rel() if not is_conflicts_query else ""}
+{self._join_src_geldigheid()}
+{self._join_dst_geldigheid()}
+{self._get_where(is_conflicts_query)}
+"""
+
+    def get_full_query(self, is_conflicts_query=False):
+        max_src_event = self._get_max_src_event()
+        src_entities = self._src_entities_range(0, max_src_event)
+        dst_entities = self._dst_entities_range()
+        return self.get_query(src_entities, dst_entities, max_src_event, self._get_max_dst_event(), is_conflicts_query)
 
     def _format_relation(self, relation: dict):
         timestamps = [FIELD.START_VALIDITY, FIELD.END_VALIDITY, FIELD.EXPIRATION_DATE]
@@ -1219,32 +1049,6 @@ SELECT * FROM dst_side
             return True
         return False
 
-    def _force_full_relate(self) -> bool:
-        """Returns True if should force full relate. Full relate is forced when there are many updated src/dst objects
-        to consider.
-
-        :return:
-        """
-        total_src_objects = self._get_count_for(self.src_table_name)
-        total_dst_objects = self._get_count_for(self.dst_table_name)
-
-        changed_src_objects = self._get_count_for(f'({self._src_entities()})')
-        changed_dst_objects = self._get_count_for(f'({self._dst_entities()})')
-
-        src_ratio = changed_src_objects / total_src_objects if total_src_objects > 0 else 1
-        dst_ratio = changed_dst_objects / total_dst_objects if total_dst_objects > 0 else 1
-
-        logger.info(f"Ratio of changed src objects: {src_ratio}")
-        logger.info(f"Ratio of changed dst objects: {dst_ratio}")
-
-        sum_ratio = src_ratio + dst_ratio
-        if sum_ratio >= _FORCE_FULL_RELATE_THRESHOLD:
-            logger.info(f"Sum of ratios ({sum_ratio}) exceeds threshold value of {_FORCE_FULL_RELATE_THRESHOLD}. "
-                        f"Force full relate.")
-            return True
-
-        return False
-
     def _check_preconditions(self):
         """Checks if all applications in the src table are defined in GOBSources.
 
@@ -1262,42 +1066,47 @@ SELECT * FROM dst_side
                                f"{self.src_field_name} because the src table contains values for "
                                f"{FIELD.APPLICATION} that are not defined in GOBSources: {','.join(difference)}")
 
-    def _get_max_src_event(self):
+    def _get_max_src_event(self) -> int:
         query = f"SELECT MAX({FIELD.LAST_EVENT}) FROM {self.src_table_name}"
-        return next(_execute(query))[0]
+        return next(_execute(query))[0] or 0
 
-    def _get_paged_updates(self):
-        """Paged updates are always when initial_load is True
+    def _get_max_dst_event(self) -> int:
+        query = f"SELECT MAX({FIELD.LAST_EVENT}) FROM {self.dst_table_name}"
+        return next(_execute(query))[0] or 0
 
-        :return:
-        """
+    def _get_min_src_event(self) -> int:
+        query = f"SELECT MAX({FIELD.LAST_SRC_EVENT}) FROM {self.relation_table}"
+        return next(_execute(query))[0] or 0
 
-        # Set a max to the _last_event we consider for the src entities. If we don't do this, we risk considering
-        # certain src entities twice when a src entity is updated while this job is running.
-        self.max_src_event_id = self._get_max_src_event()
+    def _get_min_dst_event(self) -> int:
+        query = f"SELECT MAX({FIELD.LAST_DST_EVENT}) FROM {self.relation_table}"
+        return next(_execute(query))[0] or 0
 
-        while True:
-            min_src_event_id_before = self.min_src_event_id
+    def _get_next_max_src_event(self, start_eventid: int, max_rows: int, max_eventid: int) -> int:
+        query = f"SELECT {FIELD.LAST_EVENT} " \
+                f"FROM {self.src_table_name} " \
+                f"WHERE {FIELD.LAST_EVENT} > {start_eventid} AND {FIELD.LAST_EVENT} <= {max_eventid} " \
+                f"ORDER BY {FIELD.LAST_EVENT} " \
+                f"OFFSET {max_rows} - 1 " \
+                f"LIMIT 1"
 
-            result = self._query_results(True)
+        try:
+            return next(_execute(query))[0]
+        except StopIteration:
+            return max_eventid
 
-            for row in result:
-                # row['src_last_event'] may be None when the relation table isn't empty: a row from the relation table
-                # is found that does not match any src objects, meaning this row will be deleted. Set to 0
-                self.min_src_event_id = max(self.min_src_event_id, row['src_last_event'] or 0)
-                yield row
+    def _get_next_max_dst_event(self, start_eventid: int, max_rows: int, max_eventid: int):
+        query = f"SELECT {FIELD.LAST_EVENT} " \
+                f"FROM {self.dst_table_name} " \
+                f"WHERE {FIELD.LAST_EVENT} > {start_eventid} AND {FIELD.LAST_EVENT} <= {max_eventid} " \
+                f"ORDER BY {FIELD.LAST_EVENT} " \
+                f"OFFSET {max_rows} - 1 " \
+                f"LIMIT 1"
 
-            if min_src_event_id_before == self.min_src_event_id:
-                # No updates
-                break
-
-    def _prepare_query(self):
-        """Prepare step before the query can be executed
-
-        :return:
-        """
-        logger.info("Create temporary tables.")
-        self._create_tmp_tables()
+        try:
+            return next(_execute(query))[0]
+        except StopIteration:
+            return max_eventid
 
     def _cleanup(self):
         if not DEBUG:
@@ -1306,44 +1115,189 @@ SELECT * FROM dst_side
         else:
             logger.info("DEBUG ON: Not removing temporary tables")
 
-    def _get_updates(self, initial_load):
-        """Return updates from the database.
+    def _get_chunks(self, start_src_event: int, max_src_event: int, start_dst_event: int, max_dst_event: int,
+                    only_src_side: bool = False):
+        """Generates the queries to select the src_entities and dst_entities to consider for each iteration of the
+        relate process.
 
-        If this is an initial_load, paginate the results by default. Pagination is only possible for initial loads.
+        Generation of queries happens in two steps:
+        - First we loop through chunks of all changed entities on the src side and relate that to all dst entities up
+          until max_dst_event.
+        - Second, we loop through all changed dst entities and relate that to all src entities not considered in the
+          previous step.
 
-        :param initial_load:
+        In numbers, what is considered in both steps:
+        - First: all src events > start_src_event and <= max_src_event, and all dst > 0 and <= max_dst_event
+        - Second: all src events <= start_src_event and all dst events > start_dst_event and <= max_dst_event
+
+        The value of _MAX_ROWS_PER_SIDE is respected in both steps (on the src side for the first step, on the dst
+        side for the second step).
+
+        :param start_src_event:
+        :param max_src_event:
+        :param start_dst_event:
+        :param max_dst_event:
         :return:
         """
-        self._prepare_query()
+
+        current_min_src_event = start_src_event
+        while current_min_src_event < max_src_event:
+            current_max_src_event = self._get_next_max_src_event(current_min_src_event, _MAX_ROWS_PER_SIDE,
+                                                                 max_src_event)
+
+            yield (self._src_entities_range(current_min_src_event, current_max_src_event),
+                   self._dst_entities_range())
+            current_min_src_event = current_max_src_event
+
+        if not only_src_side:
+            current_min_dst_event = start_dst_event
+            while current_min_dst_event < max_dst_event:
+                current_max_dst_event = self._get_next_max_dst_event(current_min_dst_event, _MAX_ROWS_PER_SIDE,
+                                                                     max_dst_event)
+
+                yield (self._src_entities_range(0, start_src_event),
+                       self._dst_entities_range(current_min_dst_event, current_max_dst_event))
+                current_min_dst_event = current_max_dst_event
+
+    def _get_updates_chunked(self, start_src_event: int, max_src_event: int, start_dst_event: int,
+                             max_dst_event: int, only_src_side: bool=False, is_conflicts_query: bool=False):
+        """Inserts updates in the results table using chunks -> Only relating small portions of the total set each
+        interation.
+
+        :param start_src_event:
+        :param max_src_event:
+        :param start_dst_event:
+        :param max_dst_event:
+        :return:
+        """
+
+        for src_entities_query, dst_entities_query in self._get_chunks(start_src_event, max_src_event, start_dst_event,
+                                                                       max_dst_event, only_src_side=only_src_side):
+            query = self.get_query(src_entities_query, dst_entities_query, max_src_event, max_dst_event,
+                                   is_conflicts_query=is_conflicts_query)
+            self._query_into_results_table(query, is_conflicts_query)
+
+        self._remove_duplicate_rows()
+
+    def _remove_duplicate_rows(self):
+        """Removes duplicate rows from results table that may have been inserted in the table.
+        Duplicates will be found and returned as errors in the check relate process. Here we just ignore duplicates.
+
+        Keeps the highest volgnummer of the (lexicographically) first dst id. Keeping the highest volgnummer is
+        important, because relating in batches can cause multiple volgnummers to be matched. We always want to keep the
+        highest, because that what the result would be without relating in batches.
+        :return:
+        """
+
+        order_by = "dst_id, dst_volgnummer DESC" if self.dst_has_states else "dst_id"
+        query = f"DELETE FROM {self.result_table_name} " \
+                f"WHERE rowid IN (" \
+                f"  SELECT rowid " \
+                f"  FROM (" \
+                f"    SELECT rowid, row_number() OVER (PARTITION BY id ORDER BY {order_by}) rn " \
+                f"    FROM {self.result_table_name}" \
+                f"  ) q WHERE rn > 1" \
+                f")"
+
+        return _execute(query)
+
+    def _query_into_results_table(self, query: str, is_conflicts_query: bool = False):
+        result_table_columns = ', '.join(self._select_aliases(is_conflicts_query))
+        return _execute(f"INSERT INTO {self.result_table_name} ({result_table_columns}) ({query})")
+
+    def _get_updates(self, initial_load: bool = False):
+        """Relates in chunks. Chunks are determined by the _get_chunks method.
+
+        Only checking relations to/from src/dst objects that may have changed since the last relate.
+        :return:
+        """
+        self._create_tmp_tables()
+
+        start_src_event, max_src_event, start_dst_event, max_dst_event = self._get_changed_ranges()
 
         if initial_load:
-            logger.info("Initial load. Relate in batches.")
-            yield from self._get_paged_updates()
+            self._get_updates_full(max_src_event, max_dst_event)
         else:
-            logger.info("Update run. Relate in once.")
-            yield from self._query_results(initial_load)
+            self._get_updates_chunked(start_src_event, max_src_event, start_dst_event, max_dst_event)
+
+        # Add delete event rows
+        query = self._create_delete_events_query(start_src_event, max_src_event, start_dst_event, max_dst_event)
+        self._query_into_results_table(query)
+
+        for row in self._read_results():
+            yield dict(row)
 
         self._cleanup()
 
-    def _query_results(self, initial_load):
-        query = self.get_query(initial_load)
+    def _read_results(self):
+        yield from _execute(f"SELECT * FROM {self.result_table_name}", stream=True, max_row_buffer=25000)
 
-        # Execute the query in a try-except block.
-        # The query is complex and if it fails it is hard to debug
-        # In order to allow debugging, any failing query is reported on stdout
-        # Afterwards the exception is re-raised
-        try:
-            result = _execute(query, stream=True, max_row_buffer=25000)
-            for row in result:
-                yield dict(row)
-            result.close()
-        except Exception as e:
-            print(f"Update failed: {str(e)}, Failing query:\n{query}\n")
-            raise e
+    def _get_changed_ranges(self):
+        """Returns a tuple (start_src_event, max_src_event, start_dst_event, max_dst_event) of objects to consider
+        when relating only the updates.
+
+        The start of the intervals (start_src_event, start_dst_event) are open. End of the intervals (max_src_event,
+        max_dst_event) are closed.
+
+        :return:
+        """
+        start_src_event = self._get_min_src_event()
+        start_dst_event = self._get_min_dst_event()
+        max_src_event = self._get_max_src_event()
+        max_dst_event = self._get_max_dst_event()
+
+        return start_src_event, max_src_event, start_dst_event, max_dst_event
+
+    def _get_updates_full(self, max_src_event: int, max_dst_event: int, is_conflicts_query=False):
+        self._get_updates_chunked(0, max_src_event, 0, max_dst_event, only_src_side=True,
+                                  is_conflicts_query=is_conflicts_query)
+
+    def get_conflicts(self):
+        self._create_tmp_tables()
+        max_src_event = self._get_max_src_event()
+        max_dst_event = self._get_max_dst_event()
+        self._get_updates_full(max_src_event, max_dst_event, True)
+
+        yield from self._read_results()
+
+        self._cleanup()
+
+    def _get_count_for(self, frm: str):
+        result = _execute(f"SELECT COUNT(*) FROM {frm} alias")
+        return next(result)[0]
+
+    def _force_full_relate(self) -> bool:
+        """Returns True if should force full relate. Full relate is forced when there are many updated src/dst objects
+        to consider.
+
+        :return:
+        """
+        start_src_event, max_src_event, start_dst_event, max_dst_event = self._get_changed_ranges()
+
+        total_src_objects = self._get_count_for(self.src_table_name)
+        total_dst_objects = self._get_count_for(self.dst_table_name)
+
+        changed_src_objects = self._get_count_for(f'({self._src_entities_range(start_src_event, max_src_event)})')
+        changed_dst_objects = self._get_count_for(f'({self._dst_entities_range(start_dst_event, max_dst_event)})')
+
+        src_ratio = changed_src_objects / total_src_objects if total_src_objects > 0 else 1
+        dst_ratio = changed_dst_objects / total_dst_objects if total_dst_objects > 0 else 1
+
+        logger.info(f"Ratio of changed src objects: {src_ratio}")
+        logger.info(f"Ratio of changed dst objects: {dst_ratio}")
+
+        sum_ratio = src_ratio + dst_ratio
+        if sum_ratio >= _FORCE_FULL_RELATE_THRESHOLD:
+            logger.info(f"Sum of ratios ({sum_ratio}) exceeds threshold value of {_FORCE_FULL_RELATE_THRESHOLD}. "
+                        f"Force full relate.")
+            return True
+
+        return False
 
     def update(self, do_full_update=False):
         self._check_preconditions()
 
+        event_creator = EventCreator(self.dst_has_states)
         initial_load = do_full_update or self._is_initial_load() or self._force_full_relate()
 
         with ProgressTicker("Process relate src result", 10000) as progress, \
@@ -1358,7 +1312,7 @@ SELECT * FROM dst_side
 
             for row in result:
                 progress.tick()
-                event = self._create_event(self._format_relation(row))
+                event = event_creator.create_event(self._format_relation(row))
                 event_collector.collect(event)
 
             return filename, confirms
