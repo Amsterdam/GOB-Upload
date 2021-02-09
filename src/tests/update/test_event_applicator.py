@@ -72,6 +72,24 @@ class TestEventApplicator(TestCase):
             with EventApplicator(self.storage, {}) as applicator:
                 applicator.apply(event)
 
+    def test_apply_existing_add(self):
+        # Expect add event for existing deleted entity leads to add other event
+        self.set_contents({
+            '_entity_source_id': 'existing_source_id',
+            '_hash': '123'
+        })
+        event = dict_to_object(self.mock_event)
+        
+        applicator = EventApplicator(self.storage, {'existing_source_id': 'any event id'})
+        applicator.add_add_event = MagicMock()
+        applicator.apply_add_events = MagicMock()
+        applicator.add_other_event = MagicMock()
+        applicator.apply(event)
+
+        applicator.add_add_event.assert_not_called()
+        applicator.apply_add_events.assert_called_once()
+        applicator.add_other_event.assert_called_once()
+
     def test_apply_bulk(self):
         applicator = EventApplicator(self.storage, {})
         self.mock_event["action"] = 'BULKCONFIRM'
@@ -131,7 +149,7 @@ class TestEventApplicator(TestCase):
 
         self.assertEqual([],
                          applicator.add_other_event('any gob event1', {'_entity_source_id': 'any entity source 1'}))
-        self.assertEqual(applicator.other_events['any entity source 1'], 'any gob event1')
+        self.assertEqual(applicator.other_events['any entity source 1'], ['any gob event1'])
 
         self.assertEqual([],
                          applicator.add_other_event('any gob event2', {'_entity_source_id': 'any entity source 2'}))
@@ -170,7 +188,7 @@ class TestEventApplicator(TestCase):
         gob_event.id = 'any event id'
 
         entity._source_id = 'any source id'
-        applicator.other_events['any source id'] = gob_event
+        applicator.other_events['any source id'] = [gob_event]
 
         # Normal action, apply event and set last event id
         applicator.apply_other_event(entity)
@@ -186,7 +204,7 @@ class TestEventApplicator(TestCase):
         gob_event = MagicMock(spec=GOB.ADD)
         gob_event.id = 'any event id'
         entity._last_event = None
-        applicator.other_events['any source id'] = gob_event
+        applicator.other_events['any source id'] = [gob_event]
         applicator.apply_other_event(entity)
         self.assertEqual(entity._last_event, gob_event.id)
 
@@ -195,7 +213,7 @@ class TestEventApplicator(TestCase):
         gob_event.id = 'any event id'
         entity._last_event = None
         entity._date_deleted = None
-        applicator.other_events['any source id'] = gob_event
+        applicator.other_events['any source id'] = [gob_event]
         applicator.apply_other_event(entity)
         self.assertEqual(entity._last_event, None)
 
@@ -207,3 +225,58 @@ class TestEventApplicator(TestCase):
         self.assertEqual([1, 2, 3], applicator.apply_all())
         applicator.apply_add_events.assert_called_once()
         applicator.apply_other_events.assert_called_once()
+
+    def test_apply_event_batch_add_delete(self):
+        """
+        Test if a batch of events with ADD -> DELETE -> ADD of the same entity is handled correctly.
+        We expect the second ADD event to be handled as an 'other' event, because it needs to revive the deleted
+        entity.
+        """
+        applicator = EventApplicator(self.storage, {})
+
+        test_events = [
+            {'action': 'ADD', 'contents': {'_entity_source_id': 'any source id'}},
+            {'action': 'DELETE', 'contents': {'_entity_source_id': 'any source id'}},
+            {'action': 'ADD', 'contents': {'_entity_source_id': 'any source id'}},
+        ]
+
+        test_gob_events = []
+
+        for event in test_events:
+            self.mock_event['action'] = event['action']
+            self.set_contents(event['contents'])
+            event_object = dict_to_object(self.mock_event)
+            gob_event, *_ = applicator.apply(event_object)
+            test_gob_events.append(gob_event)
+
+        # Expect the first add event to be applied, and a DELETE and ADD event in other events
+        self.storage.add_add_events.assert_called_with(test_gob_events[:1])
+        self.assertEqual(len(applicator.add_events), 0)
+        self.assertEqual(sum([len(x) for x in applicator.other_events.values()]), 2)
+
+    def test_apply_event_batch_modifies(self):
+        """
+        Test if a batch of events multiple MODIFY events of the same entity is handled correctly.
+        We expect the all modify events to be applied
+        """
+        applicator = EventApplicator(self.storage, {})
+
+        test_events = [
+            {'action': 'MODIFY', 'contents': {'_entity_source_id': 'any source id'}},
+            {'action': 'MODIFY', 'contents': {'_entity_source_id': 'any source id'}},
+            {'action': 'MODIFY', 'contents': {'_entity_source_id': 'any source id'}},
+        ]
+
+        test_gob_events = []
+
+        for event in test_events:
+            self.mock_event['action'] = event['action']
+            self.set_contents(event['contents'])
+            event_object = dict_to_object(self.mock_event)
+            gob_event, *_ = applicator.apply(event_object)
+            test_gob_events.append(gob_event)
+
+        # Expect all 3 modify events to be added to other events
+        self.assertEqual(len(applicator.add_events), 0)
+        self.assertEqual(sum([len(x) for x in applicator.other_events.values()]), 3)
+
