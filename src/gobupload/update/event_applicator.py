@@ -155,7 +155,7 @@ class EventApplicator:
             applied_events += self.add_add_event(gob_event)
 
             # Store the entity_source_id to make sure a second ADD events get's handled as an ADD on deleted entity
-            self.add_event_source_ids.add(data.get('_entity_source_id'))
+            self.add_event_source_ids.add(entity_source_id)
         else:
             # If ADD events are waiting to be applied to the database, flush those first to make sure they exist
             applied_events += self.apply_add_events()
