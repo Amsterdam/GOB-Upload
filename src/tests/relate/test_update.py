@@ -1377,6 +1377,8 @@ WHERE CLAUSE CONFLICTS
     def test_get_next_max_src_event(self, mock_execute):
         relater = self._get_relater()
         relater.src_table_name = "src_table"
+        relater.is_many = False
+        relater._join_array_elements = lambda: 'JOIN ARR ELMS'
         start_eventid = 0
         max_rows = 400
         max_eventid = 200
@@ -1384,7 +1386,13 @@ WHERE CLAUSE CONFLICTS
         mock_execute.return_value = iter([(300,)])
         self.assertEqual(300, relater._get_next_max_src_event(start_eventid, max_rows, max_eventid))
         mock_execute.assert_called_with(
-            "SELECT _last_event FROM src_table WHERE _last_event > 0 AND _last_event <= 200 ORDER BY _last_event OFFSET 400 - 1 LIMIT 1")
+            "SELECT src._last_event FROM src_table src  WHERE src._last_event > 0 AND src._last_event <= 200 ORDER BY src._last_event OFFSET 400 - 1 LIMIT 1")
+
+        relater.is_many = True
+        mock_execute.return_value = iter([(300,)])
+        self.assertEqual(300, relater._get_next_max_src_event(start_eventid, max_rows, max_eventid))
+        mock_execute.assert_called_with(
+            "SELECT src._last_event FROM src_table src JOIN ARR ELMS WHERE src._last_event > 0 AND src._last_event <= 200 ORDER BY src._last_event OFFSET 400 - 1 LIMIT 1")
 
         mock_execute.return_value = iter([])
         self.assertEqual(200, relater._get_next_max_src_event(start_eventid, max_rows, max_eventid))

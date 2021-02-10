@@ -1083,10 +1083,20 @@ LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(self._dst_table_outer
         return next(_execute(query))[0] or 0
 
     def _get_next_max_src_event(self, start_eventid: int, max_rows: int, max_eventid: int) -> int:
-        query = f"SELECT {FIELD.LAST_EVENT} " \
-                f"FROM {self.src_table_name} " \
-                f"WHERE {FIELD.LAST_EVENT} > {start_eventid} AND {FIELD.LAST_EVENT} <= {max_eventid} " \
-                f"ORDER BY {FIELD.LAST_EVENT} " \
+        """Gets next max src event, counting max :max_rows: from :start_eventid:, respecting :max_eventid:
+        Unpacks jsonb column for ManyReferences, to account for possible large relations (otherwise 30k src rows may
+        grow to 350k src rows when unpacked).
+
+        :param start_eventid:
+        :param max_rows:
+        :param max_eventid:
+        :return:
+        """
+        query = f"SELECT src.{FIELD.LAST_EVENT} " \
+                f"FROM {self.src_table_name} src " \
+                f"{(self._join_array_elements() if self.is_many else '')} " \
+                f"WHERE src.{FIELD.LAST_EVENT} > {start_eventid} AND src.{FIELD.LAST_EVENT} <= {max_eventid} " \
+                f"ORDER BY src.{FIELD.LAST_EVENT} " \
                 f"OFFSET {max_rows} - 1 " \
                 f"LIMIT 1"
 
