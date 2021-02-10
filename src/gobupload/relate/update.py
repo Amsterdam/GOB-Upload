@@ -35,7 +35,7 @@ _MAX_RELATION_CONFLICTS = 25
 _FORCE_FULL_RELATE_THRESHOLD = 1.0
 
 # Used for initial relate. 30000 seems to be the sweetspot for the current configuration
-_MAX_ROWS_PER_SIDE = 30000
+_MAX_ROWS_PER_SIDE = 100000
 
 
 # DEVELOPMENT: The DEBUG environment to 'true' to avoid removal of tmp tables.
