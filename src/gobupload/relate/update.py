@@ -865,23 +865,10 @@ SELECT * FROM {self.dst_table_name} dst
     def _join_rel(self):
         dst_join = self._join_rel_dst_clause()
 
-        if self.src_has_states:
-            return f"""
-LEFT JOIN (
-    SELECT * FROM {self.relation_table}
-    WHERE (src_id, src_volgnummer) IN (SELECT {FIELD.ID}, {FIELD.SEQNR} FROM {self.src_entities_alias})
-) rel ON rel.src_id = src.{FIELD.ID} AND rel.src_volgnummer = src.{FIELD.SEQNR}
-    AND {self._source_value_ref()} = rel.{FIELD.SOURCE_VALUE}
-    {dst_join}
-"""
-        else:
-            return f"""
-LEFT JOIN (
-    SELECT * FROM {self.relation_table}
-    WHERE src_id IN (SELECT {FIELD.ID} FROM {self.src_entities_alias})
-) rel ON rel.src_id = src.{FIELD.ID} AND {self._source_value_ref()} = rel.{FIELD.SOURCE_VALUE}
-    {dst_join}
-"""
+        return f"LEFT JOIN {self.relation_table} rel " \
+               f"ON rel.src_id = src.{FIELD.ID} " + \
+               (f"AND rel.src_volgnummer = src.{FIELD.SEQNR} " if self.src_has_states else "") + \
+               f"AND {self._source_value_ref()} = rel.{FIELD.SOURCE_VALUE} {dst_join}"
 
     def _filter_conflicts(self):
         """Returns row_number check per source. Skip sources that have multiple_allowed set to True.
@@ -1083,10 +1070,20 @@ LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(self._dst_table_outer
         return next(_execute(query))[0] or 0
 
     def _get_next_max_src_event(self, start_eventid: int, max_rows: int, max_eventid: int) -> int:
-        query = f"SELECT {FIELD.LAST_EVENT} " \
-                f"FROM {self.src_table_name} " \
-                f"WHERE {FIELD.LAST_EVENT} > {start_eventid} AND {FIELD.LAST_EVENT} <= {max_eventid} " \
-                f"ORDER BY {FIELD.LAST_EVENT} " \
+        """Gets next max src event, counting max :max_rows: from :start_eventid:, respecting :max_eventid:
+        Unpacks jsonb column for ManyReferences, to account for possible large relations (otherwise 30k src rows may
+        grow to 350k src rows when unpacked).
+
+        :param start_eventid:
+        :param max_rows:
+        :param max_eventid:
+        :return:
+        """
+        query = f"SELECT src.{FIELD.LAST_EVENT} " \
+                f"FROM {self.src_table_name} src " \
+                f"{(self._join_array_elements() if self.is_many else '')} " \
+                f"WHERE src.{FIELD.LAST_EVENT} > {start_eventid} AND src.{FIELD.LAST_EVENT} <= {max_eventid} " \
+                f"ORDER BY src.{FIELD.LAST_EVENT} " \
                 f"OFFSET {max_rows} - 1 " \
                 f"LIMIT 1"
 

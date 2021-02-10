@@ -1056,24 +1056,18 @@ WHERE dst._last_event > 1 AND dst._last_event <= 100
         relater = self._get_relater()
         relater.src_has_states = False
 
-        self.assertEqual(f"""
-LEFT JOIN (
-    SELECT * FROM rel_src_catalog_name_src_collection_name_src_field_name
-    WHERE src_id IN (SELECT _id FROM src_entities)
-) rel ON rel.src_id = src._id AND src.src_field_name->>'bronwaarde' = rel.bronwaarde
-     AND ((src._application = 'applicationA') OR (src._application = 'applicationB' AND rel.dst_id = dst._id))
-""", relater._join_rel())
+        self.assertEqual("LEFT JOIN rel_src_catalog_name_src_collection_name_src_field_name rel ON "
+                         "rel.src_id = src._id AND src.src_field_name->>'bronwaarde' = rel.bronwaarde  "
+                         "AND ((src._application = 'applicationA') OR (src._application = 'applicationB' "
+                         "AND rel.dst_id = dst._id))", relater._join_rel())
 
         relater.src_has_states = True
 
-        self.assertEqual(f"""
-LEFT JOIN (
-    SELECT * FROM rel_src_catalog_name_src_collection_name_src_field_name
-    WHERE (src_id, src_volgnummer) IN (SELECT _id, volgnummer FROM src_entities)
-) rel ON rel.src_id = src._id AND rel.src_volgnummer = src.volgnummer
-    AND src.src_field_name->>'bronwaarde' = rel.bronwaarde
-     AND ((src._application = 'applicationA') OR (src._application = 'applicationB' AND rel.dst_id = dst._id))
-""", relater._join_rel())
+        self.assertEqual(f"LEFT JOIN rel_src_catalog_name_src_collection_name_src_field_name rel ON "
+                         f"rel.src_id = src._id AND rel.src_volgnummer = src.volgnummer AND "
+                         f"src.src_field_name->>'bronwaarde' = rel.bronwaarde  AND "
+                         f"((src._application = 'applicationA') OR (src._application = 'applicationB' "
+                         f"AND rel.dst_id = dst._id))", relater._join_rel())
 
     def test_get_where(self):
         relater = self._get_relater()
@@ -1377,6 +1371,8 @@ WHERE CLAUSE CONFLICTS
     def test_get_next_max_src_event(self, mock_execute):
         relater = self._get_relater()
         relater.src_table_name = "src_table"
+        relater.is_many = False
+        relater._join_array_elements = lambda: 'JOIN ARR ELMS'
         start_eventid = 0
         max_rows = 400
         max_eventid = 200
@@ -1384,7 +1380,13 @@ WHERE CLAUSE CONFLICTS
         mock_execute.return_value = iter([(300,)])
         self.assertEqual(300, relater._get_next_max_src_event(start_eventid, max_rows, max_eventid))
         mock_execute.assert_called_with(
-            "SELECT _last_event FROM src_table WHERE _last_event > 0 AND _last_event <= 200 ORDER BY _last_event OFFSET 400 - 1 LIMIT 1")
+            "SELECT src._last_event FROM src_table src  WHERE src._last_event > 0 AND src._last_event <= 200 ORDER BY src._last_event OFFSET 400 - 1 LIMIT 1")
+
+        relater.is_many = True
+        mock_execute.return_value = iter([(300,)])
+        self.assertEqual(300, relater._get_next_max_src_event(start_eventid, max_rows, max_eventid))
+        mock_execute.assert_called_with(
+            "SELECT src._last_event FROM src_table src JOIN ARR ELMS WHERE src._last_event > 0 AND src._last_event <= 200 ORDER BY src._last_event OFFSET 400 - 1 LIMIT 1")
 
         mock_execute.return_value = iter([])
         self.assertEqual(200, relater._get_next_max_src_event(start_eventid, max_rows, max_eventid))
