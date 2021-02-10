@@ -865,23 +865,10 @@ SELECT * FROM {self.dst_table_name} dst
     def _join_rel(self):
         dst_join = self._join_rel_dst_clause()
 
-        if self.src_has_states:
-            return f"""
-LEFT JOIN (
-    SELECT * FROM {self.relation_table}
-    WHERE (src_id, src_volgnummer) IN (SELECT {FIELD.ID}, {FIELD.SEQNR} FROM {self.src_entities_alias})
-) rel ON rel.src_id = src.{FIELD.ID} AND rel.src_volgnummer = src.{FIELD.SEQNR}
-    AND {self._source_value_ref()} = rel.{FIELD.SOURCE_VALUE}
-    {dst_join}
-"""
-        else:
-            return f"""
-LEFT JOIN (
-    SELECT * FROM {self.relation_table}
-    WHERE src_id IN (SELECT {FIELD.ID} FROM {self.src_entities_alias})
-) rel ON rel.src_id = src.{FIELD.ID} AND {self._source_value_ref()} = rel.{FIELD.SOURCE_VALUE}
-    {dst_join}
-"""
+        return f"LEFT JOIN {self.relation_table} rel " \
+               f"ON rel.src_id = src.{FIELD.ID} " + \
+               (f"AND rel.src_volgnummer = src.{FIELD.SEQNR} " if self.src_has_states else "") + \
+               f"AND {self._source_value_ref()} = rel.{FIELD.SOURCE_VALUE} {dst_join}"
 
     def _filter_conflicts(self):
         """Returns row_number check per source. Skip sources that have multiple_allowed set to True.

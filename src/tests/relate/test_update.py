@@ -1056,24 +1056,18 @@ WHERE dst._last_event > 1 AND dst._last_event <= 100
         relater = self._get_relater()
         relater.src_has_states = False
 
-        self.assertEqual(f"""
-LEFT JOIN (
-    SELECT * FROM rel_src_catalog_name_src_collection_name_src_field_name
-    WHERE src_id IN (SELECT _id FROM src_entities)
-) rel ON rel.src_id = src._id AND src.src_field_name->>'bronwaarde' = rel.bronwaarde
-     AND ((src._application = 'applicationA') OR (src._application = 'applicationB' AND rel.dst_id = dst._id))
-""", relater._join_rel())
+        self.assertEqual("LEFT JOIN rel_src_catalog_name_src_collection_name_src_field_name rel ON "
+                         "rel.src_id = src._id AND src.src_field_name->>'bronwaarde' = rel.bronwaarde  "
+                         "AND ((src._application = 'applicationA') OR (src._application = 'applicationB' "
+                         "AND rel.dst_id = dst._id))", relater._join_rel())
 
         relater.src_has_states = True
 
-        self.assertEqual(f"""
-LEFT JOIN (
-    SELECT * FROM rel_src_catalog_name_src_collection_name_src_field_name
-    WHERE (src_id, src_volgnummer) IN (SELECT _id, volgnummer FROM src_entities)
-) rel ON rel.src_id = src._id AND rel.src_volgnummer = src.volgnummer
-    AND src.src_field_name->>'bronwaarde' = rel.bronwaarde
-     AND ((src._application = 'applicationA') OR (src._application = 'applicationB' AND rel.dst_id = dst._id))
-""", relater._join_rel())
+        self.assertEqual(f"LEFT JOIN rel_src_catalog_name_src_collection_name_src_field_name rel ON "
+                         f"rel.src_id = src._id AND rel.src_volgnummer = src.volgnummer AND "
+                         f"src.src_field_name->>'bronwaarde' = rel.bronwaarde  AND "
+                         f"((src._application = 'applicationA') OR (src._application = 'applicationB' "
+                         f"AND rel.dst_id = dst._id))", relater._join_rel())
 
     def test_get_where(self):
         relater = self._get_relater()
