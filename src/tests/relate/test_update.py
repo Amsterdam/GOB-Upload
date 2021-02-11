@@ -1121,26 +1121,50 @@ WHERE dst._last_event > 1 AND dst._last_event <= 100
 
         # Test 1
         relater.src_has_states = True
-        relater.dst_has_states = False
+        relater.dst_has_states = True
 
-        expected = f"""\
+        expected = f"""
 SELECT EXPR1,
-    EXPR2 FROM rel_src_catalog_name_src_collection_name_src_field_name rel WHERE (src_id, src_volgnummer) IN (SELECT _id, volgnummer FROM (SRC ENTITIES 1-2) q) AND rel.id NOT IN (SELECT rel_id FROM tmp_src_catalog_name_srcabbr_src_field_name_result WHERE rel_id IS NOT NULL) AND rel._date_deleted IS NULL
-UNION
-SELECT EXPR1,
-    EXPR2 FROM rel_src_catalog_name_src_collection_name_src_field_name rel WHERE dst_id IN (SELECT _id FROM (DST ENTITIES 3-4) q) AND rel.id NOT IN (SELECT rel_id FROM tmp_src_catalog_name_srcabbr_src_field_name_result WHERE rel_id IS NOT NULL) AND rel._date_deleted IS NULL"""
+    EXPR2
+FROM rel_src_catalog_name_src_collection_name_src_field_name rel
+WHERE rel.id IN (
+    SELECT rel.id FROM rel_src_catalog_name_src_collection_name_src_field_name rel
+    JOIN src_catalog_name_src_collection_name_table src ON rel.src_id = src._id AND rel.src_volgnummer = src.volgnummer
+      AND src._last_event > 1 AND src._last_event <= 2
+    LEFT JOIN tmp_src_catalog_name_srcabbr_src_field_name_result res ON res.rel_id = rel.id
+    WHERE rel._date_deleted IS NULL AND res.rel_id IS NULL
+    UNION
+    SELECT rel.id FROM rel_src_catalog_name_src_collection_name_src_field_name rel
+    JOIN dst_catalog_name_dst_collection_name_table dst ON rel.dst_id = dst._id AND rel.dst_volgnummer = dst.volgnummer
+      AND dst._last_event > 3 AND dst._last_event <= 4
+    LEFT JOIN tmp_src_catalog_name_srcabbr_src_field_name_result res ON res.rel_id = rel.id
+    WHERE rel._date_deleted IS NULL AND res.rel_id IS NULL
+)
+"""
         self.assertEqual(expected, relater._create_delete_events_query(1, 2, 3, 4))
 
         # Test 2. Switch states
         relater.src_has_states = False
-        relater.dst_has_states = True
+        relater.dst_has_states = False
 
-        expected = f"""\
+        expected = f"""
 SELECT EXPR1,
-    EXPR2 FROM rel_src_catalog_name_src_collection_name_src_field_name rel WHERE src_id IN (SELECT _id FROM (SRC ENTITIES 1-2) q) AND rel.id NOT IN (SELECT rel_id FROM tmp_src_catalog_name_srcabbr_src_field_name_result WHERE rel_id IS NOT NULL) AND rel._date_deleted IS NULL
-UNION
-SELECT EXPR1,
-    EXPR2 FROM rel_src_catalog_name_src_collection_name_src_field_name rel WHERE (dst_id, dst_volgnummer) IN (SELECT _id, volgnummer FROM (DST ENTITIES 3-4) q) AND rel.id NOT IN (SELECT rel_id FROM tmp_src_catalog_name_srcabbr_src_field_name_result WHERE rel_id IS NOT NULL) AND rel._date_deleted IS NULL"""
+    EXPR2
+FROM rel_src_catalog_name_src_collection_name_src_field_name rel
+WHERE rel.id IN (
+    SELECT rel.id FROM rel_src_catalog_name_src_collection_name_src_field_name rel
+    JOIN src_catalog_name_src_collection_name_table src ON rel.src_id = src._id
+      AND src._last_event > 1 AND src._last_event <= 2
+    LEFT JOIN tmp_src_catalog_name_srcabbr_src_field_name_result res ON res.rel_id = rel.id
+    WHERE rel._date_deleted IS NULL AND res.rel_id IS NULL
+    UNION
+    SELECT rel.id FROM rel_src_catalog_name_src_collection_name_src_field_name rel
+    JOIN dst_catalog_name_dst_collection_name_table dst ON rel.dst_id = dst._id
+      AND dst._last_event > 3 AND dst._last_event <= 4
+    LEFT JOIN tmp_src_catalog_name_srcabbr_src_field_name_result res ON res.rel_id = rel.id
+    WHERE rel._date_deleted IS NULL AND res.rel_id IS NULL
+)
+"""
         self.assertEqual(expected, relater._create_delete_events_query(1, 2, 3, 4))
 
     def _get_get_query_mocked_relater(self):
