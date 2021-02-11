@@ -962,30 +962,45 @@ SELECT * FROM {self.dst_table_name} dst
         """
         return len(set([spec[attribute] for spec in self.relation_specs])) == 1
 
-    def _delete_src_or_dst_query(self, entities_query: str, src_or_dst: str):
-
-        assert src_or_dst in ('src', 'dst'), f"src_or_dst should be 'src' or 'dst', not '{src_or_dst}'"
-
-        src_or_dst_has_states = self.src_has_states if src_or_dst == 'src' else self.dst_has_states
-        if src_or_dst_has_states:
-            in_entities = f"({src_or_dst}_id, {src_or_dst}_volgnummer) IN " \
-                          f"(SELECT {FIELD.ID}, {FIELD.SEQNR} FROM ({entities_query}) q)"
-        else:
-            in_entities = f"{src_or_dst}_id IN (SELECT {FIELD.ID} FROM ({entities_query}) q)"
-
-        rel_ids = f"SELECT rel_id FROM {self.result_table_name} WHERE rel_id IS NOT NULL"
-
-        return f"SELECT {self.comma_join.join(self._select_expressions_rel_delete())} " \
-               f"FROM {self.relation_table} rel " \
-               f"WHERE {in_entities} " \
-               f"AND rel.id NOT IN ({rel_ids}) " \
-               f"AND rel.{FIELD.DATE_DELETED} IS NULL"
-
     def _create_delete_events_query(self, min_src_event: int, max_src_event: int, min_dst_event: int,
                                     max_dst_event: int):
-        src_side = self._delete_src_or_dst_query(self._src_entities_range(min_src_event, max_src_event), 'src')
-        dst_side = self._delete_src_or_dst_query(self._dst_entities_range(min_dst_event, max_dst_event), 'dst')
-        return f"{src_side}\nUNION\n{dst_side}"
+        """Returns the query that adds the relations to delete to the result table.
+
+        The relations to delete are:
+        All rows currently in the relation table,
+        - that are either related on the src side, or on the dst side (the first (inner) JOIN),
+        - which are not already deleted (so _date_deleted IS NULL),
+        - and not already present in the result table (the LEFT JOIN, combined with res.rel_id IS NULL
+
+        Both src and dst are checked separately on both sides of the UNION
+
+        :param min_src_event:
+        :param max_src_event:
+        :param min_dst_event:
+        :param max_dst_event:
+        :return:
+        """
+        src_join = f"rel.src_id = src.{FIELD.ID}" + (f" AND rel.src_volgnummer = src.{FIELD.SEQNR}"
+                                                     if self.src_has_states else "")
+        dst_join = f"rel.dst_id = dst.{FIELD.ID}" + (f" AND rel.dst_volgnummer = dst.{FIELD.SEQNR}"
+                                                     if self.dst_has_states else "")
+        return f"""
+SELECT {self.comma_join.join(self._select_expressions_rel_delete())}
+FROM {self.relation_table} rel
+WHERE rel.id IN (
+    SELECT rel.id FROM {self.relation_table} rel
+    JOIN {self.src_table_name} src ON {src_join}
+      AND src.{FIELD.LAST_EVENT} > {min_src_event} AND src.{FIELD.LAST_EVENT} <= {max_src_event}
+    LEFT JOIN {self.result_table_name} res ON res.rel_id = rel.id
+    WHERE rel.{FIELD.DATE_DELETED} IS NULL AND res.rel_id IS NULL
+    UNION
+    SELECT rel.id FROM {self.relation_table} rel
+    JOIN {self.dst_table_name} dst ON {dst_join}
+      AND dst.{FIELD.LAST_EVENT} > {min_dst_event} AND dst.{FIELD.LAST_EVENT} <= {max_dst_event}
+    LEFT JOIN {self.result_table_name} res ON res.rel_id = rel.id
+    WHERE rel.{FIELD.DATE_DELETED} IS NULL AND res.rel_id IS NULL
+)
+"""
 
     def get_query(self, src_entities: str, dst_entities: str, max_src_event: int, max_dst_event: int,
                   is_conflicts_query=False):
