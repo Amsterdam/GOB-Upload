@@ -63,7 +63,7 @@ def with_session(func):
 class GOBStorageHandler():
     """Metadata aware Storage handler """
     gob_model = GOBModel()
-    engine = create_engine(URL(**GOB_DB))
+    engine = create_engine(URL(**GOB_DB), connect_args={'sslmode': 'require'})
     Session = sessionmaker(autocommit=True,
                            autoflush=False,
                            bind=engine)
