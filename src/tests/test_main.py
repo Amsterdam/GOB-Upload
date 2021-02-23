@@ -55,3 +55,17 @@ class TestMain(TestCase):
             force_migrate=True,
             recreate_materialized_views=True
         )
+
+    @mock.patch('gobupload.storage.handler.GOBStorageHandler')
+    @mock.patch('gobcore.message_broker.messagedriven_service.MessagedrivenService')
+    def test_main_calls_migrate_single_materialized_view(self, mock_service, mock_storage):
+        # With migrate command line arguments
+        sys.argv = ['python -m gobupload', '--migrate', '--materialized_views', 'some_mv_name']
+        from gobupload import __main__
+        importlib.reload(__main__)
+
+        mock_service.return_value.start.assert_not_called()
+        mock_storage.return_value.init_storage.assert_called_with(
+            force_migrate=True,
+            recreate_materialized_views=['some_mv_name']
+        )
