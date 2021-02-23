@@ -92,6 +92,9 @@ parser.add_argument('--materialized_views',
                     action='store_true',
                     default=False,
                     help='force recreation of materialized views')
+parser.add_argument('mv_name',
+                    nargs='?',
+                    help='The materialized view to update. Use with --materialized-views')
 args = parser.parse_args()
 
 if DEBUG:
@@ -102,8 +105,8 @@ storage = GOBStorageHandler()
 
 # Migrate on request only
 if args.migrate:
-    print("Storage migration forced")
-    storage.init_storage(force_migrate=True, recreate_materialized_views=args.materialized_views)
+    recreate = [args.mv_name] if args.materialized_views and args.mv_name else args.materialized_views
+    storage.init_storage(force_migrate=True, recreate_materialized_views=recreate)
 else:
     storage.init_storage()
     params = {
