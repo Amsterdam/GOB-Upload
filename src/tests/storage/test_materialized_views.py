@@ -119,6 +119,14 @@ class TestMaterializedViews(TestCase):
         mv.initialise(storage_handler, True)
         mocked_view.create.assert_called_with(storage_handler, True)
 
+        mocked_view.name = "some view"
+        mv.initialise(storage_handler, [])
+        mocked_view.create.assert_called_with(storage_handler, False)
+        mv.initialise(storage_handler, ["other view"])
+        mocked_view.create.assert_called_with(storage_handler, False)
+        mv.initialise(storage_handler, ["some view"])
+        mocked_view.create.assert_called_with(storage_handler, True)
+
     @patch("gobupload.storage.materialized_views.model_relations.get_relations")
     @patch("gobupload.storage.materialized_views.MaterializedView")
     def test_get_all(self, mock_materialized_view, mock_get_relations):

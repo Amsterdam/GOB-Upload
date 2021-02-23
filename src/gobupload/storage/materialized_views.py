@@ -30,6 +30,8 @@ from gobcore.model.metadata import FIELD
 from gobcore.model import GOBModel
 from gobcore.model import relations as model_relations
 
+from typing import Union
+
 
 class MaterializedView:
     model = GOBModel()
@@ -106,15 +108,18 @@ class MaterializedView:
 class MaterializedViews:
     model = GOBModel()
 
-    def initialise(self, storage_handler, force_recreate=False):
+    def initialise(self, storage_handler, force_recreate: Union[bool, list] = False):
         """This method creates the materialized view along with its indexes
 
+        :param force_recreate: A list with MV's to recreate, True to recreate all
         :return:
         """
         materialized_views = self.get_all()
+        force_recreate = force_recreate or []
 
         for materialized_view in materialized_views:
-            materialized_view.create(storage_handler, force_recreate)
+            recreate = True if force_recreate is True or materialized_view.name in force_recreate else False
+            materialized_view.create(storage_handler, recreate)
 
     def get_all(self):
         """Returns definitions of materialized views
