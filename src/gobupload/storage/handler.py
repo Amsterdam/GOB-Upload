@@ -21,6 +21,7 @@ from sqlalchemy.engine.url import URL
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import sessionmaker
+from typing import Union
 
 from gobcore.exceptions import GOBException
 from gobcore.model import GOBModel
@@ -108,9 +109,11 @@ class GOBStorageHandler():
         self.metadata = gob_metadata
         self.session = None
 
-    def init_storage(self, force_migrate=False, recreate_materialized_views=False):
+    def init_storage(self, force_migrate=False, recreate_materialized_views: Union[bool, list] = False):
         """Check if the necessary tables (for events, and for the entities in gobmodel) are present
         If not, they are required
+
+        :param recreate_materialized_views: List of mv's to recreate, True for all, False for none
         """
         MIGRATION_LOCK = 19935910  # Just some random number
 
