@@ -57,7 +57,7 @@ def get_event_fixture(metadata, event_name=None):
     data = get_event_data_fixture(gob_event, metadata)
     data["_last_event"] = None
     data["_hash"] = None
-    return gob_event.create_event(data["_source_id"], data["_source_id"], data)
+    return gob_event.create_event(data["_source_id"], data["_source_id"], data, '0.9')
 
 
 def get_metadata_fixture():

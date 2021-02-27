@@ -146,6 +146,7 @@ class TestEventCreator(TestCase):
             }
         ], ec._get_modifications(row, ['a', 'b', 'c']))
 
+    @patch('gobupload.relate.update._RELATE_VERSION', '123.0')
     @patch('gobupload.relate.update.ADD')
     @patch('gobupload.relate.update.MODIFY')
     @patch('gobupload.relate.update.DELETE')
@@ -167,7 +168,7 @@ class TestEventCreator(TestCase):
             '_source_id': 'SOURCE ID',
             'a': 'val',
             'b': 'val',
-        })
+        }, '123.0')
 
         # ADD event (rel row present, but previously deleted)
         row = {
@@ -185,7 +186,7 @@ class TestEventCreator(TestCase):
             'a': 'val',
             'b': 'val',
             '_last_event': 'last event'
-        })
+        }, '123.0')
 
         # DELETE EVENT (src not present)
         row = {
@@ -200,7 +201,7 @@ class TestEventCreator(TestCase):
         }
         event = ec.create_event(row)
         self.assertEqual(mock_delete.create_event.return_value, event)
-        mock_delete.create_event.assert_called_with('rel id', 'rel id', {'_last_event': 'last'})
+        mock_delete.create_event.assert_called_with('rel id', 'rel id', {'_last_event': 'last'}, '123.0')
 
         # DELETE EVENT (src marked as deleted)
         row = {
@@ -215,7 +216,7 @@ class TestEventCreator(TestCase):
         }
         event = ec.create_event(row)
         self.assertEqual(mock_delete.create_event.return_value, event)
-        mock_delete.create_event.assert_called_with('rel id', 'rel id', {'_last_event': 'last'})
+        mock_delete.create_event.assert_called_with('rel id', 'rel id', {'_last_event': 'last'}, '123.0')
 
         # MODIFY EVENT (hash differs, and modifications detected)
         ec._get_hash = lambda x: 'THE HASH'
@@ -234,7 +235,7 @@ class TestEventCreator(TestCase):
             'modifications': ['a'],
             '_last_event': 'last',
             '_hash': 'THE HASH'
-        })
+        }, '123.0')
 
         # CONFIRM EVENT
         row = {
@@ -247,7 +248,7 @@ class TestEventCreator(TestCase):
         }
         event = ec.create_event(row)
         self.assertEqual(mock_confirm.create_event.return_value, event)
-        mock_confirm.create_event.assert_called_with('rel id', 'rel id', {'_last_event': 'last'})
+        mock_confirm.create_event.assert_called_with('rel id', 'rel id', {'_last_event': 'last'}, '123.0')
 
 
 @patch("gobupload.relate.update.logger", MagicMock())
@@ -1632,6 +1633,7 @@ WHERE CLAUSE CONFLICTS
         relater._cleanup.assert_called_once()
         relater._get_updates_full.assert_called_with(50, 60, True)
 
+    @patch("gobupload.relate.update._RELATE_VERSION", "123.0")
     @patch("gobupload.relate.update.EventCreator")
     @patch("gobupload.relate.update.EventCollector")
     @patch("gobupload.relate.update.ContentsWriter")
@@ -1650,6 +1652,7 @@ WHERE CLAUSE CONFLICTS
         mock_event_collector.assert_called_with(
             mock_contents_writer.return_value.__enter__.return_value,
             mock_contents_writer.return_value.__enter__.return_value,
+            "123.0",
         )
         mock_event_collector.return_value.__enter__.return_value.collect.assert_has_calls([
             call({'a': 1}),
