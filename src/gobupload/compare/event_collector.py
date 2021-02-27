@@ -11,7 +11,7 @@ class EventCollector:
     MAX_BULK = 10000          # Max number of events of same type in one bulk event
     BULK_TYPES = ["CONFIRM"]  # Only CONFIRM events are grouped in bulk events
 
-    def __init__(self, contents_writer, confirms_writer):
+    def __init__(self, contents_writer, confirms_writer, version):
         """
         Initializes the collector with empty collections
 
@@ -20,6 +20,7 @@ class EventCollector:
         self._last_type = None
         self.contents_writer = contents_writer
         self.confirms_writer = confirms_writer
+        self.version = version
 
     def __enter__(self):
         return self
@@ -65,7 +66,7 @@ class EventCollector:
                     '_source_id': event["data"]["_source_id"],
                     '_last_event': event["data"]["_last_event"]
                 } for event in self._bulk_events
-            ])
+            ], self.version)
             self._add_event(event)
         else:
             self._add_event(self._bulk_events[0])
@@ -82,7 +83,7 @@ class EventCollector:
 
     def collect_initial_add(self, entity):
         source_id = entity['_source_id']
-        event = GOB.ADD.create_event(source_id, source_id, entity)
+        event = GOB.ADD.create_event(source_id, source_id, entity, self.version)
         self.collect(event)
 
     def collect(self, event):

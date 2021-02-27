@@ -71,7 +71,7 @@ def compare(msg):
                 contents_writer = ContentsWriter()
                 contents_writer.open()
                 # Pass a None confirms_writer because only ADD events are written
-                collector = EventCollector(contents_writer, confirms_writer=None)
+                collector = EventCollector(contents_writer, confirms_writer=None, version=entity_model['version'])
                 collect = collector.collect_initial_add
             else:
                 # Collect entities in a temporary table
@@ -144,11 +144,12 @@ def _process_compare_results(storage, model, results, stats):
     :param data_by_source_id: a mapping of import data by source_id
     :return: list of events, list of remaining records
     """
+    version = model['version']
     # Take two files: one for confirms and one for other events
     with ProgressTicker("Process compare result", 10000) as progress, \
             ContentsWriter() as contents_writer, \
             ContentsWriter() as confirms_writer, \
-            EventCollector(contents_writer, confirms_writer) as event_collector:
+            EventCollector(contents_writer, confirms_writer, version) as event_collector:
 
         filename = contents_writer.filename
         confirms = confirms_writer.filename
@@ -166,23 +167,23 @@ def _process_compare_results(storage, model, results, stats):
             if row['type'] == 'ADD':
                 source_id = row['_source_id']
                 entity["_last_event"] = row['_last_event']
-                event = GOB.ADD.create_event(source_id, source_id, entity)
+                event = GOB.ADD.create_event(source_id, source_id, entity, version)
             elif row['type'] == 'CONFIRM':
                 source_id = row['_source_id']
                 data = {
                     '_last_event': row['_last_event']
                 }
-                event = GOB.CONFIRM.create_event(source_id, source_id, data)
+                event = GOB.CONFIRM.create_event(source_id, source_id, data, version)
             elif row['type'] == 'MODIFY':
                 current_entity = storage.get_current_entity(entity)
                 modifications = get_modifications(current_entity, entity, model['all_fields'])
-                event = get_event_for(current_entity, entity, modifications)
+                event = get_event_for(current_entity, entity, modifications, version)
             elif row['type'] == 'DELETE':
                 source_id = row['_entity_source_id']
                 data = {
                     '_last_event': row['_last_event']
                 }
-                event = GOB.DELETE.create_event(source_id, source_id, data)
+                event = GOB.DELETE.create_event(source_id, source_id, data, version)
             else:
                 continue
 

@@ -18,18 +18,18 @@ class TestEventCollector(TestCase):
         pass
 
     def test_add_empty(self):
-        with EventCollector(mock_contents_writer, mock_confirms_writer) as ec:
+        with EventCollector(mock_contents_writer, mock_confirms_writer, '0.9') as ec:
             pass
         mock_contents_writer.assert_not_called()
 
     def test_add_one(self):
-        with EventCollector(mock_contents_writer, mock_confirms_writer) as ec:
+        with EventCollector(mock_contents_writer, mock_confirms_writer, '0.9') as ec:
             ec.collect({"event": 1})
         mock_contents_writer.write.assert_called_once()
         mock_contents_writer.write.assert_called_with({"event": 1})
 
     def test_add_initial(self):
-        with EventCollector(mock_contents_writer, mock_confirms_writer) as ec:
+        with EventCollector(mock_contents_writer, mock_confirms_writer, '0.9') as ec:
             ec.collect_initial_add({"event": 1, "_source_id": "source_id"})
 
         expectation = {
@@ -42,14 +42,15 @@ class TestEventCollector(TestCase):
                 '_last_event': None,
                 '_source_id': 'source_id',
                 '_entity_source_id': 'source_id'
-            }
+            },
+            'version': '0.9',
         }
 
         mock_contents_writer.write.assert_called_once()
         mock_contents_writer.write.assert_called_with(expectation)
 
     def test_add_multiple(self):
-        with EventCollector(mock_contents_writer, mock_confirms_writer) as ec:
+        with EventCollector(mock_contents_writer, mock_confirms_writer, '0.9') as ec:
             ec.collect({"event": 1})
             mock_contents_writer.write.assert_called_with({"event": 1})
             ec.collect({"event": 2})
@@ -63,10 +64,11 @@ class TestEventCollector(TestCase):
             "data": {
                 "_source_id": "source_id",
                 "_last_event": "last_event"
-            }
+            },
+            "version": "0.9",
         }
 
-        with EventCollector(mock_contents_writer, mock_confirms_writer) as ec:
+        with EventCollector(mock_contents_writer, mock_confirms_writer, '0.9') as ec:
             ec.collect(confirm_event)
         mock_contents_writer.write.assert_not_called()
         mock_confirms_writer.write.assert_called_once()
@@ -89,10 +91,11 @@ class TestEventCollector(TestCase):
                     confirm_event["data"],
                     confirm_event["data"]
                 ]
-            }
+            },
+            "version": "0.9",
         }
 
-        with EventCollector(mock_contents_writer, mock_confirms_writer) as ec:
+        with EventCollector(mock_contents_writer, mock_confirms_writer, '0.9') as ec:
             ec.collect(confirm_event)
             ec.collect(confirm_event)
         mock_contents_writer.write.assert_not_called()
@@ -102,7 +105,7 @@ class TestEventCollector(TestCase):
         mock_contents_writer.reset_mock()
 
         EventCollector.MAX_BULK = 2
-        with EventCollector(mock_contents_writer, mock_confirms_writer) as ec:
+        with EventCollector(mock_contents_writer, mock_confirms_writer, '0.9') as ec:
             ec.collect(confirm_event)
             ec.collect(confirm_event)
             mock_confirms_writer.write.assert_called_with(expectation)
