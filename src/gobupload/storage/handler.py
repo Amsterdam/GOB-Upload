@@ -704,7 +704,7 @@ WHERE
     '{ self.metadata.timestamp }',
     '{ self.metadata.catalogue }',
     '{ self.metadata.entity }',
-    '{ self.metadata.version }',
+    '{ event['version'] }',
     '{ event['event'] }',
     '{ self.metadata.source }',
     '{ event['data'].get('_source_id') }',

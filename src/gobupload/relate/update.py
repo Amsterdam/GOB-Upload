@@ -37,6 +37,8 @@ _FORCE_FULL_RELATE_THRESHOLD = 1.0
 # Used for initial relate. 30000 seems to be the sweetspot for the current configuration
 _MAX_ROWS_PER_SIDE = 30000
 
+_RELATE_VERSION = '0.1'
+
 
 # DEVELOPMENT: The DEBUG environment to 'true' to avoid removal of tmp tables.
 
@@ -193,10 +195,10 @@ class EventCreator:
                             ] + [f"rel_{field}" for field in compare_fields]
 
             data = {k: v for k, v in row.items() if k not in ignore_fields}
-            return ADD.create_event(row[FIELD.SOURCE_ID], row[FIELD.SOURCE_ID], data)
+            return ADD.create_event(row[FIELD.SOURCE_ID], row[FIELD.SOURCE_ID], data, _RELATE_VERSION)
         elif row['src_deleted'] is not None or row['src_id'] is None:
             data = {FIELD.LAST_EVENT: row[FIELD.LAST_EVENT]}
-            return DELETE.create_event(row['rel_id'], row['rel_id'], data)
+            return DELETE.create_event(row['rel_id'], row['rel_id'], data, _RELATE_VERSION)
         else:
             row[FIELD.HASH] = self._get_hash(row)
             modifications = [] \
@@ -209,10 +211,10 @@ class EventCreator:
                     FIELD.LAST_EVENT: row[FIELD.LAST_EVENT],
                     FIELD.HASH: row[FIELD.HASH],
                 }
-                return MODIFY.create_event(row['rel_id'], row['rel_id'], data)
+                return MODIFY.create_event(row['rel_id'], row['rel_id'], data, _RELATE_VERSION)
             else:
                 data = {FIELD.LAST_EVENT: row[FIELD.LAST_EVENT]}
-                return CONFIRM.create_event(row['rel_id'], row['rel_id'], data)
+                return CONFIRM.create_event(row['rel_id'], row['rel_id'], data, _RELATE_VERSION)
 
 
 class Relater:
@@ -359,7 +361,7 @@ class Relater:
         start_validity, end_validity = self._validity_select_expressions_src()
 
         mapping = {
-            FIELD.VERSION: f"src.{FIELD.VERSION}",
+            FIELD.VERSION: f"'{_RELATE_VERSION}'",
             FIELD.APPLICATION: f"src.{FIELD.APPLICATION}",
             FIELD.SOURCE_ID: self._get_id(),
             FIELD.SOURCE: f"'{GOB}'",
@@ -1315,7 +1317,7 @@ LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(self._dst_table_outer
         with ProgressTicker("Process relate src result", 10000) as progress, \
                 ContentsWriter() as contents_writer, \
                 ContentsWriter() as confirms_writer, \
-                EventCollector(contents_writer, confirms_writer) as event_collector:
+                EventCollector(contents_writer, confirms_writer, _RELATE_VERSION) as event_collector:
 
             filename = contents_writer.filename
             confirms = confirms_writer.filename
