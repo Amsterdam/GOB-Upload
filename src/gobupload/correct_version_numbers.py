@@ -1,11 +1,13 @@
 """
-Temporary script (27-02-2021) to fix version numbers in events table for events with migrations that may have the
+Script (27-02-2021) to fix version numbers in events table for events with migrations that may have the
 wrong version numbers, due to an earlier bug in the migrations code.
 
 This script will not put back the exact original version numbers on the events, but it will ensure compatibility.
 
 It is hard to determine what the original event version should have been, but identifying the point at which an event
 was definitely based on a newer version is easy.
+
+This script is part of a migration; don't remove this.
 """
 
 from gobcore.model.migrations import GOBMigrations
