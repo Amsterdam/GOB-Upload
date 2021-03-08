@@ -109,8 +109,8 @@ def _geounion(storage, data, specs, column, assigned):
 
     # Derive the table from which to retrieve the geometries
     # Derive the field that is used to match the values with the records in the other table
-    catalogue, collection, field = re.split(r'[\:\.]', specs["from"])
-    table_name = GOBModel().get_table_name(catalogue, collection)
+    catalog_name, collection_name, field = re.split(r'[\:\.]', specs["from"])
+    table_name = GOBModel().get_table_name(catalog_name, collection_name)
 
     # Derive the fieldname that contains the geometry in the other table
     geometrie = specs["geometrie"]

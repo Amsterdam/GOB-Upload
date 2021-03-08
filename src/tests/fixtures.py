@@ -62,8 +62,8 @@ def get_event_fixture(metadata, event_name=None):
 
 def get_metadata_fixture():
     header = {key: random_string() for key in ["source", "timestamp", "version", "application"]}
-    header["catalogue"] = "meetbouten"
-    header["entity"] = "meetbouten"
+    header["catalog"] = "meetbouten"
+    header["collection"] = "meetbouten"
     header["id_column"] = "identificatie"
     header["model"] = {header['id_column']: {"type": "GOB.String"}}
     header["process_id"] = f"{header['timestamp']}.{header['source']}.{header['entity']}"
@@ -122,9 +122,9 @@ def dict_to_object(dict):
 def get_event_fixure():
     event = {
         'version': '0.1',
-        'catalogue': 'test_catalogue',
+        'catalog': 'test_catalog',
         'application': 'TEST',
-        'entity': 'test_entity',
+        'collection': 'test_collection',
         'timestamp': datetime.datetime(2019, 1, 30, 18, 7, 7),
         'source': 'test',
         'action': 'ADD',

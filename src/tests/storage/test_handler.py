@@ -258,7 +258,7 @@ WHERE
         self.storage._drop_indexes.assert_called_once()
 
     def test_create_temporary_table(self):
-        expected_table = f'{self.msg["header"]["catalogue"]}_{self.msg["header"]["entity"]}_tmp'
+        expected_table = f'{self.msg["header"]["catalog"]}_{self.msg["header"]["collection"]}_tmp'
 
         self.storage.create_temporary_table()
 
@@ -269,7 +269,7 @@ WHERE
         self.storage.engine.execute.assert_called()
 
     def test_create_temporary_table_exists(self):
-        expected_table = f'{self.msg["header"]["catalogue"]}_{self.msg["header"]["entity"]}_tmp'
+        expected_table = f'{self.msg["header"]["catalog"]}_{self.msg["header"]["collection"]}_tmp'
 
         mock_table = MagicMock()
 
@@ -287,8 +287,8 @@ WHERE
         self.storage.engine.execute.assert_called()
 
     def test_compare_temporary_data(self):
-        current = f'{self.msg["header"]["catalogue"]}_{self.msg["header"]["entity"]}'
-        temporary = f'{self.msg["header"]["catalogue"]}_{self.msg["header"]["entity"]}_tmp'
+        current = f'{self.msg["header"]["catalog"]}_{self.msg["header"]["collection"]}'
+        temporary = f'{self.msg["header"]["catalog"]}_{self.msg["header"]["collection"]}_tmp'
 
         fields = ['_source', 'identificatie']
         query = queries.get_comparison_query('any source', current, temporary, fields)
@@ -313,15 +313,15 @@ WHERE
         self.storage.engine.execute.assert_called()
 
     def test_delete_confirms(self):
-        catalogue = self.msg["header"]["catalogue"]
-        entity = self.msg["header"]["entity"]
+        catalog = self.msg["header"]["catalog"]
+        collection = self.msg["header"]["collection"]
         events = self.storage.EVENTS_TABLE
         self.storage.delete_confirms()
 
         self.storage.engine.execute.assert_called()
         args = self.storage.engine.execute.call_args[0][0]
         args = ' '.join(args.split())
-        expect = f"DELETE FROM {events} WHERE catalogue = '{catalogue}' AND entity = '{entity}' AND action IN ('BULKCONFIRM', 'CONFIRM')"
+        expect = f"DELETE FROM {events} WHERE catalog = '{collection}' AND collection = '{collection}' AND action IN ('BULKCONFIRM', 'CONFIRM')"
         self.assertEqual(args, expect)
 
     def test_get_entity_for_update_modify_non_existing_entity(self):
@@ -370,21 +370,21 @@ WHERE
     def test_combinations_plain(self):
         mock_session = MagicMock()
         self.storage.get_session = mock_session
-        result = self.storage.get_source_catalogue_entity_combinations()
-        mock_session.return_value.__enter__().execute.assert_called_with('SELECT DISTINCT source, catalogue, entity FROM events')
+        result = self.storage.get_source_catalog_collection_combinations()
+        mock_session.return_value.__enter__().execute.assert_called_with('SELECT DISTINCT source, catalog, collection FROM events')
 
     def test_combinations_with_args(self):
         mock_session = MagicMock()
         self.storage.get_session = mock_session
-        result = self.storage.get_source_catalogue_entity_combinations(col="val")
-        mock_session.return_value.__enter__().execute.assert_called_with("SELECT DISTINCT source, catalogue, entity FROM events WHERE col = 'val'")
+        result = self.storage.get_source_catalog_collection_combinations(col="val")
+        mock_session.return_value.__enter__().execute.assert_called_with("SELECT DISTINCT source, catalog, collection FROM events WHERE col = 'val'")
 
     def test_get_tablename(self):
         self.storage.gob_model = MagicMock()
         result = self.storage._get_tablename()
         self.assertEqual(self.storage.gob_model.get_table_name.return_value, result)
-        self.storage.gob_model.get_table_name.assert_called_with(self.storage.metadata.catalogue,
-                                                                 self.storage.metadata.entity)
+        self.storage.gob_model.get_table_name.assert_called_with(self.storage.metadata.catalog,
+                                                                 self.storage.metadata.collection)
 
     def test_analyze_table(self):
         self.storage.engine = MagicMock()

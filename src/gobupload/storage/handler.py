@@ -287,11 +287,11 @@ WHERE
         :param data: the imported data
         :return:
         """
-        self.collection = self.gob_model.get_collection(self.metadata.catalogue, self.metadata.entity)
-        table_name = self.gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
+        self.collection = self.gob_model.get_collection(self.metadata.catalog, self.metadata.collection)
+        table_name = self.gob_model.get_table_name(self.metadata.catalog, self.metadata.collection)
         tmp_table_name = self._get_tmp_table_name(table_name)
 
-        self.fields = self.gob_model.get_functional_key_fields(self.metadata.catalogue, self.metadata.entity)
+        self.fields = self.gob_model.get_functional_key_fields(self.metadata.catalog, self.metadata.collection)
         self.fields.extend(['_source_id', '_hash'])
 
         # Drop any existing temporary table
@@ -355,9 +355,9 @@ WHERE
 
         :return: a list of dicts with source_id, hash, last_event and type
         """
-        current = self.gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
+        current = self.gob_model.get_table_name(self.metadata.catalog, self.metadata.collection)
 
-        fields = self.gob_model.get_functional_key_fields(self.metadata.catalogue, self.metadata.entity)
+        fields = self.gob_model.get_functional_key_fields(self.metadata.catalog, self.metadata.collection)
         source = self.metadata.source
 
         result = None
@@ -391,7 +391,7 @@ WHERE
         return getattr(self.base.classes, self._get_tablename())
 
     def _get_tablename(self):
-        return self.gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
+        return self.gob_model.get_table_name(self.metadata.catalog, self.metadata.collection)
 
     def _drop_table(self, table):
         statement = f"DROP TABLE IF EXISTS {table} CASCADE"
@@ -430,8 +430,8 @@ WHERE
         statement = f"""
         DELETE
         FROM {self.EVENTS_TABLE}
-        WHERE catalogue = '{self.metadata.catalogue}' AND
-              entity = '{self.metadata.entity}' AND
+        WHERE catalog = '{self.metadata.catalog}' AND
+              collection = '{self.metadata.collection}' AND
               action IN ('BULKCONFIRM', 'CONFIRM')
         """
         self.execute(statement)
@@ -455,7 +455,9 @@ WHERE
         :return: The highest last_event
         """
         result = self.session.query(self.DbEvent) \
-            .filter_by(source=self.metadata.source, catalogue=self.metadata.catalogue, entity=self.metadata.entity) \
+            .filter_by(source=self.metadata.source,
+                       catalog=self.metadata.catalog,
+                       collection=self.metadata.collection) \
             .order_by(self.DbEvent.eventid.desc())\
             .first()
         return None if result is None else result.eventid
@@ -467,7 +469,9 @@ WHERE
         :return: The list of events
         """
         return self.session.query(self.DbEvent) \
-            .filter_by(source=self.metadata.source, catalogue=self.metadata.catalogue, entity=self.metadata.entity) \
+            .filter_by(source=self.metadata.source,
+                       catalog=self.metadata.catalog,
+                       collection=self.metadata.collection) \
             .filter(self.DbEvent.eventid > eventid if eventid else True) \
             .order_by(self.DbEvent.eventid.asc()) \
             .limit(count) \
@@ -498,7 +502,7 @@ WHERE
         return self.session.query(self.DbEntity).filter_by(**{key: value}).count() > 0
 
     def get_collection_model(self):
-        return self.gob_model.get_collection(self.metadata.catalogue, self.metadata.entity)
+        return self.gob_model.get_collection(self.metadata.catalog, self.metadata.collection)
 
     @with_session
     def get_current_ids(self, exclude_deleted=True):
@@ -586,7 +590,7 @@ WHERE
         :raises GOBException:
         :return: the stored version of the entity, or None if it doesn't exist
         """
-        fields = self.gob_model.get_functional_key_fields(self.metadata.catalogue, self.metadata.entity)
+        fields = self.gob_model.get_functional_key_fields(self.metadata.catalog, self.metadata.collection)
         value = {
             **entity,
             "_source": self.metadata.source
@@ -611,7 +615,7 @@ WHERE
         :param with_deleted: boolean denoting if entities that are deleted should be considered (default: False)
         :return:
         """
-        fields = self.gob_model.get_technical_key_fields(self.metadata.catalogue, self.metadata.entity)
+        fields = self.gob_model.get_technical_key_fields(self.metadata.catalog, self.metadata.collection)
         value = {
             "_source": self.metadata.source,
             "_source_id": source_id
@@ -633,7 +637,7 @@ WHERE
         :param with_deleted: boolean denoting if entities that are deleted should be considered (default: False)
         :return:
         """
-        fields = self.gob_model.get_technical_key_fields(self.metadata.catalogue, self.metadata.entity)
+        fields = self.gob_model.get_technical_key_fields(self.metadata.catalog, self.metadata.collection)
         value = {
             "_source": self.metadata.source,
         }
@@ -699,8 +703,8 @@ WHERE
         values = ",".join([f"""
 (
     '{ self.metadata.timestamp }',
-    '{ self.metadata.catalogue }',
-    '{ self.metadata.entity }',
+    '{ self.metadata.catalog }',
+    '{ self.metadata.collection }',
     '{ self.metadata.version }',
     '{ event['event'] }',
     '{ self.metadata.source }',
@@ -715,8 +719,8 @@ INSERT INTO
     "{ self.EVENTS_TABLE }"
 (
     "timestamp",
-    catalogue,
-    entity,
+    catalog,
+    collection,
     "version",
     "action",
     "source",
@@ -825,8 +829,8 @@ VALUES {values}"""
         result.close()
         return value
 
-    def get_source_catalogue_entity_combinations(self, **kwargs):
-        stmt = "SELECT DISTINCT source, catalogue, entity FROM events"
+    def get_source_catalog_collection_combinations(self, **kwargs):
+        stmt = "SELECT DISTINCT source, catalog, collection FROM events"
         where = {k: v for k, v in kwargs.items() if v}
         if where:
             stmt += " WHERE " + "AND ".join([f"{k} = '{v}'" for k, v in where.items()])

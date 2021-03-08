@@ -40,11 +40,11 @@ def compare(msg):
 
     # Get the model for the collection to be compared
     gob_model = GOBModel()
-    entity_model = gob_model.get_collection(metadata.catalogue, metadata.entity)
+    collection = gob_model.get_collection(metadata.catalog, metadata.collection)
 
     # Initialize a storage handler for the collection
     storage = GOBStorageHandler(metadata)
-    model = f"{metadata.source} {metadata.catalogue} {metadata.entity}"
+    model = f"{metadata.source} {metadata.catalog} {metadata.collection}"
     logger.info(f"Compare {model}")
 
     stats = CompareStatistics()
@@ -61,7 +61,7 @@ def compare(msg):
                 }
 
             enricher = Enricher(storage, msg)
-            populator = Populator(entity_model, msg)
+            populator = Populator(collection, msg)
 
             # If there are no records in the database all data are ADD events
             initial_add = not storage.has_any_entity()
@@ -96,7 +96,7 @@ def compare(msg):
         # Compare entities from temporary table
         with storage.get_session():
             diff = storage.compare_temporary_data(tmp_table_name, mode)
-            filename, confirms = _process_compare_results(storage, entity_model, diff, stats)
+            filename, confirms = _process_compare_results(storage, collection, diff, stats)
 
     # Build result message
     results = stats.results()

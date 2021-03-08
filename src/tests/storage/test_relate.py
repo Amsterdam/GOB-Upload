@@ -39,7 +39,7 @@ class TestRelations(TestCase):
             'all_fields': {
                 'field': {
                     'type': 'GOB.Reference',
-                    'ref': 'dst_catalogue:dst_collection'
+                    'ref': 'dst_catalog:dst_collection'
                 }
             }
         }
@@ -60,7 +60,7 @@ ORDER BY _source, _id
             'all_fields': {
                 'field': {
                     'type': 'GOB.Reference',
-                    'ref': 'dst_catalogue:dst_collection'
+                    'ref': 'dst_catalog:dst_collection'
                 }
             }
         }

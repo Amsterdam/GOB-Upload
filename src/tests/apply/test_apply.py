@@ -11,10 +11,10 @@ from tests import fixtures
 
 class MockCombination():
 
-    def __init__(self, source, catalogue, entity):
+    def __init__(self, source, catalog, collection):
         self.source = source
-        self.catalogue = catalogue
-        self.entity = entity
+        self.catalog = catalog
+        self.collection = collection
 
 
 @patch('gobupload.apply.main.GOBStorageHandler')
@@ -48,7 +48,7 @@ class TestApply(TestCase):
     @patch('gobupload.apply.main.apply_events')
     def test_apply_none(self, mock_apply, mock_event_notification, mock_add_notification, mock):
         mock.return_value = self.mock_storage
-        self.mock_storage.get_source_catalogue_entity_combinations.return_value = []
+        self.mock_storage.get_source_catalog_collection_combinations.return_value = []
 
         result = apply({'header': {}})
 
@@ -67,8 +67,8 @@ class TestApply(TestCase):
     @patch('gobupload.apply.main.apply_events')
     def test_apply(self, mock_apply, mock_event_notification, mock_add_notification, mock):
         mock.return_value = self.mock_storage
-        combination = MockCombination("any source", "any catalogue", "any entity")
-        self.mock_storage.get_source_catalogue_entity_combinations.return_value = [combination]
+        combination = MockCombination("any source", "any catalog", "any collection")
+        self.mock_storage.get_source_catalog_collection_combinations.return_value = [combination]
 
         result = apply({'header': {}})
 
@@ -163,8 +163,8 @@ class TestApply(TestCase):
     @patch('gobupload.apply.main.apply_events')
     def test_apply_corrupted(self, mock_apply, mock):
         mock.return_value = self.mock_storage
-        combination = MockCombination("any source", "any catalogue", "any entity")
-        self.mock_storage.get_source_catalogue_entity_combinations.return_value = [combination]
+        combination = MockCombination("any source", "any catalog", "any collection")
+        self.mock_storage.get_source_catalog_collection_combinations.return_value = [combination]
 
         result = apply({'header': {}})
 
@@ -178,8 +178,8 @@ class TestApply(TestCase):
     @patch('gobupload.apply.main.apply_events')
     def test_apply_up_to_date(self, mock_apply, mock):
         mock.return_value = self.mock_storage
-        combination = MockCombination("any source", "any catalogue", "any entity")
-        self.mock_storage.get_source_catalogue_entity_combinations.return_value = [combination]
+        combination = MockCombination("any source", "any catalog", "any collection")
+        self.mock_storage.get_source_catalog_collection_combinations.return_value = [combination]
 
         result = apply({'header': {}})
 
@@ -219,10 +219,10 @@ class TestApply(TestCase):
     @patch("gobupload.apply.main.get_event_ids", lambda x: (1, 1))
     @patch("gobupload.apply.main.is_corrupted", lambda x, y: True)
     def test_apply_trigger_analyze(self, mock_should_analyze, mock_statistics, mock_storage_handler):
-        mock_storage_handler.return_value.get_source_catalogue_entity_combinations.return_value = [type('Res', (), {
+        mock_storage_handler.return_value.get_source_catalog_collection_combinations.return_value = [type('Res', (), {
             'source': 'the source',
-            'catalogue': 'the catalogue',
-            'entity': 'the entity',
+            'catalog': 'the catalog',
+            'collection': 'the collection',
         })]
 
         # Should analyze is True and mode is full

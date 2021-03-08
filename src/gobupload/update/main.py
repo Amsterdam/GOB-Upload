@@ -79,7 +79,7 @@ def full_update(msg):
     metadata = message.metadata
 
     storage = GOBStorageHandler(metadata)
-    model = f"{metadata.source} {metadata.catalogue} {metadata.entity}"
+    model = f"{metadata.source} {metadata.catalog} {metadata.collection}"
     logger.info(f"Store events {model}")
 
     # Get events from message

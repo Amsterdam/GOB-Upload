@@ -25,7 +25,7 @@ from gobupload.storage.materialized_views import MaterializedViews
 from gobupload.storage.relate import check_relations, check_very_many_relations, \
     check_relation_conflicts
 
-CATALOG_KEY = 'original_catalogue'
+CATALOG_KEY = 'original_catalog'
 COLLECTION_KEY = 'original_collection'
 ATTRIBUTE_KEY = 'original_attribute'
 RELATE_VERSION = '0.1'
@@ -39,7 +39,7 @@ def check_relation(msg):
     :return:
     """
     header = msg.get('header', {})
-    catalog_name = header.get('original_catalogue')
+    catalog_name = header.get('original_catalog')
     collection_name = header.get('original_collection')
     attribute_name = header.get('original_attribute')
 
@@ -74,7 +74,7 @@ def check_relation(msg):
 
 def _split_job(msg: dict):
     header = msg.get('header', {})
-    catalog_name = header.get('catalogue')
+    catalog_name = header.get('catalog')
     collection_name = header.get('collection')
     attribute_name = header.get('attribute')
 
@@ -124,7 +124,7 @@ def _split_job(msg: dict):
                     **msg,
                     "header": {
                         **original_header,
-                        "catalogue": catalog_name,
+                        "catalog": catalog_name,
                         "collection": collection_name,
                         "attribute": attr_name,
                         "split_from": original_header.get('jobid'),
@@ -151,7 +151,7 @@ def prepare_relate(msg):
     :return: the result message of the relate preparation step
     """
     header = msg.get('header', {})
-    catalog_name = header.get('catalogue')
+    catalog_name = header.get('catalog')
     collection_name = header.get('collection')
     attribute_name = header.get('attribute')
 
@@ -187,10 +187,9 @@ def prepare_relate(msg):
         relation_name = get_relation_name(GOBModel(), catalog_name, collection_name, attribute_name)
 
         msg["header"].update({
-            "catalogue": "rel",
+            "catalog": "rel",
             "collection": relation_name,
-            "entity": relation_name,
-            "original_catalogue": catalog_name,
+            "original_catalog": catalog_name,
             "original_collection": collection_name,
             "original_attribute": attribute_name,
         })
@@ -279,9 +278,8 @@ def process_relate(msg: dict):
     result_msg = {
         "header": {
             **msg["header"],
-            "catalogue": "rel",
+            "catalog": "rel",
             "collection": relation_name,
-            "entity": relation_name,
             "source": "GOB",
             "application": "GOB",
             "version": RELATE_VERSION,
@@ -299,18 +297,18 @@ def update_materialized_view(msg):
     """Updates materialized view for a relation for a given catalog, collection and attribute or relation name.
 
     Expects a message with headers:
-    - catalogue
-    - collection (if catalogue is 'rel' this should be the relation_name)
-    - attribute (optional if catalogue is 'rel')
+    - catalog
+    - collection (if catalog is 'rel' this should be the relation_name)
+    - attribute (optional if catalog is 'rel')
 
     examples of correct headers that are functionally equivalent:
     header = {
-        "catalogue": "meetbouten",
+        "catalog": "meetbouten",
         "collection": "meetbouten",
         "attribute": "ligt_in_buurt",
     }
     header = {
-        "catalogue": "rel",
+        "catalog": "rel",
         "collection": "mbn_mbt_gbd_brt_ligt_in_buurt",
     }
 
@@ -318,7 +316,7 @@ def update_materialized_view(msg):
     :return:
     """
     header = msg.get('header', {})
-    catalog_name = header.get('catalogue')
+    catalog_name = header.get('catalog')
     collection_name = header.get('collection')
     attribute_name = header.get('attribute')
 

@@ -64,8 +64,8 @@ def apply_confirm_events(storage, stats, msg):
     """
     confirms = msg.get('confirms')
     # SKIP confirms for relations
-    catalogue = msg['header'].get('catalogue', "")
-    if confirms and catalogue != 'rel':
+    catalog = msg['header'].get('catalog', "")
+    if confirms and catalog != 'rel':
         reader = ContentsReader(confirms)
         with ProgressTicker("Apply CONFIRM events", 10000) as progress:
             for event in reader.items():
@@ -89,12 +89,12 @@ def _should_analyze(stats):
         sum([value['absolute'] for value in applied_stats.values()]) > 0
 
 
-def _get_source_catalog_entity_combinations(storage, msg):
+def _get_source_catalog_collection_combinations(storage, msg):
     source = msg['header'].get('source')
-    catalogue = msg['header'].get('catalogue', "")
-    entity = msg['header'].get('entity', "")
+    catalog = msg['header'].get('catalog', "")
+    collection = msg['header'].get('collection', "")
 
-    combinations = storage.get_source_catalogue_entity_combinations(catalogue=catalogue, entity=entity)
+    combinations = storage.get_source_catalog_collection_combinations(catalog=catalog, collection=collection)
     # Apply for all sources if source is None or apply only the specified source
     return [combination for combination in combinations if source is None or source == combination.source]
 
@@ -106,14 +106,14 @@ def apply(msg):
     logger.info(f"Apply events")
 
     storage = GOBStorageHandler()
-    combinations = _get_source_catalog_entity_combinations(storage, msg)
+    combinations = _get_source_catalog_collection_combinations(storage, msg)
 
     # Gather statistics of update process
     stats = UpdateStatistics()
     before = None
     after = None
     for result in combinations:
-        model = f"{result.source} {result.catalogue} {result.entity}"
+        model = f"{result.source} {result.catalog} {result.collection}"
         logger.info(f"Apply events {model}")
         storage = GOBStorageHandler(result)
 

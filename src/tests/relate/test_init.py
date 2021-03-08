@@ -60,7 +60,7 @@ class TestInit(TestCase):
     def test_check_relation(self, mock_check_relations, _log_exception):
         msg = {
             'header': {
-                'catalogue': 'any catalog',
+                'catalog': 'any catalog',
                 'collections': 'any collections'
             }
         }
@@ -93,7 +93,7 @@ class TestInit(TestCase):
             **original_msg,
             'header': {
                 **header,
-                'catalogue': catalog,
+                'catalog': catalog,
                 'collection': collection,
                 'attribute': attribute,
                 'split_from': original_msg['header']['jobid'],
@@ -122,7 +122,7 @@ class TestInit(TestCase):
         ]
         msg = {
             'header': {
-                'catalogue': 'catalog',
+                'catalog': 'catalog',
                 'jobid': 20,
                 'stepid': 240,
             }
@@ -138,7 +138,7 @@ class TestInit(TestCase):
 
         msg = {
             'header': {
-                'catalogue': 'catalog',
+                'catalog': 'catalog',
                 'collection': 'dst_col',
                 'jobid': 20,
                 'stepid': 240,
@@ -154,7 +154,7 @@ class TestInit(TestCase):
         mock_datetime.datetime.utcnow.return_value.isoformat.return_value = 'DATETIME'
         msg = {
             'header': {
-                'catalogue': 'catalog',
+                'catalog': 'catalog',
                 'collection': 'collection',
                 'attribute': 'attribute',
             }
@@ -169,10 +169,10 @@ class TestInit(TestCase):
                 'application': 'GOBRelate',
                 'entity': mock_get_relation_name.return_value,
                 'timestamp': 'DATETIME',
-                'catalogue': 'rel',
+                'catalog': 'rel',
                 'collection': mock_get_relation_name.return_value,
                 'attribute': 'attribute',
-                'original_catalogue': 'catalog',
+                'original_catalog': 'catalog',
                 'original_collection': 'collection',
                 'original_attribute': 'attribute',
             },
@@ -188,7 +188,7 @@ class TestInit(TestCase):
         mock_datetime.datetime.utcnow.return_value.isoformat.return_value = 'DATETIME'
         msg = {
             'header': {
-                'catalogue': 'catalog',
+                'catalog': 'catalog',
                 'collection': 'collection',
             }
         }
@@ -200,7 +200,7 @@ class TestInit(TestCase):
                 'application': 'GOBRelate',
                 'entity': 'collection',
                 'timestamp': 'DATETIME',
-                'catalogue': 'catalog',
+                'catalog': 'catalog',
                 'collection': 'collection',
                 'is_split': True,
             }
@@ -248,7 +248,7 @@ class TestInit(TestCase):
 
         msg = {
             'header': {
-                'catalogue': 'catalog',
+                'catalog': 'catalog',
                 'collection': 'collection',
                 'attribute': 'attribute',
             }
@@ -256,7 +256,7 @@ class TestInit(TestCase):
 
         expected_result_msg = {
             'header': {
-                'catalogue': 'catalog',
+                'catalog': 'catalog',
                 'collection': 'collection',
                 'attribute': 'attribute',
                 'timestamp': 'DATETIME',
@@ -273,7 +273,7 @@ class TestInit(TestCase):
     def test_check_message(self):
         msg = {
             'header': {
-                'original_catalogue': 'catalog',
+                'original_catalog': 'catalog',
                 'original_collection': 'the collection',
                 'original_attribute': 'the attribute',
             }
@@ -302,7 +302,7 @@ class TestInit(TestCase):
     def test_process_relate(self, mock_relater, mock_check_message):
         msg = {
             'header': {
-                'original_catalogue': 'catalog',
+                'original_catalog': 'catalog',
                 'original_collection': 'the collection',
                 'original_attribute': 'the attribute',
             },
@@ -318,10 +318,10 @@ class TestInit(TestCase):
 
         self.assertEqual({
             'header': {
-                'original_catalogue': 'catalog',
+                'original_catalog': 'catalog',
                 'original_collection': 'the collection',
                 'original_attribute': 'the attribute',
-                'catalogue': 'rel',
+                'catalog': 'rel',
                 'collection': 'catalog_the collection_the attribute',
                 'entity': 'catalog_the collection_the attribute',
                 'source': 'GOB',

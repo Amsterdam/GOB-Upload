@@ -16,9 +16,9 @@ class TestEventApplicator(TestCase):
         self.storage = MagicMock(spec=GOBStorageHandler)
         self.mock_event = {
             'version': '0.1',
-            'catalogue': 'test_catalogue',
+            'catalog': 'test_catalog',
             'application': 'TEST',
-            'entity': 'test_entity',
+            'collection': 'test_collection',
             'timestamp': None,
             'source': 'test',
             'action': 'ADD',
