@@ -706,7 +706,7 @@ WHERE
         values = ",".join([f"""
 (
     '{ self.metadata.timestamp }',
-    '{ self.metadata.catalogue }',
+    '{ self.metadata.catalog }',
     '{ self.metadata.entity }',
     '{ event['version'] }',
     '{ event['event'] }',
