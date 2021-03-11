@@ -16,6 +16,9 @@ RUN curl https://packages.microsoft.com/config/debian/9/prod.list > /etc/apt/sou
 RUN apt-get update
 RUN ACCEPT_EULA=Y apt-get install -y msodbcsql17
 
+# Install jq for Azure MI tokens
+RUN apt-get install -y jq
+
 # Install required Python packages
 COPY requirements.txt /app/
 RUN pip3 install --no-cache-dir -r requirements.txt
