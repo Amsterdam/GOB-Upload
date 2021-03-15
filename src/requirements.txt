@@ -1,5 +1,5 @@
 alembic==1.0.3
 flake8==3.5.0
--e git+https://github.com/Amsterdam/GOB-Core.git@v0.17.11m#egg=gobcore
+-e git+https://github.com/Amsterdam/GOB-Core.git@v0.17.11n#egg=gobcore
 pytest==3.7.4
 pytest-cov==2.6.0
