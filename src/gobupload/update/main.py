@@ -25,7 +25,7 @@ def _store_events(storage, last_events, events, stats):
     """
     with ActiveGarbageCollection("Store events"), storage.get_session():
         # Use a session to commit all or rollback on any error
-        logger.info(f"Store events")
+        logger.info("Store events")
 
         with ProgressTicker("Store events", 10000) as progress, \
                 EventCollector(storage, last_events) as event_collector:
@@ -56,13 +56,13 @@ def _process_events(storage, events, stats):
         last_events = storage.get_last_events()  # { source_id: last_event, ... }
 
     if is_corrupted(entity_max_eventid, last_eventid):
-        logger.error(f"Model is inconsistent! data is more recent than events")
+        logger.error("Model is inconsistent! data is more recent than events")
     elif entity_max_eventid == last_eventid:
-        logger.info(f"Model is up to date")
+        logger.info("Model is up to date")
         # Add new events
         return _store_events(storage, last_events, events, stats)
     else:
-        logger.warning(f"Model is out of date, Further processing has stopped")
+        logger.warning("Model is out of date, Further processing has stopped")
 
 
 def full_update(msg):
