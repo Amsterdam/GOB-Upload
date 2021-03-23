@@ -609,7 +609,7 @@ class Relater:
             f"src_dst.bronwaarde = {self._json_obj_ref()}->>'bronwaarde'",
         ]
 
-        join_on.append(f"src_dst.dst_id IS NOT NULL")
+        join_on.append("src_dst.dst_id IS NOT NULL")
 
         return join_on
 
@@ -881,7 +881,7 @@ SELECT * FROM {self.dst_table_name} dst
 
         return self._switch_for_specs(
             'multiple_allowed',
-            lambda spec: f'row_number > 1' if not spec['multiple_allowed'] else 'FALSE'
+            lambda spec: 'row_number > 1' if not spec['multiple_allowed'] else 'FALSE'
         )
 
     def _get_where(self, is_conflicts_query: bool = False):
@@ -894,7 +894,7 @@ SELECT * FROM {self.dst_table_name} dst
         :return:
         """
         has_multiple_allowed_source = any([spec['multiple_allowed'] for spec in self.relation_specs])
-        return f"WHERE (" \
+        return "WHERE (" \
                + (f"rel.{FIELD.DATE_DELETED} IS NULL OR " if not is_conflicts_query else "") \
                + f"src.{FIELD.ID} IS NOT NULL)" \
                + f" AND dst.{FIELD.DATE_DELETED} IS NULL" \
@@ -1174,7 +1174,7 @@ LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(self._dst_table_outer
                 current_min_dst_event = current_max_dst_event
 
     def _get_updates_chunked(self, start_src_event: int, max_src_event: int, start_dst_event: int,
-                             max_dst_event: int, only_src_side: bool=False, is_conflicts_query: bool=False):
+                             max_dst_event: int, only_src_side: bool = False, is_conflicts_query: bool = False):
         """Inserts updates in the results table using chunks -> Only relating small portions of the total set each
         interation.
 

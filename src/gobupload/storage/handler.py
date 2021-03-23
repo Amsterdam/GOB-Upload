@@ -602,7 +602,7 @@ WHERE
 
         try:
             return entity_query.one_or_none()
-        except MultipleResultsFound as e:
+        except MultipleResultsFound:
             filter_str = ','.join([f"{k}={v}" for k, v in filter.items()])
             raise GOBException(f"Found multiple rows with filter: {filter_str}")
 
