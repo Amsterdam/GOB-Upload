@@ -31,7 +31,7 @@ class EventApplicator:
     def __exit__(self, exc_type, exc_val, exc_tb):
         # Write any buffered entities and flush storage
         if self.add_events or self.other_events:
-            raise GOBException(f"Have unapplied events. Call apply_all() before leaving context")
+            raise GOBException("Have unapplied events. Call apply_all() before leaving context")
         self.storage.force_flush_entities()
 
     def _initialize_buffers(self):
