@@ -27,7 +27,7 @@ def apply_events(storage, last_events, start_after, stats):
     :return:
     """
     with ActiveGarbageCollection("Apply events"), storage.get_session() as session:
-        logger.info(f"Apply events")
+        logger.info("Apply events")
 
         PROCESS_PER = 10000
         with ProgressTicker("Apply events", PROCESS_PER) as progress:
@@ -103,7 +103,7 @@ def apply(msg):
     mode = msg['header'].get('mode', FULL_UPLOAD)
 
     logger.configure(msg, "UPDATE")
-    logger.info(f"Apply events")
+    logger.info("Apply events")
 
     storage = GOBStorageHandler()
     combinations = _get_source_catalog_entity_combinations(storage, msg)
@@ -141,7 +141,7 @@ def apply(msg):
         # Build result message
         results = stats.results()
         if mode == FULL_UPLOAD and _should_analyze(stats):
-            logger.info(f"Running VACUUM ANALYZE on table")
+            logger.info("Running VACUUM ANALYZE on table")
             storage.analyze_table()
 
         stats.log()

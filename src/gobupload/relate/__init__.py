@@ -46,7 +46,7 @@ def check_relation(msg):
     model = GOBModel()
 
     logger.configure(msg, "RELATE_CHECK")
-    logger.info(f"Relate check started")
+    logger.info("Relate check started")
 
     collection = model.get_collection(catalog_name, collection_name)
     assert collection is not None, f"Invalid catalog/collection combination {catalog_name}/{collection_name}"
@@ -60,10 +60,10 @@ def check_relation(msg):
     except Exception as e:
         _log_exception(f"{attribute_name} check FAILED", e)
 
-    logger.info(f"Relation conflicts check started")
+    logger.info("Relation conflicts check started")
     check_relation_conflicts(catalog_name, collection_name, attribute_name)
 
-    logger.info(f"Relate check completed")
+    logger.info("Relate check completed")
 
     return {
         "header": msg["header"],
@@ -261,7 +261,7 @@ def process_relate(msg: dict):
     _check_message(msg)
     header = msg.get('header')
 
-    logger.info(f"Relate table started")
+    logger.info("Relate table started")
 
     full_update = header.get('mode', "update") == "full"
 
@@ -272,7 +272,7 @@ def process_relate(msg: dict):
 
     filename, confirms = updater.update(full_update)
 
-    logger.info(f"Relate table completed")
+    logger.info("Relate table completed")
 
     relation_name = get_relation_name(GOBModel(), header[CATALOG_KEY], header[COLLECTION_KEY], header[ATTRIBUTE_KEY])
 
