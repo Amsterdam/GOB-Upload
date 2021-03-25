@@ -244,7 +244,7 @@ class TestApply(TestCase):
         mock_storage_handler.return_value.analyze_table.assert_not_called()
 
     @patch("gobupload.apply.main.add_notification")
-    @patch("gobupload.apply.main._get_source_catalog_entity_combinations")
+    @patch("gobupload.apply.main._get_source_catalog_collection_combinations")
     @patch("gobupload.apply.main.get_event_ids")
     @patch("gobupload.apply.main.EventNotification")
     @patch("gobupload.apply.main.UpdateStatistics")

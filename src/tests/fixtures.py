@@ -66,7 +66,7 @@ def get_metadata_fixture():
     header["collection"] = "meetbouten"
     header["id_column"] = "identificatie"
     header["model"] = {header['id_column']: {"type": "GOB.String"}}
-    header["process_id"] = f"{header['timestamp']}.{header['source']}.{header['entity']}"
+    header["process_id"] = f"{header['timestamp']}.{header['source']}.{header['collection']}"
     return header
 
 

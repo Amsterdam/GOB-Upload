@@ -71,7 +71,7 @@ def compare(msg):
                 contents_writer = ContentsWriter()
                 contents_writer.open()
                 # Pass a None confirms_writer because only ADD events are written
-                collector = EventCollector(contents_writer, confirms_writer=None, version=entity_model['version'])
+                collector = EventCollector(contents_writer, confirms_writer=None, version=collection['version'])
                 collect = collector.collect_initial_add
             else:
                 # Collect entities in a temporary table
