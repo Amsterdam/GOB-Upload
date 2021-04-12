@@ -30,14 +30,16 @@ def apply_events(storage, last_events, start_after, stats):
         logger.info("Apply events")
 
         PROCESS_PER = 10000
+        add_event_source_ids = set()
         with ProgressTicker("Apply events", PROCESS_PER) as progress:
             unhandled_events = storage.get_events_starting_after(start_after, PROCESS_PER)
             while unhandled_events:
-                with EventApplicator(storage, last_events) as event_applicator:
+                with EventApplicator(storage) as event_applicator:
                     for event in unhandled_events:
                         progress.tick()
 
-                        gob_event, count, applied_events = event_applicator.apply(event)
+                        gob_event, count, applied_events = event_applicator.apply(
+                            event, last_events, add_event_source_ids)
                         action = gob_event.action
                         stats.add_applied(action, count)
                         start_after = event.eventid
