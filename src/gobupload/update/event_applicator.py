@@ -17,10 +17,9 @@ class EventApplicator:
     MAX_ADD_CHUNK = 10000
     MAX_OTHER_CHUNK = 10000
 
-    def __init__(self, storage, last_events):
+    def __init__(self, storage):
         self.storage = storage
         # Use a lookup table to tell if an entity is new to the collection
-        self.last_events = last_events
 
         self._initialize_buffers()
 
@@ -36,7 +35,6 @@ class EventApplicator:
 
     def _initialize_buffers(self):
         self.add_events = []
-        self.add_event_source_ids = set()
         self.other_events = defaultdict(list)
 
     def add_add_event(self, event):
@@ -135,7 +133,7 @@ class EventApplicator:
         applied += self.apply_other_events()
         return applied
 
-    def apply(self, event):
+    def apply(self, event, last_events, add_event_source_ids):
         # Reconstruct the gob event out of the database event
         gob_event = database_to_gobevent(event)
         data = gob_event.data
@@ -149,13 +147,13 @@ class EventApplicator:
         if isinstance(gob_event, GOB.BULKCONFIRM):
             self.storage.bulk_update_confirms(gob_event, event.eventid)
             count = len(gob_event._data['confirms'])
-        elif isinstance(gob_event, GOB.ADD) and self.last_events.get(entity_source_id) is None and \
-                entity_source_id not in self.add_event_source_ids:
+        elif isinstance(gob_event, GOB.ADD) and last_events.get(entity_source_id) is None and \
+                entity_source_id not in add_event_source_ids:
             # Initial add (an ADD event can also be applied on a deleted entity, this is handled by the else case)
             applied_events += self.add_add_event(gob_event)
 
             # Store the entity_source_id to make sure a second ADD events get's handled as an ADD on deleted entity
-            self.add_event_source_ids.add(entity_source_id)
+            add_event_source_ids.add(entity_source_id)
         else:
             # If ADD events are waiting to be applied to the database, flush those first to make sure they exist
             applied_events += self.apply_add_events()
