@@ -392,3 +392,41 @@ WHERE
         self.storage.analyze_table()
 
         self.storage.engine.connect.return_value.execute.assert_called_with('VACUUM ANALYZE tablename')
+
+    def test_add_events(self):
+        self.storage.session = MagicMock()
+
+        metadata = fixtures.get_metadata_fixture()
+        event = fixtures.get_event_fixture(metadata, 'ADD')
+        event['data'] = {'_source_id': "source_id + escape '% "}
+
+        expected = f"""
+INSERT INTO
+    "{self.storage.EVENTS_TABLE}"
+(
+    "timestamp",
+    catalogue,
+    entity,
+    "version",
+    "action",
+    "source",
+    source_id,
+    contents,
+    application
+)
+VALUES (
+    '{ self.storage.metadata.timestamp }',
+    'meetbouten',
+    'meetbouten',
+    '0.9',
+    'ADD',
+    '{ self.storage.metadata.source }',
+    'source_id + escape \'\'%% ',
+    '{{"_source_id": "source_id + escape \'\'%% "}}',
+    '{ self.storage.metadata.application }'
+)"""
+        self.storage.add_events([event])
+        self.storage.engine.execute.assert_called()
+        args = self.storage.engine.execute.call_args[0][0]
+        args = ' '.join(args.split())
+        self.assertEqual(args, ' '.join(expected.split()))
