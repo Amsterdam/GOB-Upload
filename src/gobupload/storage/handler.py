@@ -686,6 +686,8 @@ WHERE
         :param events: the list of events to insert
         :return: None
         """
+        def escape(value: str) -> str:
+            return value.replace("'", "''").replace("%", "%%")
 
         def to_json(data):
             """
@@ -694,10 +696,7 @@ WHERE
             :param data: dictionary
             :return: the JSON string suitably quoted to be used as a string literal in an SQL statement string
             """
-            return json \
-                .dumps(data, cls=GobTypeJSONEncoder) \
-                .replace("'", "''") \
-                .replace("%", "%%")
+            return json.dumps(data, cls=GobTypeJSONEncoder)
 
         values = ",".join([f"""
 (
@@ -707,8 +706,8 @@ WHERE
     '{ event['version'] }',
     '{ event['event'] }',
     '{ self.metadata.source }',
-    '{ event['data'].get('_source_id') }',
-    '{ to_json(event['data']) }',
+    '{ escape(event['data'].get('_source_id')) }',
+    '{ escape(to_json(event['data'])) }',
     '{ self.metadata.application }'
 )""" for event in events])
 
