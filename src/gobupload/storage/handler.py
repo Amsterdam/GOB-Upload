@@ -686,8 +686,8 @@ WHERE
         :param events: the list of events to insert
         :return: None
         """
-        def escape(value: str) -> str:
-            return value.replace("'", "''").replace("%", "%%")
+        def escape(value):
+            return value.replace("'", "''").replace("%", "%%") if isinstance(value, str) else value
 
         def to_json(data):
             """
