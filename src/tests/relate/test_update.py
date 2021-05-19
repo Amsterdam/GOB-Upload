@@ -158,14 +158,16 @@ class TestEventCreator(TestCase):
         row = {
             'rel_id': None,
             '_source_id': 'SOURCE ID',
+            '_id': 'id',
             'a': 'val',
             'b': 'val',
             'rel_deleted': None,
         }
         event = ec.create_event(row)
         self.assertEqual(mock_add.create_event.return_value, event)
-        mock_add.create_event.assert_called_with('SOURCE ID', 'SOURCE ID', {
+        mock_add.create_event.assert_called_with('id', {
             '_source_id': 'SOURCE ID',
+            '_id': 'id',
             'a': 'val',
             'b': 'val',
         }, '123.0')
@@ -174,6 +176,7 @@ class TestEventCreator(TestCase):
         row = {
             'rel_id': 'some existing rel id',
             '_source_id': 'SOURCE ID',
+            '_id': 'id',
             'a': 'val',
             'b': 'val',
             'rel_deleted': 'some date',
@@ -181,8 +184,9 @@ class TestEventCreator(TestCase):
         }
         event = ec.create_event(row)
         self.assertEqual(mock_add.create_event.return_value, event)
-        mock_add.create_event.assert_called_with('SOURCE ID', 'SOURCE ID', {
+        mock_add.create_event.assert_called_with('id', {
             '_source_id': 'SOURCE ID',
+            '_id': 'id',
             'a': 'val',
             'b': 'val',
             '_last_event': 'last event'
@@ -201,7 +205,7 @@ class TestEventCreator(TestCase):
         }
         event = ec.create_event(row)
         self.assertEqual(mock_delete.create_event.return_value, event)
-        mock_delete.create_event.assert_called_with('rel id', 'rel id', {'_last_event': 'last'}, '123.0')
+        mock_delete.create_event.assert_called_with('rel id', {'_last_event': 'last'}, '123.0')
 
         # DELETE EVENT (src marked as deleted)
         row = {
@@ -216,7 +220,7 @@ class TestEventCreator(TestCase):
         }
         event = ec.create_event(row)
         self.assertEqual(mock_delete.create_event.return_value, event)
-        mock_delete.create_event.assert_called_with('rel id', 'rel id', {'_last_event': 'last'}, '123.0')
+        mock_delete.create_event.assert_called_with('rel id', {'_last_event': 'last'}, '123.0')
 
         # MODIFY EVENT (hash differs, and modifications detected)
         ec._get_hash = lambda x: 'THE HASH'
@@ -231,7 +235,7 @@ class TestEventCreator(TestCase):
         }
         event = ec.create_event(row)
         self.assertEqual(mock_modify.create_event.return_value, event)
-        mock_modify.create_event.assert_called_with('rel id', 'rel id', {
+        mock_modify.create_event.assert_called_with('rel id', {
             'modifications': ['a'],
             '_last_event': 'last',
             '_hash': 'THE HASH'
@@ -248,7 +252,7 @@ class TestEventCreator(TestCase):
         }
         event = ec.create_event(row)
         self.assertEqual(mock_confirm.create_event.return_value, event)
-        mock_confirm.create_event.assert_called_with('rel id', 'rel id', {'_last_event': 'last'}, '123.0')
+        mock_confirm.create_event.assert_called_with('rel id', {'_last_event': 'last'}, '123.0')
 
 
 @patch("gobupload.relate.update.logger", MagicMock())
@@ -396,6 +400,7 @@ class TestRelater(TestCase):
             'NULL AS _source',
             'NULL::timestamp without time zone AS _expiration_date',
             'NULL AS _id',
+            'NULL AS _tid',
             'NULL AS id',
             'NULL AS derivation',
             'NULL AS src_source',
@@ -963,6 +968,7 @@ INNER JOIN (
     _source varchar,
     _expiration_date timestamp,
     _id varchar,
+    _tid varchar,
     id varchar,
     derivation varchar,
     src_source varchar,

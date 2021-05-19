@@ -4,6 +4,7 @@ Event collector
 Collects events and groups these events in bulk events when possible
 """
 from gobcore.events import GOB
+from gobcore.model.metadata import FIELD
 
 
 class EventCollector:
@@ -63,7 +64,7 @@ class EventCollector:
         if len(self._bulk_events) > 1:
             event = GOB.BULKCONFIRM.create_event([
                 {
-                    '_source_id': event["data"]["_source_id"],
+                    '_tid': event["data"]["_tid"],
                     '_last_event': event["data"]["_last_event"]
                 } for event in self._bulk_events
             ], self.version)
@@ -82,8 +83,8 @@ class EventCollector:
             self._end_of_bulk()
 
     def collect_initial_add(self, entity):
-        source_id = entity['_source_id']
-        event = GOB.ADD.create_event(source_id, source_id, entity, self.version)
+        tid = entity[FIELD.TID]
+        event = GOB.ADD.create_event(tid, entity, self.version)
         self.collect(event)
 
     def collect(self, event):
