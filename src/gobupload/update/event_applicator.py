@@ -74,7 +74,7 @@ class EventApplicator:
         :param data:
         :return:
         """
-        self.other_events[data["_entity_source_id"]].append(gob_event)
+        self.other_events[data["_tid"]].append(gob_event)
         if sum([len(x) for x in self.other_events.values()]) >= self.MAX_OTHER_CHUNK:
             return self.apply_other_events()
         return []
@@ -90,8 +90,8 @@ class EventApplicator:
         if self.other_events:
             with ActiveGarbageCollection("Apply other events"):
                 # Get all entities to be updated by their source-id
-                source_ids = self.other_events.keys()
-                entities = self.storage.get_entities(source_ids, with_deleted=True)
+                tids = self.other_events.keys()
+                entities = self.storage.get_entities(tids, with_deleted=True)
                 for entity in entities:
                     self.apply_other_event(entity)
             applied_events = [event for events in self.other_events.values() for event in events]
@@ -111,7 +111,7 @@ class EventApplicator:
         :param entity:
         :return:
         """
-        gob_events = self.other_events[entity._source_id]
+        gob_events = self.other_events[entity._tid]
 
         for gob_event in gob_events:
             # Check action validity
@@ -133,7 +133,7 @@ class EventApplicator:
         applied += self.apply_other_events()
         return applied
 
-    def apply(self, event, last_events, add_event_source_ids):
+    def apply(self, event, last_events, add_event_tids):
         # Reconstruct the gob event out of the database event
         gob_event = database_to_gobevent(event)
         data = gob_event.data
@@ -141,19 +141,18 @@ class EventApplicator:
         # Return the action and number of applied entities
         count = 1
         applied_events = []
-
-        entity_source_id = data.get('_entity_source_id')
+        tid = gob_event.tid
 
         if isinstance(gob_event, GOB.BULKCONFIRM):
             self.storage.bulk_update_confirms(gob_event, event.eventid)
             count = len(gob_event._data['confirms'])
-        elif isinstance(gob_event, GOB.ADD) and last_events.get(entity_source_id) is None and \
-                entity_source_id not in add_event_source_ids:
+        elif isinstance(gob_event, GOB.ADD) and last_events.get(tid) is None and \
+                tid not in add_event_tids:
             # Initial add (an ADD event can also be applied on a deleted entity, this is handled by the else case)
             applied_events += self.add_add_event(gob_event)
 
-            # Store the entity_source_id to make sure a second ADD events get's handled as an ADD on deleted entity
-            add_event_source_ids.add(entity_source_id)
+            # Store the tid to make sure a second ADD events get's handled as an ADD on deleted entity
+            add_event_tids.add(tid)
         else:
             # If ADD events are waiting to be applied to the database, flush those first to make sure they exist
             applied_events += self.apply_add_events()

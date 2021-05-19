@@ -18,7 +18,6 @@ class TestUpdate(TestCase):
         logging.disable(logging.CRITICAL)
 
         self.mock_storage = MagicMock(spec=GOBStorageHandler)
-        self.mock_storage.get_entity_or_none.return_value = None
 
     def tearDown(self):
         logging.disable(logging.NOTSET)
@@ -92,7 +91,7 @@ class TestUpdate(TestCase):
             mock_event.return_value = gob_event
 
             message = fixtures.get_event_message_fixture(event_to_test.name)
-            id_to_pop = message['contents'][0]['data']['_source_id']
+            id_to_pop = message['contents'][0]['data']['_tid']
             gob_event.pop_ids.return_value = id_to_pop, id_to_pop
 
             self.mock_storage.get_events_starting_after.return_value = []
@@ -159,9 +158,8 @@ class TestUpdate(TestCase):
         metadata = fixtures.get_metadata_fixture()
         event = fixtures.get_event_fixture(metadata)
         event['data']['_last_event'] = fixtures.random_string()
-        event['data']['_entity_source_id'] = event['data']['_source_id']
 
-        last_events = {event['data']['_source_id']: event['data']['_last_event']}
+        last_events = {event['data']['_tid']: event['data']['_last_event']}
         mock.return_value = self.mock_storage
         stats = UpdateStatistics()
 

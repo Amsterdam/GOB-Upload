@@ -30,7 +30,7 @@ def apply_events(storage, last_events, start_after, stats):
         logger.info("Apply events")
 
         PROCESS_PER = 10000
-        add_event_source_ids = set()
+        add_event_tids = set()
         with ProgressTicker("Apply events", PROCESS_PER) as progress:
             unhandled_events = storage.get_events_starting_after(start_after, PROCESS_PER)
             while unhandled_events:
@@ -39,7 +39,7 @@ def apply_events(storage, last_events, start_after, stats):
                         progress.tick()
 
                         gob_event, count, applied_events = event_applicator.apply(
-                            event, last_events, add_event_source_ids)
+                            event, last_events, add_event_tids)
                         action = gob_event.action
                         stats.add_applied(action, count)
                         start_after = event.eventid
@@ -131,7 +131,7 @@ def apply(msg):
         else:
             logger.info(f"Start application of unhandled {model} events")
             with storage.get_session():
-                last_events = storage.get_last_events()  # { source_id: last_event, ... }
+                last_events = storage.get_last_events()  # { tid: last_event, ... }
 
             apply_events(storage, last_events, entity_max_eventid, stats)
             apply_confirm_events(storage, stats, msg)

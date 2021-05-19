@@ -141,7 +141,6 @@ def _process_compare_results(storage, model, results, stats):
     Creates the ADD, DELETE and CONFIRM records and returns them with the remaining records
 
     :param results: the result rows from the database comparison
-    :param data_by_source_id: a mapping of import data by source_id
     :return: list of events, list of remaining records
     """
     version = model['version']
@@ -159,31 +158,25 @@ def _process_compare_results(storage, model, results, stats):
             # Get the data for this record and create the event
             entity = row["_original_value"]
 
-            # _source_id is the source id of the new entity
-            # _entity_source_id is the source id of the current entity
-
             stats.compare(row)
 
             if row['type'] == 'ADD':
-                source_id = row['_source_id']
                 entity["_last_event"] = row['_last_event']
-                event = GOB.ADD.create_event(source_id, source_id, entity, version)
+                event = GOB.ADD.create_event(row['_tid'], entity, version)
             elif row['type'] == 'CONFIRM':
-                source_id = row['_source_id']
                 data = {
                     '_last_event': row['_last_event']
                 }
-                event = GOB.CONFIRM.create_event(source_id, source_id, data, version)
+                event = GOB.CONFIRM.create_event(row['_tid'], data, version)
             elif row['type'] == 'MODIFY':
                 current_entity = storage.get_current_entity(entity)
                 modifications = get_modifications(current_entity, entity, model['all_fields'])
                 event = get_event_for(current_entity, entity, modifications, version)
             elif row['type'] == 'DELETE':
-                source_id = row['_entity_source_id']
                 data = {
                     '_last_event': row['_last_event']
                 }
-                event = GOB.DELETE.create_event(source_id, source_id, data, version)
+                event = GOB.DELETE.create_event(row['_entity_tid'], data, version)
             else:
                 continue
 

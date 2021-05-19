@@ -30,18 +30,17 @@ class TestEventCollector(TestCase):
 
     def test_add_initial(self):
         with EventCollector(mock_contents_writer, mock_confirms_writer, '0.9') as ec:
-            ec.collect_initial_add({"event": 1, "_source_id": "source_id"})
+            ec.collect_initial_add({"event": 1, "_tid": "tid"})
 
         expectation = {
             'event': 'ADD',
             'data': {
                 'entity': {
                     'event': 1,
-                    '_source_id': 'source_id'
+                    '_tid': 'tid'
                 },
                 '_last_event': None,
-                '_source_id': 'source_id',
-                '_entity_source_id': 'source_id'
+                '_tid': 'tid',
             },
             'version': '0.9',
         }
@@ -78,15 +77,14 @@ class TestEventCollector(TestCase):
         confirm_event = {
             "event": "CONFIRM",
             "data": {
-                "_source_id": "source_id",
+                "_tid": "tid",
                 "_last_event": "last_event"
             }
         }
         expectation = {
             "event": "BULKCONFIRM",
             "data": {
-                "_entity_source_id": None,
-                "_source_id": None,
+                "_tid": None,
                 "confirms": [
                     confirm_event["data"],
                     confirm_event["data"]

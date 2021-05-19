@@ -14,10 +14,10 @@ def get_comparison_query(source, current, temporary, fields, mode=FULL_UPLOAD):
     return f"""
 SELECT * FROM (
 SELECT
+    {temporary}._tid,
     {temporary}._source,
-    {temporary}._source_id,
     {current}._source AS _entity_source,
-    {current}._source_id AS _entity_source_id,
+    {current}._tid AS _entity_tid,
     {temporary}._original_value,
     {current}._last_event,
     {temporary}._hash,
@@ -36,18 +36,18 @@ WHERE (
 )
 UNION ALL
 SELECT
+    {temporary}._tid,
     {temporary}._source,
-    {temporary}._source_id,
     {current}._source AS _entity_source,
-    {current}._source_id AS _entity_source_id,
+    {current}._tid AS _entity_tid,
     {temporary}._original_value,
     {current}._last_event,
     COALESCE({temporary}._hash, {current}._hash),
     CASE
-        WHEN {temporary}._source_id IS NULL AND {current}._date_deleted IS NULL THEN '{action_on_missing}'
-        WHEN {temporary}._source_id IS NULL AND {current}._date_deleted IS NOT NULL THEN 'SKIP'
+        WHEN {temporary}._tid IS NULL AND {current}._date_deleted IS NULL THEN '{action_on_missing}'
+        WHEN {temporary}._tid IS NULL AND {current}._date_deleted IS NOT NULL THEN 'SKIP'
         WHEN (
-            {current}._source_id IS NULL OR
+            {current}._tid IS NULL OR
             {current}._date_deleted IS NOT NULL
         ) THEN 'ADD'
         ELSE 'MODIFY'

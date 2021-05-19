@@ -23,7 +23,8 @@ class TestEventApplicator(TestCase):
             'source': 'test',
             'action': 'ADD',
             'source_id': 'source_id',
-            'contents': None
+            'contents': None,
+            'tid': 'tid',
         }
 
     def tearDown(self):
@@ -40,7 +41,7 @@ class TestEventApplicator(TestCase):
         applicator = EventApplicator(self.storage)
         self.mock_event["action"] = 'CONFIRM'
         self.set_contents({
-            '_entity_source_id': 'entity_source_id',
+            '_tid': 'entity_source_id',
             '_hash': '123'
         })
         event = dict_to_object(self.mock_event)
@@ -50,7 +51,7 @@ class TestEventApplicator(TestCase):
 
     def test_apply_new_add(self):
         self.set_contents({
-            '_entity_source_id': 'entity_source_id',
+            '_tid': 'entity_source_id',
             '_hash': '123'
         })
         event = dict_to_object(self.mock_event)
@@ -59,12 +60,11 @@ class TestEventApplicator(TestCase):
             self.assertEqual(len(applicator.add_events), 1)
             applicator.apply_all()
         self.assertEqual(len(applicator.add_events), 0)
-        self.storage.get_entity_for_update.assert_not_called()
         self.storage.add_add_events.assert_called()
 
     def test_apply_new_add_exception(self):
         self.set_contents({
-            '_entity_source_id': 'entity_source_id',
+            '_tid': 'entity_source_id',
             '_hash': '123'
         })
         event = dict_to_object(self.mock_event)
@@ -75,10 +75,10 @@ class TestEventApplicator(TestCase):
     def test_apply_existing_add(self):
         # Expect add event for existing deleted entity leads to add other event
         self.set_contents({
-            '_entity_source_id': 'existing_source_id',
             '_hash': '123'
         })
         event = dict_to_object(self.mock_event)
+        event.tid = 'existing_source_id'
 
         applicator = EventApplicator(self.storage)
         applicator.add_add_event = MagicMock()
@@ -95,7 +95,7 @@ class TestEventApplicator(TestCase):
         self.mock_event["action"] = 'BULKCONFIRM'
         self.set_contents({
             'confirms': [{
-                '_entity_source_id': 'entity_source_id'
+                '_tid': 'entity_source_id'
             }]
         })
         event = dict_to_object(self.mock_event)
@@ -116,7 +116,7 @@ class TestEventApplicator(TestCase):
         # BULKCONFIRM
         self.set_contents({
             'confirms': [{
-                '_entity_source_id': 'entity_source_id'
+                '_tid': 'entity_source_id'
             }]
         })
         self.mock_event['action'] = 'BULKCONFIRM'
@@ -125,7 +125,7 @@ class TestEventApplicator(TestCase):
 
         # ADD
         self.set_contents({
-            '_entity_source_id': 'entity_source_id',
+            '_tid': 'entity_source_id',
             '_hash': '123'
         })
         self.mock_event['action'] = 'ADD'
@@ -135,7 +135,7 @@ class TestEventApplicator(TestCase):
         # CONFIRM (other)
         self.mock_event["action"] = 'CONFIRM'
         self.set_contents({
-            '_entity_source_id': 'entity_source_id',
+            '_tid': 'entity_source_id',
             '_hash': '123'
         })
         event = dict_to_object(self.mock_event)
@@ -150,15 +150,15 @@ class TestEventApplicator(TestCase):
         applicator.apply_other_events = MagicMock()
 
         self.assertEqual([],
-                         applicator.add_other_event('any gob event1', {'_entity_source_id': 'any entity source 1'}))
+                         applicator.add_other_event('any gob event1', {'_tid': 'any entity source 1'}))
         self.assertEqual(applicator.other_events['any entity source 1'], ['any gob event1'])
 
         self.assertEqual([],
-                         applicator.add_other_event('any gob event2', {'_entity_source_id': 'any entity source 2'}))
+                         applicator.add_other_event('any gob event2', {'_tid': 'any entity source 2'}))
         applicator.apply_other_events.assert_not_called()
 
         self.assertEqual(applicator.apply_other_events.return_value,
-                         applicator.add_other_event('any gob event3', {'_entity_source_id': 'any entity source 3'}))
+                         applicator.add_other_event('any gob event3', {'_tid': 'any entity source 3'}))
         applicator.apply_other_events.assert_called()
 
     def test_apply_other_events(self):
@@ -171,7 +171,7 @@ class TestEventApplicator(TestCase):
         self.assertEqual(applicator.other_events, {})
         self.storage.get_entities.assert_not_called()
 
-        applicator.add_other_event('any gob event', {'_entity_source_id': 'any entity source id'})
+        applicator.add_other_event('any gob event', {'_tid': 'any entity source id'})
         self.storage.get_entities.return_value = ['any entity']
 
         self.assertEqual(['any gob event'], applicator.apply_other_events())
@@ -189,7 +189,7 @@ class TestEventApplicator(TestCase):
         gob_event = MagicMock()
         gob_event.id = 'any event id'
 
-        entity._source_id = 'any source id'
+        entity._tid = 'any source id'
         applicator.other_events['any source id'] = [gob_event]
 
         # Normal action, apply event and set last event id
@@ -237,9 +237,9 @@ class TestEventApplicator(TestCase):
         applicator = EventApplicator(self.storage)
 
         test_events = [
-            {'action': 'ADD', 'contents': {'_entity_source_id': 'any source id'}},
-            {'action': 'DELETE', 'contents': {'_entity_source_id': 'any source id'}},
-            {'action': 'ADD', 'contents': {'_entity_source_id': 'any source id'}},
+            {'action': 'ADD', 'contents': {'_tid': 'any source id'}},
+            {'action': 'DELETE', 'contents': {'_tid': 'any source id'}},
+            {'action': 'ADD', 'contents': {'_tid': 'any source id'}},
         ]
 
         test_gob_events = []
@@ -266,9 +266,9 @@ class TestEventApplicator(TestCase):
         applicator = EventApplicator(self.storage)
 
         test_events = [
-            {'action': 'MODIFY', 'contents': {'_entity_source_id': 'any source id'}},
-            {'action': 'MODIFY', 'contents': {'_entity_source_id': 'any source id'}},
-            {'action': 'MODIFY', 'contents': {'_entity_source_id': 'any source id'}},
+            {'action': 'MODIFY', 'contents': {'_tid': 'any source id'}},
+            {'action': 'MODIFY', 'contents': {'_tid': 'any source id'}},
+            {'action': 'MODIFY', 'contents': {'_tid': 'any source id'}},
         ]
 
         test_gob_events = []
