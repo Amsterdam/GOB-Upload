@@ -6,9 +6,6 @@ Use it like this:
     metadata = message.metadata
 
     storage = GOBStorageHandler(metadata)
-
-    with storage.get_session():
-        entity = storage.get_entity_for_update(entity_id, source_id, gob_event)
 """
 import functools
 import json
@@ -294,8 +291,7 @@ WHERE
         table_name = self.gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
         tmp_table_name = self._get_tmp_table_name(table_name)
 
-        self.fields = self.gob_model.get_functional_key_fields(self.metadata.catalogue, self.metadata.entity)
-        self.fields.extend(['_source_id', '_hash'])
+        self.fields = ['_tid', '_source', '_hash']
 
         # Drop any existing temporary table
         self.drop_temporary_table(tmp_table_name)
@@ -352,15 +348,15 @@ WHERE
     def compare_temporary_data(self, tmp_table_name, mode=FULL_UPLOAD):
         """ Compare the data in the temporay table to the current state
 
-        The created query compares each model field and returns the source_id, last_event
+        The created query compares each model field and returns the tid, last_event
         _hash and if the record should be a ADD, DELETE or MODIFY. CONFIRM records are not
         included in the result, but can be derived from the message
 
-        :return: a list of dicts with source_id, hash, last_event and type
+        :return: a list of dicts with tid, hash, last_event and type
         """
         current = self.gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
 
-        fields = self.gob_model.get_functional_key_fields(self.metadata.catalogue, self.metadata.entity)
+        fields = ["_tid"]
         source = self.metadata.source
 
         result = None
@@ -511,13 +507,9 @@ WHERE
 
         :return: a list of ids for the entity that are currently not deleted.
         """
-        filter = {
-            "_source": self.metadata.source,
-            "_application": self.metadata.application
-        }
         if exclude_deleted:
             filter["_date_deleted"]: None
-        return self.session.query(self.DbEntity._source_id).filter_by(**filter).all()
+        return self.session.query(self.DbEntity._tid).all()
 
     @with_session
     def get_last_events(self):
@@ -525,11 +517,8 @@ WHERE
 
         :return: a dict of ids with last_event for the collection
         """
-        filter = {
-            "_source": self.metadata.source
-        }
-        result = self.session.query(self.DbEntity._source_id, self.DbEntity._last_event).filter_by(**filter).all()
-        return {row._source_id: row._last_event for row in result}
+        result = self.session.query(self.DbEntity._tid, self.DbEntity._last_event).all()
+        return {row._tid: row._last_event for row in result}
 
     @with_session
     def get_column_values_for_key_value(self, column, key, value):
@@ -589,12 +578,7 @@ WHERE
         :raises GOBException:
         :return: the stored version of the entity, or None if it doesn't exist
         """
-        fields = self.gob_model.get_functional_key_fields(self.metadata.catalogue, self.metadata.entity)
-        value = {
-            **entity,
-            "_source": self.metadata.source
-        }
-        filter = {field: value[field] for field in fields}
+        filter = {"_tid": entity['_tid']}
 
         entity_query = self.session.query(self.DbEntity).filter_by(**filter)
         if not with_deleted:
@@ -607,47 +591,20 @@ WHERE
             raise GOBException(f"Found multiple rows with filter: {filter_str}")
 
     @with_session
-    def get_entity_or_none(self, source_id, with_deleted=False):
-        """Gets an entity. If it doesn't exist, returns None
+    def get_entities(self, tids, with_deleted=False):
+        """
+        Get entities with tid contained in the given list of tid's
 
-        :param source_id: id of the entity to get
+        :param tids: ids of the entities to get
         :param with_deleted: boolean denoting if entities that are deleted should be considered (default: False)
         :return:
         """
-        fields = self.gob_model.get_technical_key_fields(self.metadata.catalogue, self.metadata.entity)
-        value = {
-            "_source": self.metadata.source,
-            "_source_id": source_id
-        }
-        filter = {field: value[field] for field in fields}
-
-        entity_query = self.session.query(self.DbEntity).filter_by(**filter)
+        entity_query = self.session.query(self.DbEntity)
         if not with_deleted:
             entity_query = entity_query.filter_by(_date_deleted=None)
 
-        return entity_query.one_or_none()
-
-    @with_session
-    def get_entities(self, source_ids, with_deleted=False):
-        """
-        Get entities with source id contained in the given list of source id's
-
-        :param source_ids: ids of the entities to get
-        :param with_deleted: boolean denoting if entities that are deleted should be considered (default: False)
-        :return:
-        """
-        fields = self.gob_model.get_technical_key_fields(self.metadata.catalogue, self.metadata.entity)
-        value = {
-            "_source": self.metadata.source,
-        }
-        filter = {field: value[field] for field in fields if field != "_source_id"}
-
-        entity_query = self.session.query(self.DbEntity).filter_by(**filter)
-        if not with_deleted:
-            entity_query = entity_query.filter_by(_date_deleted=None)
-
-        attr = getattr(self.DbEntity, "_source_id")
-        return entity_query.filter(attr.in_(source_ids)).all()
+        attr = getattr(self.DbEntity, "_tid")
+        return entity_query.filter(attr.in_(tids)).all()
 
     def bulk_add_entities(self, events):
         """Adds all applied ADD events to the storage
@@ -708,7 +665,8 @@ WHERE
     '{ self.metadata.source }',
     '{ escape(event['data'].get('_source_id')) }',
     '{ escape(to_json(event['data'])) }',
-    '{ self.metadata.application }'
+    '{ self.metadata.application }',
+    '{ event['data']['_tid'] }'
 )""" for event in events])
 
         # INSERT INTO events (...) VALUES (...)[, (...), ...]
@@ -724,7 +682,8 @@ INSERT INTO
     "source",
     source_id,
     contents,
-    application
+    application,
+    tid
 )
 VALUES {values}"""
         self.execute(statement)
@@ -732,7 +691,7 @@ VALUES {values}"""
     def bulk_update_confirms(self, event, eventid):
         """ Confirm entities in bulk
 
-        Takes a BULKCONFIRM event and updates all source_ids with the bulkconfirm timestamp
+        Takes a BULKCONFIRM event and updates all tids with the bulkconfirm timestamp
 
         The _last_event is not updated for (BULK)CONFIRM events
 
@@ -750,8 +709,8 @@ VALUES {values}"""
         :param timestamp: Time to set as last_confirmed
         :return:
         """
-        source_ids = [record['_source_id'] for record in confirms]
-        stmt = update(self.DbEntity).where(self.DbEntity._source_id.in_(source_ids)).\
+        tids = [record['_tid'] for record in confirms]
+        stmt = update(self.DbEntity).where(self.DbEntity._tid.in_(tids)).\
             values({CONFIRM.timestamp_field: timestamp})
         self.execute(stmt)
 
@@ -769,36 +728,6 @@ VALUES {values}"""
             insert_data
         )
         result.close()
-
-    @with_session
-    def get_entity_for_update(self, event, data):
-        """Get an entity to work with. Changes to the entity will be persisted on leaving session context
-
-        :param entity_id: id of the entity
-        :param source_id: id of the source instance
-        :param gob_event: the GOBEvent for which the instance will be used
-        :return:
-        """
-        # Flush entities first if necessary.
-        self._flush_entities()
-
-        entity = self.get_entity_or_none(data["_entity_source_id"], with_deleted=True)
-
-        if entity is None:
-            if event.action != "ADD":
-                raise GOBException(f"Trying to '{event.action}' a not existing entity")
-
-            # Create an empty entity for the sepcified source and source_id
-            entity = self.DbEntity(_source=self.metadata.source, _source_id=event.source_id)
-
-            self.session.add(entity)
-
-        self.added_session_entity_cnt += 1
-
-        if entity._date_deleted is not None and event.action != "ADD":
-            raise GOBException(f"Trying to '{event.action}' a deleted entity")
-
-        return entity
 
     @with_session
     def _flush_entities(self):

@@ -182,6 +182,7 @@ class EventCreator:
         if self.dst_has_states:
             compare_fields.append('dst_volgnummer')
 
+        # FIELD.ID, rel_id are equal to the TID
         if row['rel_id'] is None or row['rel_deleted'] is not None:
             # No relation yet, or previously deleted relation. Create ADD
             ignore_fields = [
@@ -195,10 +196,10 @@ class EventCreator:
                             ] + [f"rel_{field}" for field in compare_fields]
 
             data = {k: v for k, v in row.items() if k not in ignore_fields}
-            return ADD.create_event(row[FIELD.SOURCE_ID], row[FIELD.SOURCE_ID], data, _RELATE_VERSION)
+            return ADD.create_event(row[FIELD.ID], data, _RELATE_VERSION)
         elif row['src_deleted'] is not None or row['src_id'] is None:
             data = {FIELD.LAST_EVENT: row[FIELD.LAST_EVENT]}
-            return DELETE.create_event(row['rel_id'], row['rel_id'], data, _RELATE_VERSION)
+            return DELETE.create_event(row['rel_id'], data, _RELATE_VERSION)
         else:
             row[FIELD.HASH] = self._get_hash(row)
             modifications = [] \
@@ -211,10 +212,10 @@ class EventCreator:
                     FIELD.LAST_EVENT: row[FIELD.LAST_EVENT],
                     FIELD.HASH: row[FIELD.HASH],
                 }
-                return MODIFY.create_event(row['rel_id'], row['rel_id'], data, _RELATE_VERSION)
+                return MODIFY.create_event(row['rel_id'], data, _RELATE_VERSION)
             else:
                 data = {FIELD.LAST_EVENT: row[FIELD.LAST_EVENT]}
-                return CONFIRM.create_event(row['rel_id'], row['rel_id'], data, _RELATE_VERSION)
+                return CONFIRM.create_event(row['rel_id'], data, _RELATE_VERSION)
 
 
 class Relater:
@@ -239,6 +240,7 @@ class Relater:
         FIELD.SOURCE,
         FIELD.EXPIRATION_DATE,
         FIELD.ID,
+        FIELD.TID,
         'id',
         'derivation',
         'src_source',
@@ -368,6 +370,7 @@ class Relater:
             FIELD.SOURCE: f"'{GOB}'",
             FIELD.EXPIRATION_DATE: f"LEAST(src.{FIELD.EXPIRATION_DATE}, dst.{FIELD.EXPIRATION_DATE})",
             FIELD.ID: self._get_id(),
+            FIELD.TID: self._get_id(),
             "id": self._get_id(),
             "derivation": self._get_derivation(),
             "src_source": f"src.{FIELD.SOURCE}",
@@ -773,6 +776,7 @@ INNER JOIN (
             FIELD.SOURCE: varchar,
             FIELD.EXPIRATION_DATE: timestamp,
             FIELD.ID: varchar,
+            FIELD.TID: varchar,
             'id': varchar,
             'derivation': varchar,
             'src_source': varchar,

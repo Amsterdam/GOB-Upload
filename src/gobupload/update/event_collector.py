@@ -59,7 +59,7 @@ class EventCollector:
         :param event_type:
         :return:
         """
-        last_event = self.last_events.get(id['source_id'])
+        last_event = self.last_events.get(id['tid'])
         return id['last_event'] == last_event or (event_type == 'ADD' and last_event is None)
 
     def _validate(self, event):
@@ -72,16 +72,16 @@ class EventCollector:
         event_type = event['event']
         if event_type == 'BULKCONFIRM':
             ids = [{
-                'source_id': confirm['_source_id'],
+                'tid': confirm['_tid'],
                 'last_event': confirm['_last_event']
             } for confirm in event['data']['confirms']]
         else:
             ids = [{
-                'source_id': event['data']['_entity_source_id'],
+                'tid': event['data']['_tid'],
                 'last_event': event['data']['_last_event']
             }]
 
         is_valid = all([self._match_last_event(id, event_type) for id in ids])
         if not is_valid:
-            print("Invalid event", event, [self.last_events.get(id['source_id']) for id in ids])
+            print("Invalid event", event, [self.last_events.get(id['tid']) for id in ids])
         return is_valid

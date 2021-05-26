@@ -40,7 +40,8 @@ class TestStorageHandler(unittest.TestCase):
         self.msg = fixtures.get_message_fixture()
         model = {
             "entity_id": "identificatie",
-            "version": "1"
+            "version": "1",
+            "has_states": False,
         }
         # Add the hash to the message
         populator = Populator(model, self.msg)
@@ -290,7 +291,7 @@ WHERE
         current = f'{self.msg["header"]["catalogue"]}_{self.msg["header"]["entity"]}'
         temporary = f'{self.msg["header"]["catalogue"]}_{self.msg["header"]["entity"]}_tmp'
 
-        fields = ['_source', 'identificatie']
+        fields = ['_tid']
         query = queries.get_comparison_query('any source', current, temporary, fields)
 
         diff = self.storage.compare_temporary_data(temporary)
@@ -323,29 +324,6 @@ WHERE
         args = ' '.join(args.split())
         expect = f"DELETE FROM {events} WHERE catalogue = '{catalogue}' AND entity = '{entity}' AND action IN ('BULKCONFIRM', 'CONFIRM')"
         self.assertEqual(args, expect)
-
-    def test_get_entity_for_update_modify_non_existing_entity(self):
-        event = fixtures.get_event_fixure()
-        event.action = 'MODIFY'
-        data = {
-            '_entity_source_id': fixtures.random_string()
-        }
-        self.storage._flush_entities = MagicMock()
-        self.storage.get_entity_or_none = MagicMock(return_value=None)
-        with self.assertRaises(GOBException):
-            self.storage.get_entity_for_update(event, data)
-
-    def test_get_entity_for_update_modify_deleted_entity(self):
-        entity = fixtures.get_entity_fixture(**{'_date_deleted': 'value'})
-        event = fixtures.get_event_fixure()
-        event.action = 'MODIFY'
-        data = {
-            '_entity_source_id': fixtures.random_string()
-        }
-        self.storage._flush_entities = MagicMock()
-        self.storage.get_entity_or_none = MagicMock(return_value=entity)
-        with self.assertRaises(GOBException):
-            self.storage.get_entity_for_update(event, data)
 
     def test_flush_entities(self):
         self.storage.session = MagicMock()
@@ -398,7 +376,7 @@ WHERE
 
         metadata = fixtures.get_metadata_fixture()
         event = fixtures.get_event_fixture(metadata, 'ADD')
-        event['data'] = {'_source_id': "source_id + escape '% "}
+        event['data'] = {'_source_id': "source_id + escape '% ", '_tid': 'abcd.1'}
 
         expected = f"""
 INSERT INTO
@@ -412,7 +390,8 @@ INSERT INTO
     "source",
     source_id,
     contents,
-    application
+    application,
+    tid
 )
 VALUES (
     '{ self.storage.metadata.timestamp }',
@@ -422,8 +401,9 @@ VALUES (
     'ADD',
     '{ self.storage.metadata.source }',
     'source_id + escape \'\'%% ',
-    '{{"_source_id": "source_id + escape \'\'%% "}}',
-    '{ self.storage.metadata.application }'
+    '{{"_source_id": "source_id + escape \'\'%% ", "_tid": "abcd.1"}}',
+    '{ self.storage.metadata.application }',
+    'abcd.1'
 )"""
         self.storage.add_events([event])
         self.storage.engine.execute.assert_called()

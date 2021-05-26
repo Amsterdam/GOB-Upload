@@ -4,7 +4,6 @@ from unittest import TestCase, mock
 from unittest.mock import MagicMock, patch, ANY
 from tests import fixtures
 
-from gobcore.events import GOB
 from gobcore.message_broker.offline_contents import ContentsWriter
 
 from gobupload.compare.main import compare, GOBStorageHandler, GOBModel
@@ -13,6 +12,7 @@ from gobupload.compare.event_collector import EventCollector
 mock_model = MagicMock(spec=GOBModel)
 mock_writer = MagicMock(spec=ContentsWriter)
 mock_event_collector = MagicMock(spec=EventCollector)
+
 
 @patch('gobupload.compare.main.ContentsWriter', mock_writer)
 @patch('gobupload.compare.main.GOBModel')
@@ -26,6 +26,7 @@ class TestCompare(TestCase):
         mock_model.get_collection.return_value = {
             "entity_id": "identificatie",
             "version": '0.9',
+            "has_states": False,
         }
         mock_event_collector.reset_mock()
         mock_writer.reset_mock()
@@ -66,7 +67,9 @@ class TestCompare(TestCase):
         original_value = {
             "_last_event": 123
         }
-        self.mock_storage.compare_temporary_data.return_value = [{'_original_value': original_value, '_source_id': 1, '_entity_source_id': 1, 'type': 'DELETE', '_last_event': 1, '_hash': '1234567890'}]
+        self.mock_storage.compare_temporary_data.return_value = [
+            {'_original_value': original_value, '_tid': 1, 'type': 'DELETE',
+             '_entity_tid': 2, '_last_event': 1, '_hash': '1234567890'}]
         message = fixtures.get_message_fixture()
 
         result = compare(message)
@@ -74,7 +77,8 @@ class TestCompare(TestCase):
         # expectations: confirm event is generated
         self.assertIsNotNone(result["contents_ref"])
         mock_writer.return_value.__enter__().write.assert_called_once()
-        mock_writer.return_value.__enter__().write.assert_called_with({'event': 'DELETE', 'data': ANY, 'version': '0.9'})
+        mock_writer.return_value.__enter__().write.assert_called_with(
+            {'event': 'DELETE', 'data': ANY, 'version': '0.9'})
 
     def test_compare_creates_add(self, storage_mock, model_mock):
         storage_mock.return_value = self.mock_storage
@@ -87,7 +91,9 @@ class TestCompare(TestCase):
         original_value = {
             "_last_event": 123
         }
-        self.mock_storage.compare_temporary_data.return_value = [{'_original_value': original_value, '_source_id': data['_source_id'], '_entity_source_id': data['_source_id'], 'type': 'ADD', '_last_event': 1, '_hash': '1234567890'}]
+        self.mock_storage.compare_temporary_data.return_value = [
+            {'_original_value': original_value, '_tid': data['_tid'],
+             'type': 'ADD', '_last_event': 1, '_hash': '1234567890'}]
 
         result = compare(message)
 
@@ -109,7 +115,9 @@ class TestCompare(TestCase):
         original_value = {
             "_last_event": 123
         }
-        self.mock_storage.compare_temporary_data.return_value = [{'_original_value': original_value, '_source_id': data['_source_id'], '_entity_source_id': data['_source_id'], 'type': 'ADD', '_last_event': 1, '_hash': '1234567890'}]
+        self.mock_storage.compare_temporary_data.return_value = [
+            {'_original_value': original_value, '_tid': data['_tid'],
+             'type': 'ADD', '_last_event': 1, '_hash': '1234567890'}]
 
         result = compare(message)
 
@@ -126,7 +134,9 @@ class TestCompare(TestCase):
         original_value = {
             "_last_event": 123
         }
-        self.mock_storage.compare_temporary_data.return_value = [{'_original_value': original_value, '_source_id': 1, '_entity_source_id': 1, 'type': 'CONFIRM', '_last_event': 1, '_hash': '1234567890'}]
+        self.mock_storage.compare_temporary_data.return_value = [
+            {'_original_value': original_value, '_tid': 1, 'type': 'CONFIRM',
+             '_last_event': 1, '_hash': '1234567890'}]
         message = fixtures.get_message_fixture()
 
         result = compare(message)
@@ -134,7 +144,8 @@ class TestCompare(TestCase):
         # expectations: confirm event is generated
         self.assertIsNotNone(result["contents_ref"])
         mock_writer.return_value.__enter__().write.assert_called_once()
-        mock_writer.return_value.__enter__().write.assert_called_with({'event': 'CONFIRM', 'data': ANY, 'version': '0.9'})
+        mock_writer.return_value.__enter__().write.assert_called_with(
+            {'event': 'CONFIRM', 'data': ANY, 'version': '0.9'})
 
     def test_compare_creates_bulkconfirm(self, storage_mock, model_mock):
         storage_mock.return_value = self.mock_storage
@@ -145,8 +156,10 @@ class TestCompare(TestCase):
             "_last_event": 123
         }
         self.mock_storage.compare_temporary_data.return_value = [
-            {'_original_value': original_value, '_source_id': 1, '_entity_source_id': 1, 'type': 'CONFIRM', '_last_event': 1, '_hash': '1234567890'},
-            {'_original_value': original_value, '_source_id': 1, '_entity_source_id': 1, 'type': 'CONFIRM', '_last_event': 1, '_hash': '1234567890'}
+            {'_original_value': original_value, '_tid': 1, 'type': 'CONFIRM',
+             '_last_event': 1, '_hash': '1234567890'},
+            {'_original_value': original_value, '_tid': 1, 'type': 'CONFIRM',
+             '_last_event': 1, '_hash': '1234567890'}
         ]
         message = fixtures.get_message_fixture()
 
@@ -155,7 +168,8 @@ class TestCompare(TestCase):
         # expectations: confirm event is generated
         self.assertIsNotNone(result["contents_ref"])
         mock_writer.return_value.__enter__().write.assert_called_once()
-        mock_writer.return_value.__enter__().write.assert_called_with({'event': 'BULKCONFIRM', 'data': ANY, 'version': '0.9'})
+        mock_writer.return_value.__enter__().write.assert_called_with(
+            {'event': 'BULKCONFIRM', 'data': ANY, 'version': '0.9'})
 
     def test_compare_creates_modify(self, storage_mock, model_mock):
         storage_mock.return_value = self.mock_storage
@@ -180,6 +194,7 @@ class TestCompare(TestCase):
         mock_model.get_collection.return_value = {
             "entity_id": "identificatie",
             "version": '0.9',
+            "has_states": False,
             "all_fields": {
                 field_name: {
                     "type": "GOB.String"
@@ -189,18 +204,22 @@ class TestCompare(TestCase):
 
         original_value = {
             "_last_event": 123,
-            "_source_id": data_object['_source_id'],
+            "_tid": data_object['_tid'],
             "_hash": "1234",
             field_name: new_value
         }
-        self.mock_storage.compare_temporary_data.return_value = [{'_original_value': original_value, '_source_id': data_object['_source_id'], '_entity_source_id': data_object['_source_id'], 'type': 'MODIFY', '_last_event': 1, '_hash': '1234567890'}]
+        self.mock_storage.compare_temporary_data.return_value = [
+            {'_original_value': original_value, '_tid': data_object['_tid'],
+             'type': 'MODIFY', '_last_event': 1,
+             '_hash': '1234567890'}]
 
         result = compare(message)
 
         # expectations: modify event is generated
         self.assertIsNotNone(result["contents_ref"])
         mock_writer.return_value.__enter__().write.assert_called_once()
-        mock_writer.return_value.__enter__().write.assert_called_with({'event': 'MODIFY', 'data': ANY, 'version': '0.9'})
+        mock_writer.return_value.__enter__().write.assert_called_with(
+            {'event': 'MODIFY', 'data': ANY, 'version': '0.9'})
 
         result = mock_writer.return_value.__enter__().write.call_args_list[0][0][0]
 

@@ -24,7 +24,6 @@ class TestApply(TestCase):
         logging.disable(logging.CRITICAL)
 
         self.mock_storage = MagicMock(spec=GOBStorageHandler)
-        self.mock_storage.get_entity_or_none.return_value = None
 
     def tearDown(self):
         logging.disable(logging.NOTSET)

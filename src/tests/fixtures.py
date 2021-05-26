@@ -57,7 +57,7 @@ def get_event_fixture(metadata, event_name=None):
     data = get_event_data_fixture(gob_event, metadata)
     data["_last_event"] = None
     data["_hash"] = None
-    return gob_event.create_event(data["_source_id"], data["_source_id"], data, '0.9')
+    return gob_event.create_event(data["_tid"], data, '0.9')
 
 
 def get_metadata_fixture():
@@ -84,8 +84,7 @@ def get_entity_fixture(**kwargs):
 def get_data_object(metadata, **kwargs):
     source_id = random_string()
     data_object = {
-        '_source_id': source_id,
-        '_entity_source_id': source_id,
+        '_tid': source_id,
         '_hash': random_string(),
         metadata["id_column"]: random_string()
     }
@@ -104,7 +103,7 @@ def get_event_message_fixture(event_name=None):
     message['contents'] = [event]
 
     for field in event['data'].keys():
-        if field != '_source_id':
+        if field != '_tid':
             metadata["model"][field] = {"type": "GOB.String"}
     message['header'] = metadata
 
@@ -128,7 +127,8 @@ def get_event_fixure():
         'timestamp': datetime.datetime(2019, 1, 30, 18, 7, 7),
         'source': 'test',
         'action': 'ADD',
-        'source_id': random_string()
+        'source_id': random_string(),
+        'tid': random_string(),
     }
 
     return dict_to_object(event)

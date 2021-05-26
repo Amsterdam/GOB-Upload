@@ -38,7 +38,7 @@ class TestEventCollector(TestCase):
         event = {
             'event': 'event',
             'data': {
-                '_entity_source_id': 1,
+                '_tid': 1,
                 '_last_event': 100
             }
         }
@@ -49,7 +49,7 @@ class TestEventCollector(TestCase):
         result = collector._validate(event)
         self.assertEqual(result, False)
 
-        event['data']['_entity_source_id'] = 2
+        event['data']['_tid'] = 2
         result = collector._validate(event)
         self.assertEqual(result, False)
 
@@ -63,7 +63,7 @@ class TestEventCollector(TestCase):
             'event': 'BULKCONFIRM',
             'data': {
                 'confirms': [{
-                    '_source_id': 1,
+                    '_tid': 1,
                     '_last_event': 100
                 }]
             }
@@ -75,7 +75,7 @@ class TestEventCollector(TestCase):
         result = collector._validate(event)
         self.assertEqual(result, False)
 
-        event['data']['confirms'][0]['_entity_source_id'] = 2
+        event['data']['confirms'][0]['_tid'] = 2
         result = collector._validate(event)
         self.assertEqual(result, False)
 
