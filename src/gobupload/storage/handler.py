@@ -666,7 +666,7 @@ WHERE
     '{ escape(event['data'].get('_source_id')) }',
     '{ escape(to_json(event['data'])) }',
     '{ self.metadata.application }',
-    '{ event['data']['_tid'] }'
+    '{ escape(event['data']['_tid']) }'
 )""" for event in events])
 
         # INSERT INTO events (...) VALUES (...)[, (...), ...]
