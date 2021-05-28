@@ -376,7 +376,7 @@ WHERE
 
         metadata = fixtures.get_metadata_fixture()
         event = fixtures.get_event_fixture(metadata, 'ADD')
-        event['data'] = {'_source_id': "source_id + escape '% ", '_tid': 'abcd.1'}
+        event['data'] = {'_source_id': "source_id + escape '% ", '_tid': "abcd.1 + escape '% "}
 
         expected = f"""
 INSERT INTO
@@ -401,9 +401,9 @@ VALUES (
     'ADD',
     '{ self.storage.metadata.source }',
     'source_id + escape \'\'%% ',
-    '{{"_source_id": "source_id + escape \'\'%% ", "_tid": "abcd.1"}}',
+    '{{"_source_id": "source_id + escape \'\'%% ", "_tid": "abcd.1 + escape \'\'%% "}}',
     '{ self.storage.metadata.application }',
-    'abcd.1'
+    'abcd.1 + escape \'\'%% '
 )"""
         self.storage.add_events([event])
         self.storage.engine.execute.assert_called()
