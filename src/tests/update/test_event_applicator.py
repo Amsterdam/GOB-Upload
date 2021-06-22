@@ -150,15 +150,15 @@ class TestEventApplicator(TestCase):
         applicator.apply_other_events = MagicMock()
 
         self.assertEqual([],
-                         applicator.add_other_event('any gob event1', {'_tid': 'any entity source 1'}))
+                         applicator.add_other_event('any gob event1',  'any entity source 1'))
         self.assertEqual(applicator.other_events['any entity source 1'], ['any gob event1'])
 
         self.assertEqual([],
-                         applicator.add_other_event('any gob event2', {'_tid': 'any entity source 2'}))
+                         applicator.add_other_event('any gob event2', 'any entity source 2'))
         applicator.apply_other_events.assert_not_called()
 
         self.assertEqual(applicator.apply_other_events.return_value,
-                         applicator.add_other_event('any gob event3', {'_tid': 'any entity source 3'}))
+                         applicator.add_other_event('any gob event3', 'any entity source 3'))
         applicator.apply_other_events.assert_called()
 
     def test_apply_other_events(self):
@@ -171,7 +171,7 @@ class TestEventApplicator(TestCase):
         self.assertEqual(applicator.other_events, {})
         self.storage.get_entities.assert_not_called()
 
-        applicator.add_other_event('any gob event', {'_tid': 'any entity source id'})
+        applicator.add_other_event('any gob event', 'any entity source id')
         self.storage.get_entities.return_value = ['any entity']
 
         self.assertEqual(['any gob event'], applicator.apply_other_events())
