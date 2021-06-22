@@ -63,7 +63,7 @@ class EventApplicator:
                 return applied_events
         return []
 
-    def add_other_event(self, gob_event, data):
+    def add_other_event(self, gob_event, tid):
         """
         Add a non-ADD event, or an ADD event on a deleted entity
         If MAX_OTHER_CHUNK events have been buffered then mass-apply the events
@@ -74,7 +74,7 @@ class EventApplicator:
         :param data:
         :return:
         """
-        self.other_events[data["_tid"]].append(gob_event)
+        self.other_events[tid].append(gob_event)
         if sum([len(x) for x in self.other_events.values()]) >= self.MAX_OTHER_CHUNK:
             return self.apply_other_events()
         return []
@@ -136,7 +136,6 @@ class EventApplicator:
     def apply(self, event, last_events, add_event_tids):
         # Reconstruct the gob event out of the database event
         gob_event = database_to_gobevent(event)
-        data = gob_event.data
 
         # Return the action and number of applied entities
         count = 1
@@ -158,6 +157,6 @@ class EventApplicator:
             applied_events += self.apply_add_events()
 
             # Add other event (MODIFY, CONFIRM, DELETE, ADD on deleted entity)
-            applied_events += self.add_other_event(gob_event, data)
+            applied_events += self.add_other_event(gob_event, tid)
 
         return gob_event, count, applied_events
