@@ -118,7 +118,8 @@ class EventApplicator:
             if entity._date_deleted is not None and not isinstance(gob_event, GOB.ADD):
                 # a non-ADD event is trying to be applied on a deleted entity
                 # Only ADD event can be applied on a deleted entity
-                raise GOBException(f"Trying to '{gob_event.name}' a deleted entity")
+                raise GOBException(f"Trying to '{gob_event.name}' a deleted entity (id: {gob_event.id}, "
+                                   f"last_event: {gob_event.last_event})")
 
             # apply the event on the entity
             gob_event.apply_to(entity)
