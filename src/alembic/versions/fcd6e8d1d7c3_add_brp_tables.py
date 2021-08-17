@@ -415,37 +415,31 @@ def upgrade():
                existing_type=postgresql.JSONB(astext_type=sa.Text()),
                type_=sa.String(),
                existing_nullable=True,
-               autoincrement=False,
                postgresql_using='heeft_geboorteland::text')
     op.alter_column('brp_personen', 'heeft_geboorteplaats_nederland',
                existing_type=postgresql.JSONB(astext_type=sa.Text()),
                type_=sa.String(),
                existing_nullable=True,
-               autoincrement=False,
                postgresql_using='heeft_geboorteplaats_nederland::text')
     op.alter_column('brp_persoonsverblijfplaatsen', 'gemeente_inschrijving',
                existing_type=postgresql.JSONB(astext_type=sa.Text()),
                type_=sa.String(),
                existing_nullable=True,
-               autoincrement=False,
                postgresql_using='gemeente_inschrijving::text')
     op.alter_column('brp_persoonsverblijfplaatsen', 'land_vanwaar_ingeschreven',
                existing_type=postgresql.JSONB(astext_type=sa.Text()),
                type_=sa.String(),
                existing_nullable=True,
-               autoincrement=False,
                postgresql_using='land_vanwaar_ingeschreven::text')
     op.alter_column('brp_persoonsverblijfplaatsen', 'land_waarnaar_vertrokken',
                existing_type=postgresql.JSONB(astext_type=sa.Text()),
                type_=sa.String(),
                existing_nullable=True,
-               autoincrement=False,
                postgresql_using='land_waarnaar_vertrokken::text')
     op.alter_column('brp_verblijfplaatsen', 'verblijft_in_land',
                existing_type=postgresql.JSONB(astext_type=sa.Text()),
                type_=sa.String(),
                existing_nullable=True,
-               autoincrement=False,
                postgresql_using='verblijft_in_land::text')
     # ### end Alembic commands ###
 
@@ -456,37 +450,31 @@ def downgrade():
                existing_type=sa.String(),
                type_=postgresql.JSONB(astext_type=sa.Text()),
                existing_nullable=True,
-               autoincrement=False,
                postgresql_using='verblijft_in_land::jsonb')
     op.alter_column('brp_persoonsverblijfplaatsen', 'land_waarnaar_vertrokken',
                existing_type=sa.String(),
                type_=postgresql.JSONB(astext_type=sa.Text()),
                existing_nullable=True,
-               autoincrement=False,
                postgresql_using='land_waarnaar_vertrokken::jsonb')
     op.alter_column('brp_persoonsverblijfplaatsen', 'land_vanwaar_ingeschreven',
                existing_type=sa.String(),
                type_=postgresql.JSONB(astext_type=sa.Text()),
                existing_nullable=True,
-               autoincrement=False,
                postgresql_using='land_vanwaar_ingeschreven::jsonb')
     op.alter_column('brp_persoonsverblijfplaatsen', 'gemeente_inschrijving',
                existing_type=sa.String(),
                type_=postgresql.JSONB(astext_type=sa.Text()),
                existing_nullable=True,
-               autoincrement=False,
                postgresql_using='gemeente_inschrijving::jsonb')
     op.alter_column('brp_personen', 'heeft_geboorteplaats_nederland',
                existing_type=sa.String(),
                type_=postgresql.JSONB(astext_type=sa.Text()),
                existing_nullable=True,
-               autoincrement=False,
                postgresql_using='heeft_geboorteplaats_nederland::jsonb')
     op.alter_column('brp_personen', 'heeft_geboorteland',
                existing_type=sa.String(),
                type_=postgresql.JSONB(astext_type=sa.Text()),
                existing_nullable=True,
-               autoincrement=False,
                postgresql_using='heeft_geboorteland::jsonb')
     op.drop_column('brp_personen', 'heeft_ouder2')
     op.drop_column('brp_personen', 'heeft_ouder1')

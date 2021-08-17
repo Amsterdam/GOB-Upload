@@ -95,20 +95,17 @@ def upgrade():
                     existing_type=sa.TEXT(),
                     type_=sa.String(),
                     existing_nullable=True,
-                    autoincrement=False,
                     postgresql_using='identificatie::text')
     op.drop_column('brp_personen', 'heeft_verblijfplaatsen')
     op.alter_column('brp_persoonsverblijfplaatsen', 'met_verblijfplaats',
                     existing_type=postgresql.JSONB(astext_type=sa.Text()),
                     type_=sa.String(),
                     existing_nullable=True,
-                    autoincrement=False,
                     postgresql_using='met_verblijfplaats::text')
     op.alter_column('brp_persoonsverblijfplaatsen', 'van_persoon',
                     existing_type=postgresql.JSONB(astext_type=sa.Text()),
                     type_=sa.String(),
                     existing_nullable=True,
-                    autoincrement=False,
                     postgresql_using='van_persoon::text')
     op.add_column('brp_verblijfplaatsen', sa.Column('heeft_persoonsverblijfplaatsen', postgresql.JSONB(astext_type=sa.Text()), autoincrement=False, nullable=True))
     # ### end Alembic commands ###
@@ -121,24 +118,21 @@ def downgrade():
                     existing_type=sa.String(),
                     type_=postgresql.JSONB(astext_type=sa.Text()),
                     existing_nullable=True,
-                    autoincrement=False,
                     postgresql_using='van_persoon::jsonb'
                     )
     op.alter_column('brp_persoonsverblijfplaatsen', 'met_verblijfplaats',
                     existing_type=sa.String(),
                     type_=postgresql.JSONB(astext_type=sa.Text()),
                     existing_nullable=True,
-                    autoincrement=False,
                     postgresql_using='met_verblijfplaats::jsonb'
                     )
     op.add_column('brp_personen',
-                  sa.Column('heeft_verblijfplaatsen', postgresql.JSONB(astext_type=sa.Text()), autoincrement=False,
+                  sa.Column('heeft_verblijfplaatsen', postgresql.JSONB(astext_type=sa.Text()),
                             nullable=True))
     op.alter_column('brp_personen', 'identificatie',
                     existing_type=sa.String(),
                     type_=sa.TEXT(),
                     existing_nullable=True,
-                    autoincrement=False,
                     postgresql_using='identificatie::text'
                     )
     op.drop_column('brp_personen', 'heeft_persoonsverblijfplaatsen')
