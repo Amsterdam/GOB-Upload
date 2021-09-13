@@ -87,9 +87,12 @@ def upgrade():
     sa.UniqueConstraint('_source_id', name='rel_brp_vbl_brp_pvb_heeft_persoonsverblijfplaatsen_uniq'),
     sa.UniqueConstraint('_tid', name='rel_brp_vbl_brp_pvb_heeft_persoonsverblijfplaatsen__tid_key')
     )
-    op.drop_table('rel_brp_pvb_brp_prs_van_persoon')
-    op.drop_table('rel_brp_prs_brp_vbl_heeft_verblijfplaatsen')
-    op.drop_table('rel_brp_pvb_brp_vbl_met_verblijfplaats')
+    # op.drop_table('rel_brp_pvb_brp_prs_van_persoon')
+    op.execute('DROP TABLE IF EXISTS rel_brp_pvb_brp_prs_van_persoon CASCADE')
+    # op.drop_table('rel_brp_prs_brp_vbl_heeft_verblijfplaatsen')
+    op.execute('DROP TABLE IF EXISTS rel_brp_prs_brp_vbl_heeft_verblijfplaatsen CASCADE')
+    # op.drop_table('rel_brp_pvb_brp_vbl_met_verblijfplaats')
+    op.execute('DROP TABLE IF EXISTS rel_brp_pvb_brp_vbl_met_verblijfplaats CASCADE')
     op.add_column('brp_personen', sa.Column('heeft_persoonsverblijfplaatsen', postgresql.JSONB(astext_type=sa.Text()), autoincrement=False, nullable=True))
     op.alter_column('brp_personen', 'identificatie',
                     existing_type=sa.TEXT(),
