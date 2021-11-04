@@ -21,15 +21,15 @@ def upgrade():
     op.rename_table("rel_gbd_brt_gbd_ggp__ligt_in_ggpgebied", "rel_gbd_brt_gbd_ggp_ligt_in_ggpgebied")
     op.rename_table("rel_gbd_brt_gbd_ggw__ligt_in_ggwgebied", "rel_gbd_brt_gbd_ggw_ligt_in_ggwgebied")
     op.rename_table("rel_gbd_wijk_gbd_ggw__ligt_in_ggwgebied", "rel_gbd_wijk_gbd_ggw_ligt_in_ggwgebied")
-    op.alter_column("gebieden_buurten", "_ligt_in_ggpgebied", "ligt_in_ggpgebied")
-    op.alter_column("gebieden_buurten", "_ligt_in_ggwgebied", "ligt_in_ggwgebied")
-    op.alter_column("gebieden_wijken", "_ligt_in_ggwgebied", "ligt_in_ggwgebied")
+    op.alter_column("gebieden_buurten", "_ligt_in_ggpgebied", new_column_name="ligt_in_ggpgebied")
+    op.alter_column("gebieden_buurten", "_ligt_in_ggwgebied", new_column_name="ligt_in_ggwgebied")
+    op.alter_column("gebieden_wijken", "_ligt_in_ggwgebied", new_column_name="ligt_in_ggwgebied")
 
 
 def downgrade():
     op.rename_table("rel_gbd_brt_gbd_ggp_ligt_in_ggpgebied", "rel_gbd_brt_gbd_ggp__ligt_in_ggpgebied")
     op.rename_table("rel_gbd_brt_gbd_ggw_ligt_in_ggwgebied", "rel_gbd_brt_gbd_ggw__ligt_in_ggwgebied")
     op.rename_table("rel_gbd_wijk_gbd_ggw_ligt_in_ggwgebied", "rel_gbd_wijk_gbd_ggw__ligt_in_ggwgebied")
-    op.alter_column("gebieden_buurten", "ligt_in_ggpgebied", "_ligt_in_ggpgebied")
-    op.alter_column("gebieden_buurten", "ligt_in_ggwgebied", "_ligt_in_ggwgebied")
-    op.alter_column("gebieden_wijken", "ligt_in_ggwgebied", "_ligt_in_ggwgebied")
+    op.alter_column("gebieden_buurten", "ligt_in_ggpgebied", new_column_name="_ligt_in_ggpgebied")
+    op.alter_column("gebieden_buurten", "ligt_in_ggwgebied", new_column_name="_ligt_in_ggwgebied")
+    op.alter_column("gebieden_wijken", "ligt_in_ggwgebied", new_column_name="_ligt_in_ggwgebied")
