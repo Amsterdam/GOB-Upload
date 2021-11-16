@@ -1,2 +1,2 @@
 alembic==1.6.5
--e git+https://github.com/Amsterdam/GOB-Core.git@v0.17.12t#egg=gobcore
+-e git+https://github.com/Amsterdam/GOB-Core.git@v0.17.12u#egg=gobcore
