@@ -14,11 +14,13 @@ ENV C_INCLUDE_PATH=/usr/include/gdal
 RUN curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add -
 RUN curl https://packages.microsoft.com/config/debian/9/prod.list > /etc/apt/sources.list.d/mssql-release.list
 RUN apt-get update
-RUN ACCEPT_EULA=Y apt-get install -y msodbcsql17
+RUN ACCEPT_EULA=Y apt-get install -y msodbcsql17 jq
 
 # Install required Python packages
 COPY requirements.txt /app/
-RUN LIBGDAL_VERSION=$(gdal-config --version) pip3 install --no-cache-dir -r requirements.txt
+RUN LIBGDAL_VERSION=$(gdal-config --version) \
+    CORE_VERSION=$(curl -s GET https://api.github.com/repos/Amsterdam/GOB-Core/tags\?per_page\=1 | jq -r '.[].name') \
+    pip3 install --no-cache-dir -r requirements.txt
 RUN rm requirements.txt
 RUN rm -rf /app/src/gobcore/tests
 
