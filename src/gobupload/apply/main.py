@@ -141,8 +141,9 @@ def apply(msg):
         after = max(entity_max_eventid or 0, after or 0)
 
         # Build result message
+        # always vacuum rel or qa tables, leads to high count of dead tuples otherwise
         results = stats.results()
-        if mode == FULL_UPLOAD and _should_analyze(stats):
+        if (mode == FULL_UPLOAD and _should_analyze(stats)) or result.catalogue in {'qa', 'rel'}:
             logger.info("Running VACUUM ANALYZE on table")
             storage.analyze_table()
 
