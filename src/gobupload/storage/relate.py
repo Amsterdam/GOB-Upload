@@ -339,14 +339,14 @@ GROUP BY
 
 
 def check_relation_conflicts(catalog_name, collection_name, attribute_name):
-    updater = Relater(catalog_name, collection_name, attribute_name)
-    result = updater.get_conflicts()
+    with Relater(catalog_name, collection_name, attribute_name) as updater:
+        result = updater.get_conflicts()
 
-    for row in result:
-        row = dict(row)
-        # Log conflicting relations
-        if (row.get("row_number") or 0) > 1:
-            row['volgnummer'] = row.get('src_volgnummer')
-            issue = Issue(QA_CHECK.Unique_destination, row, 'src_id', 'bronwaarde')
-            issue.attribute = attribute_name
-            log_issue(logger, QA_LEVEL.WARNING, issue)
+        for row in result:
+            row = dict(row)
+            # Log conflicting relations
+            if (row.get("row_number") or 0) > 1:
+                row['volgnummer'] = row.get('src_volgnummer')
+                issue = Issue(QA_CHECK.Unique_destination, row, 'src_id', 'bronwaarde')
+                issue.attribute = attribute_name
+                log_issue(logger, QA_LEVEL.WARNING, issue)

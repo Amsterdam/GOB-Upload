@@ -180,10 +180,10 @@ ORDER BY _source, _id, volgnummer, begin_geldigheid
     @patch('gobupload.storage.relate.logger')
     @patch('gobupload.storage.relate.Relater')
     def test_check_relation_conflicts(self, mock_relater, mock_logger, mock_log_issue, mock_issue):
-        relater = mock_relater.return_value
+        relater = mock_relater.return_value.__enter__.return_value
         relater.dst_has_states = False
 
-        mock_relater.return_value.get_conflicts.return_value = [{
+        relater.get_conflicts.return_value = [{
             'src_id': 1,
             'src_volgnummer': 1,
             'dst_id': 1,
@@ -203,12 +203,12 @@ ORDER BY _source, _id, volgnummer, begin_geldigheid
 
         mock_issue.assert_has_calls([
             call(QA_CHECK.Unique_destination, {
-                **mock_relater.return_value.get_conflicts.return_value[0],
-                'volgnummer': mock_relater.return_value.get_conflicts.return_value[0]['src_volgnummer'],
+                **relater.get_conflicts.return_value[0],
+                'volgnummer': relater.get_conflicts.return_value[0]['src_volgnummer'],
             }, 'src_id', 'bronwaarde'),
             call(QA_CHECK.Unique_destination, {
-                **mock_relater.return_value.get_conflicts.return_value[1],
-                'volgnummer': mock_relater.return_value.get_conflicts.return_value[1]['src_volgnummer'],
+                **relater.get_conflicts.return_value[1],
+                'volgnummer': relater.get_conflicts.return_value[1]['src_volgnummer'],
             }, 'src_id', 'bronwaarde'),
         ])
 
