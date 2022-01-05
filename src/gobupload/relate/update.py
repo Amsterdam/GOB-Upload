@@ -78,46 +78,25 @@ class StartValiditiesTable:
         :return:
         """
         return f"""
--- Find all possible intervals for {self.from_table}: id - seqnr - start - end
-WITH RECURSIVE
-all_intervals(
-    {FIELD.ID},
-    start_{FIELD.SEQNR},
-    {FIELD.SEQNR},
-    {FIELD.START_VALIDITY},
-    {FIELD.END_VALIDITY}) AS (
-    SELECT
-        s.{FIELD.ID},
-        s.{FIELD.SEQNR},
-        s.{FIELD.SEQNR},
-        s.{FIELD.START_VALIDITY},
-        s.{FIELD.END_VALIDITY}
-    FROM {self.from_table} s
-    LEFT JOIN {self.from_table} t
-    ON s.{FIELD.ID} = t.{FIELD.ID}
-        AND t.{FIELD.SEQNR} < s.{FIELD.SEQNR}
-        AND t.{FIELD.END_VALIDITY} = s.{FIELD.START_VALIDITY}
-    WHERE t.{FIELD.ID} IS NULL
-    UNION
-    SELECT
-        intv.{FIELD.ID},
-        intv.start_{FIELD.SEQNR},
-        t.{FIELD.SEQNR},
-        intv.{FIELD.START_VALIDITY},
-        t.{FIELD.END_VALIDITY}
-    FROM all_intervals intv
-    LEFT JOIN {self.from_table} t
-    ON intv.{FIELD.END_VALIDITY} = t.{FIELD.START_VALIDITY}
-        AND t.{FIELD.ID} = intv.{FIELD.ID}
-        AND t.{FIELD.SEQNR} > intv.{FIELD.SEQNR}
-    WHERE t.{FIELD.START_VALIDITY} IS NOT NULL
+-- Find all possible intervals for {self.from_table}: id - seqnr - start - end, using windows per `_id`
+-- 1. lag (sorted) end_validity 1 row to allow for comparison with start_validity of next period
+-- 2. create column with labels of consecutive periods (when there is a gap, start a new group)
+-- 3. Take the first start_validity per group
+WITH
+end_validity_lag AS (
+    SELECT {FIELD.ID}, {FIELD.SEQNR}, {FIELD.START_VALIDITY}, LAG({FIELD.END_VALIDITY}) OVER w AS lagged_end
+    FROM {self.from_table}
+    WINDOW w AS (PARTITION BY {FIELD.ID} ORDER BY {FIELD.ID}, {FIELD.SEQNR})
+),
+group_start_validity AS (
+    SELECT {FIELD.ID}, {FIELD.SEQNR}, {FIELD.START_VALIDITY},
+        COUNT(*) FILTER ( WHERE {FIELD.START_VALIDITY} <> lagged_end ) OVER w AS consecutive_period
+    FROM end_validity_lag
+    WINDOW w AS (PARTITION BY {FIELD.ID} ORDER BY {FIELD.ID}, {FIELD.SEQNR})
 )
-SELECT
-    {FIELD.ID},
-    {FIELD.SEQNR},
-    MIN({FIELD.START_VALIDITY}) {FIELD.START_VALIDITY}
-FROM all_intervals
-GROUP BY {FIELD.ID}, {FIELD.SEQNR}
+SELECT {FIELD.ID}, {FIELD.SEQNR}, MIN({FIELD.START_VALIDITY}) OVER w AS {FIELD.START_VALIDITY}
+FROM group_start_validity
+WINDOW w AS (PARTITION BY {FIELD.ID}, consecutive_period ORDER BY {FIELD.ID}, {FIELD.SEQNR})
 """
 
     def create(self):
@@ -126,10 +105,9 @@ GROUP BY {FIELD.ID}, {FIELD.SEQNR}
         :return:
         """
         self.drop()
-
         query = self._query()
 
-        _execute(f"CREATE TABLE IF NOT EXISTS {self.name} AS ({query})")
+        _execute(f"CREATE UNLOGGED TABLE {self.name} AS ({query})")
         _execute(f"CREATE INDEX ON {self.name}({FIELD.ID}, {FIELD.SEQNR})")
 
     def drop(self):
@@ -319,6 +297,19 @@ class Relater:
 
         self.result_table_name = f"tmp_{self.src_catalog_name}_{self.src_collection['abbreviation']}_" \
                                  f"{src_field_name}_result"
+
+    def __enter__(self):
+        self._create_tmp_intv_tables()
+        self._create_tmp_result_table()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if DEBUG:
+            logger.info("DEBUG ON: Not removing temporary tables")
+        else:
+            self.src_intv_tmp_table.drop()
+            self.dst_intv_tmp_table.drop()
+            self._drop_tmp_result_table()
 
     def _get_applications_in_src(self):
         query = f"SELECT DISTINCT {FIELD.APPLICATION} FROM {self.src_table_name}"
@@ -737,15 +728,8 @@ INNER JOIN (
     ){source_value_not_null}
 """
 
-    def _cleanup_tmp_tables(self):
-        self.src_intv_tmp_table.drop()
-        self.dst_intv_tmp_table.drop()
-        _execute(f"DROP TABLE {self.result_table_name}")
-
-    def _create_tmp_tables(self):
-        """Creates tmp tables from recursive queries to determine the begin_geldigheid for each volgnummer
-
-        """
+    def _create_tmp_intv_tables(self):
+        """Creates tmp tables from recursive queries to determine the begin_geldigheid for each volgnummer."""
         if self.src_has_states:
             logger.info(f"Creating temporary table {self.src_intv_tmp_table.name}")
             self.src_intv_tmp_table.create()
@@ -755,12 +739,11 @@ INNER JOIN (
                 # Use same table as src as they are the same
                 self.dst_intv_tmp_table = self.src_intv_tmp_table
             else:
-
                 logger.info(f"Creating temporary table {self.dst_intv_tmp_table.name}")
                 self.dst_intv_tmp_table.create()
 
-        logger.info(f"Create temporary results table {self.result_table_name}")
-        self._create_tmp_result_table()
+    def _drop_tmp_result_table(self):
+        _execute(f"DROP TABLE IF EXISTS {self.result_table_name}")
 
     def _create_tmp_result_table(self):
         varchar = 'varchar'
@@ -807,10 +790,11 @@ INNER JOIN (
         columns = ['rowid'] + self._select_aliases()
 
         column_list = ",\n".join([f"    {column} {types[column]}" for column in columns])
-        query = f"CREATE TABLE IF NOT EXISTS {self.result_table_name} (\n{column_list}\n)"
+        query = f"CREATE UNLOGGED TABLE IF NOT EXISTS {self.result_table_name} (\n{column_list}\n)"
 
+        logger.info(f"Create temporary results table {self.result_table_name}")
         _execute(query)
-        _execute(f"TRUNCATE {self.result_table_name}")
+        _execute("TRUNCATE " + self.result_table_name)
 
     def _src_entities_range(self, min_src_event_id: int, max_src_event_id: int = None):
         filters = []
@@ -1129,13 +1113,6 @@ LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(self._dst_table_outer
         except StopIteration:
             return max_eventid
 
-    def _cleanup(self):
-        if not DEBUG:
-            logger.info("Removing temporary tables")
-            self._cleanup_tmp_tables()
-        else:
-            logger.info("DEBUG ON: Not removing temporary tables")
-
     def _get_chunks(self, start_src_event: int, max_src_event: int, start_dst_event: int, max_dst_event: int,
                     only_src_side: bool = False):
         """Generates the queries to select the src_entities and dst_entities to consider for each iteration of the
@@ -1232,8 +1209,6 @@ LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(self._dst_table_outer
         Only checking relations to/from src/dst objects that may have changed since the last relate.
         :return:
         """
-        self._create_tmp_tables()
-
         start_src_event, max_src_event, start_dst_event, max_dst_event = self._get_changed_ranges()
 
         if initial_load:
@@ -1247,8 +1222,6 @@ LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(self._dst_table_outer
 
         for row in self._read_results():
             yield dict(row)
-
-        self._cleanup()
 
     def _read_results(self):
         yield from _execute(f"SELECT * FROM {self.result_table_name}", stream=True, max_row_buffer=25000)
@@ -1272,16 +1245,6 @@ LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(self._dst_table_outer
     def _get_updates_full(self, max_src_event: int, max_dst_event: int, is_conflicts_query=False):
         self._get_updates_chunked(0, max_src_event, 0, max_dst_event, only_src_side=True,
                                   is_conflicts_query=is_conflicts_query)
-
-    def get_conflicts(self):
-        self._create_tmp_tables()
-        max_src_event = self._get_max_src_event()
-        max_dst_event = self._get_max_dst_event()
-        self._get_updates_full(max_src_event, max_dst_event, True)
-
-        yield from self._read_results()
-
-        self._cleanup()
 
     def _get_count_for(self, frm: str):
         result = _execute(f"SELECT COUNT(*) FROM {frm} alias")
@@ -1337,3 +1300,10 @@ LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(self._dst_table_outer
                 event_collector.collect(event)
 
             return filename, confirms
+
+    def get_conflicts(self):
+        max_src_event = self._get_max_src_event()
+        max_dst_event = self._get_max_dst_event()
+
+        self._get_updates_full(max_src_event, max_dst_event, is_conflicts_query=True)
+        yield from self._read_results()

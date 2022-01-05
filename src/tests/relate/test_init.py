@@ -308,13 +308,13 @@ class TestInit(TestCase):
             },
             'timestamp': 'the timestamp',
         }
-        mock_relater.return_value.update.return_value = ('result filename', 2840)
+        mock_relater.return_value.__enter__.return_value.update.return_value = ('result filename', 2840)
 
         result = process_relate(msg)
         mock_check_message.assert_called_with(msg)
 
         mock_relater.assert_called_with('catalog', 'the collection', 'the attribute')
-        mock_relater().update.assert_called_with(False)
+        mock_relater().__enter__().update.assert_called_with(False)
 
         self.assertEqual({
             'header': {
@@ -337,4 +337,4 @@ class TestInit(TestCase):
         # Full relate forced
         msg['header']['mode'] = 'full'
         result = process_relate(msg)
-        mock_relater().update.assert_called_with(True)
+        mock_relater().__enter__().update.assert_called_with(True)
