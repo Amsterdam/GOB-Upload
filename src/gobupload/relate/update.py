@@ -1019,17 +1019,15 @@ LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(self._dst_table_outer
         return self.get_query(src_entities, dst_entities, max_src_event, self._get_max_dst_event(), is_conflicts_query)
 
     def _format_relation(self, relation: dict):
-        timestamps = [FIELD.START_VALIDITY, FIELD.END_VALIDITY, FIELD.EXPIRATION_DATE]
-
-        # Add time-part to date objects
-        relation.update({
-            field: datetime.combine(relation.get(field), datetime.min.time())
-            for field in timestamps
-            if relation.get(field) and isinstance(relation.get(field), date)
-        })
-
         # Remove row_number from the relation
         relation.pop('row_number', None)
+
+        for ts_field in FIELD.START_VALIDITY, FIELD.END_VALIDITY, FIELD.EXPIRATION_DATE:
+            value = relation.get(ts_field)
+
+            # isinstance check is not sufficient here: isinstance(<datetime value>, date) is True
+            if type(value) is date:
+                relation[ts_field] = datetime.combine(value, datetime.min.time())
 
         return relation
 
