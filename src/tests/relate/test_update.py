@@ -1272,13 +1272,13 @@ WHERE CLAUSE CONFLICTS
         rows = [
             {FIELD.START_VALIDITY: None, FIELD.END_VALIDITY: None},
             {'one': 1, 'two': 2},
-            {FIELD.START_VALIDITY: date(2020, 1, 30), FIELD.END_VALIDITY: datetime(2020, 2, 27)},
+            {FIELD.START_VALIDITY: date(2020, 1, 30), FIELD.END_VALIDITY: datetime(2020, 2, 27, 13, 27, 21)},
         ]
 
         expected_result = [
             {FIELD.START_VALIDITY: None, FIELD.END_VALIDITY: None},
             {'one': 1, 'two': 2},
-            {FIELD.START_VALIDITY: datetime(2020, 1, 30, 0, 0), FIELD.END_VALIDITY: datetime(2020, 2, 27, 0, 0)},
+            {FIELD.START_VALIDITY: datetime(2020, 1, 30, 0, 0), FIELD.END_VALIDITY: datetime(2020, 2, 27, 13, 27, 21)},
         ]
 
         updater = self._get_relater()
