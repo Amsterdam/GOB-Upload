@@ -5,7 +5,7 @@ FULL_UPLOAD = "full"
 DEBUG = True if os.getenv("DEBUG") else False
 
 GOB_DB = {
-    'drivername': 'postgres',
+    'drivername': 'postgresql',
     'username': os.getenv("DATABASE_USER", "gob"),
     'database': os.getenv("DATABASE_NAME", "gob"),
     'password': os.getenv("DATABASE_PASSWORD", "insecure"),
