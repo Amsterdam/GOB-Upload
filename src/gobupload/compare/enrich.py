@@ -122,12 +122,15 @@ SELECT
       )
 FROM  {table_name}
 WHERE {field} in ({', '.join(values)})
-AND   {FIELD.END_VALIDITY} IS NULL
+AND   ({FIELD.END_VALIDITY} IS NULL OR {FIELD.END_VALIDITY} > NOW())
 """
 
     result = storage.get_query_value(query)
-    result = Geometry.from_value(result)
-    return str(result), None
+
+    if result is not None:
+        result = str(Geometry.from_value(result))
+
+    return result, None
 
 
 class AutoIdException(Exception):
