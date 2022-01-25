@@ -55,7 +55,7 @@ SELECT
       )
 FROM  cat_col
 WHERE fld in ('1', '2')
-AND   eind_geldigheid IS NULL
+AND   (eind_geldigheid IS NULL OR eind_geldigheid > NOW())
 """)
         self.assertEqual(msg["contents"][0]["geo"], "POINT (1.000 2.000)")
 
@@ -77,11 +77,11 @@ SELECT
       )
 FROM  cat_col
 WHERE fld in ('1', '2')
-AND   eind_geldigheid IS NULL
+AND   (eind_geldigheid IS NULL OR eind_geldigheid > NOW())
 """)
         self.assertEqual(msg["contents"][0]["geo"], "POINT (1.000 2.000)")
 
-    def test_enrich_mulit_complex_contents(self):
+    def test_enrich_multi_complex_contents(self):
         self.mock_storage.get_query_value.return_value = "POINT (1 2)"
         msg = self.mock_msg
         msg["header"]["enrich"]["geo"]["on"] = "x.y.z"
@@ -99,7 +99,7 @@ SELECT
       )
 FROM  cat_col
 WHERE fld in ('1', '2')
-AND   eind_geldigheid IS NULL
+AND   (eind_geldigheid IS NULL OR eind_geldigheid > NOW())
 """)
         self.assertEqual(msg["contents"][0]["geo"], "POINT (1.000 2.000)")
 
@@ -114,6 +114,17 @@ AND   eind_geldigheid IS NULL
 
         self.mock_storage.get_query_value.assert_not_called()
         self.assertEqual(msg["contents"][0]["geo"], "aap")
+
+    def test_enrich_geounion_none(self):
+        self.mock_storage.get_query_value.return_value = None
+        msg = self.mock_msg
+        msg["contents"] = [{"x": [1, 2]}]
+        enricher = Enricher(self.mock_storage, msg)
+
+        for content in msg["contents"]:
+            enricher.enrich(content)
+
+        self.assertIsNone(msg["contents"][0]['geo'])
 
 
 @patch('gobupload.compare.enrich.logger', MagicMock())
