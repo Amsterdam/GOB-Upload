@@ -115,6 +115,8 @@ def _geounion(storage, data, specs, column, assigned):
     # Derive the fieldname that contains the geometry in the other table
     geometrie = specs["geometrie"]
 
+    # Consider as valid end_validity: NULL or date in the future
+    # Otherwise currently valid values are not returned, only the actual ones
     query = f"""
 SELECT
       ST_AsText(
@@ -122,12 +124,12 @@ SELECT
       )
 FROM  {table_name}
 WHERE {field} in ({', '.join(values)})
-AND   {FIELD.END_VALIDITY} IS NULL
+AND   ({FIELD.END_VALIDITY} IS NULL OR {FIELD.END_VALIDITY} > NOW())
 """
 
     result = storage.get_query_value(query)
-    result = Geometry.from_value(result)
-    return str(result), None
+
+    return Geometry.from_value(result).to_value, None
 
 
 class AutoIdException(Exception):
