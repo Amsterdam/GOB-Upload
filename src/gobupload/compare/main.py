@@ -5,7 +5,7 @@ Derive Add, Change, Delete and Confirm events by comparing a full set of new dat
 Todo: Event, action and mutation are used for the same subject. Use one name to improve maintainability.
 
 """
-
+from gobcore.enum import ImportMode
 from gobcore.events import get_event_for, GOB
 from gobcore.events.import_message import ImportMessage
 from gobcore.model import GOBModel
@@ -31,8 +31,8 @@ def compare(msg):
     """
     logger.configure(msg, "COMPARE")
     header = msg.get('header', {})
-    mode = header.get('mode', FULL_UPLOAD)
-    logger.info(f"Compare (mode = {mode}) to GOB Database {GOBStorageHandler.user_name} started")
+    mode = ImportMode(header.get('mode', FULL_UPLOAD))
+    logger.info(f"Compare (mode = {mode.name}) to GOB Database {GOBStorageHandler.user_name} started")
 
     # Parse the message header
     message = ImportMessage(msg)
