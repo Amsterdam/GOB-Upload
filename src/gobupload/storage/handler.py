@@ -20,6 +20,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import sessionmaker
 from typing import Union
 
+from gobcore.enum import ImportMode
 from gobcore.exceptions import GOBException
 from gobcore.model import GOBModel
 from gobcore.model.sa.gob import get_column, indexes
@@ -30,7 +31,7 @@ from gobcore.utils import ProgressTicker
 from sqlalchemy.orm.exc import MultipleResultsFound
 from gobcore.events.import_events import CONFIRM
 
-from gobupload.config import GOB_DB, FULL_UPLOAD
+from gobupload.config import GOB_DB
 from gobupload.storage import queries
 from gobupload.storage.materialized_views import MaterializedViews
 
@@ -345,7 +346,7 @@ WHERE
         """
         self._write_temporary_entities()
 
-    def compare_temporary_data(self, tmp_table_name, mode=FULL_UPLOAD):
+    def compare_temporary_data(self, tmp_table_name, mode=ImportMode.FULL):
         """ Compare the data in the temporay table to the current state
 
         The created query compares each model field and returns the tid, last_event
