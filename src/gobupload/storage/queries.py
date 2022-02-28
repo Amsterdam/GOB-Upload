@@ -1,13 +1,13 @@
-from gobupload.config import FULL_UPLOAD
+from gobcore.enum import ImportMode
 
 
-def get_comparison_query(source, current, temporary, fields, mode=FULL_UPLOAD):
+def get_comparison_query(source, current, temporary, fields, mode=ImportMode.FULL):
     # The using part of the statements contains the fnctional identification for the entity:
     # functional source (source), functional id (_id) and a volgnummer if the entity has states
     using = ",".join(fields)
 
     # On a full upload any missing items are deletions, for any other upload missing items are skipped
-    action_on_missing = "DELETE" if mode == FULL_UPLOAD else "SKIP"
+    action_on_missing = "DELETE" if mode in {ImportMode.DELETE, ImportMode.FULL} else "SKIP"
 
     # The techical source id is returned
     # _source_id for the new source id, _entity_source_id for the current source_id
