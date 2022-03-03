@@ -132,27 +132,30 @@ class TestEventCreator(TestCase):
 
         # ADD event (rel row not present)
         row = {
+            'id': 'the_id',
             'rel_id': None,
             '_source_id': 'SOURCE ID',
-            '_id': 'id',
+            '_id': 'the_id',
             'a': 'val',
             'b': 'val',
             'rel_deleted': None,
         }
         event = ec.create_event(row)
         self.assertEqual(mock_add.create_event.return_value, event)
-        mock_add.create_event.assert_called_with('id', {
+        mock_add.create_event.assert_called_with('the_id', {
+            'id': 'the_id',
             '_source_id': 'SOURCE ID',
-            '_id': 'id',
+            '_id': 'the_id',
             'a': 'val',
             'b': 'val',
         }, '123.0')
 
         # ADD event (rel row present, but previously deleted)
         row = {
+            'id': 'the_id',
             'rel_id': 'some existing rel id',
             '_source_id': 'SOURCE ID',
-            '_id': 'id',
+            '_id': 'the_id',
             'a': 'val',
             'b': 'val',
             'rel_deleted': 'some date',
@@ -160,9 +163,10 @@ class TestEventCreator(TestCase):
         }
         event = ec.create_event(row)
         self.assertEqual(mock_add.create_event.return_value, event)
-        mock_add.create_event.assert_called_with('id', {
+        mock_add.create_event.assert_called_with('the_id', {
+            'id': 'the_id',
             '_source_id': 'SOURCE ID',
-            '_id': 'id',
+            '_id': 'the_id',
             'a': 'val',
             'b': 'val',
             '_last_event': 'last event'
@@ -198,11 +202,28 @@ class TestEventCreator(TestCase):
         self.assertEqual(mock_delete.create_event.return_value, event)
         mock_delete.create_event.assert_called_with('rel id', {'_last_event': 'last'}, '123.0')
 
+        # DELETE EVENT (src_app changed, id != rel_id)
+        row = {
+            'id': 'src.app.dst',
+            'rel_id': 'src.other_app.dst',
+            '_source_id': 'SOURCE ID',
+            'a': 'val',
+            'b': 'val',
+            'src_id': 'src id',
+            '_last_event': 'last',
+            'src_deleted': None,
+            'rel_deleted': None,
+        }
+        event = ec.create_event(row)
+        self.assertEqual(mock_delete.create_event.return_value, event)
+        mock_delete.create_event.assert_called_with('src.other_app.dst', {'_last_event': 'last'}, '123.0')
+
         # MODIFY EVENT (hash differs, and modifications detected)
         ec._get_hash = lambda x: 'THE HASH'
         ec._get_modifications = lambda a, b: ['a']
         row = {
-            'rel_id': 'rel id',
+            'id': 'the_id',
+            'rel_id': 'the_id',
             'src_deleted': None,
             'src_id': 'src id',
             'rel__hash': 'DIFFERENT HASH',
@@ -211,7 +232,7 @@ class TestEventCreator(TestCase):
         }
         event = ec.create_event(row)
         self.assertEqual(mock_modify.create_event.return_value, event)
-        mock_modify.create_event.assert_called_with('rel id', {
+        mock_modify.create_event.assert_called_with('the_id', {
             'modifications': ['a'],
             '_last_event': 'last',
             '_hash': 'THE HASH'
@@ -219,6 +240,7 @@ class TestEventCreator(TestCase):
 
         # CONFIRM EVENT
         row = {
+            'id': 'rel id',
             'rel_id': 'rel id',
             'src_deleted': None,
             'src_id': 'src id',
