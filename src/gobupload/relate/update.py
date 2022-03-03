@@ -175,7 +175,11 @@ class EventCreator:
 
             data = {k: v for k, v in row.items() if k not in ignore_fields}
             return ADD.create_event(row[FIELD.ID], data, _RELATE_VERSION)
-        elif row['src_deleted'] is not None or row['src_id'] is None:
+        elif (row['src_deleted'] is not None or row['src_id'] is None)\
+                or row['rel_id'] != row['id']:
+            # src id marked as deleted or doesn't exist
+            # current rel_id (= src_id[.seqnr].source.dst_id) is not equal to the id.
+            # Happens in case of a source change, but not an identification change
             data = {FIELD.LAST_EVENT: row[FIELD.LAST_EVENT]}
             return DELETE.create_event(row['rel_id'], data, _RELATE_VERSION)
         else:
