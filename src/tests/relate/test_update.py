@@ -202,22 +202,6 @@ class TestEventCreator(TestCase):
         self.assertEqual(mock_delete.create_event.return_value, event)
         mock_delete.create_event.assert_called_with('rel id', {'_last_event': 'last'}, '123.0')
 
-        # DELETE EVENT (src_app changed, id != rel_id)
-        row = {
-            'id': 'src.app.dst',
-            'rel_id': 'src.other_app.dst',
-            '_source_id': 'SOURCE ID',
-            'a': 'val',
-            'b': 'val',
-            'src_id': 'src id',
-            '_last_event': 'last',
-            'src_deleted': None,
-            'rel_deleted': None,
-        }
-        event = ec.create_event(row)
-        self.assertEqual(mock_delete.create_event.return_value, event)
-        mock_delete.create_event.assert_called_with('src.other_app.dst', {'_last_event': 'last'}, '123.0')
-
         # MODIFY EVENT (hash differs, and modifications detected)
         ec._get_hash = lambda x: 'THE HASH'
         ec._get_modifications = lambda a, b: ['a']
@@ -1071,18 +1055,23 @@ WHERE dst._last_event > 1 AND dst._last_event <= 100
         relater = self._get_relater()
         relater.src_has_states = False
 
-        self.assertEqual("LEFT JOIN rel_src_catalog_name_src_collection_name_src_field_name rel ON "
-                         "rel.src_id = src._id AND src.src_field_name->>'bronwaarde' = rel.bronwaarde  "
-                         "AND ((src._application = 'applicationA') OR (src._application = 'applicationB' "
-                         "AND rel.dst_id = dst._id))", relater._join_rel())
+        self.assertEqual("LEFT JOIN rel_src_catalog_name_src_collection_name_src_field_name rel"
+                         " ON rel.src_id = src._id"
+                         " AND rel.src_source = src._source"
+                         " AND src.src_field_name->>'bronwaarde' = rel.bronwaarde"
+                         " AND ((src._application = 'applicationA') OR (src._application = 'applicationB'"
+                         " AND rel.dst_id = dst._id))", relater._join_rel())
 
         relater.src_has_states = True
 
-        self.assertEqual(f"LEFT JOIN rel_src_catalog_name_src_collection_name_src_field_name rel ON "
-                         f"rel.src_id = src._id AND rel.src_volgnummer = src.volgnummer AND "
-                         f"src.src_field_name->>'bronwaarde' = rel.bronwaarde  AND "
-                         f"((src._application = 'applicationA') OR (src._application = 'applicationB' "
-                         f"AND rel.dst_id = dst._id))", relater._join_rel())
+        self.assertEqual("LEFT JOIN rel_src_catalog_name_src_collection_name_src_field_name rel"
+                         " ON rel.src_id = src._id"
+                         " AND rel.src_volgnummer = src.volgnummer"
+                         " AND rel.src_source = src._source"
+                         " AND src.src_field_name->>'bronwaarde' = rel.bronwaarde"
+                         " AND ((src._application = 'applicationA') OR"
+                         " (src._application = 'applicationB' AND rel.dst_id = dst._id))"
+                         , relater._join_rel())
 
     def test_get_where(self):
         relater = self._get_relater()
