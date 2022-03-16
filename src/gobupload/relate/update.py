@@ -175,13 +175,12 @@ class EventCreator:
 
             data = {k: v for k, v in row.items() if k not in ignore_fields}
             return ADD.create_event(row[FIELD.ID], data, _RELATE_VERSION)
-        elif (row['src_deleted'] is not None or row['src_id'] is None)\
-                or row['rel_id'] != row['id']:
+
+        elif row['src_deleted'] is not None or row['src_id'] is None:
             # src id marked as deleted or doesn't exist
-            # current rel_id (= src_id[.seqnr].source.dst_id) is not equal to the id.
-            # Happens in case of a source change, but not an identification change
             data = {FIELD.LAST_EVENT: row[FIELD.LAST_EVENT]}
             return DELETE.create_event(row['rel_id'], data, _RELATE_VERSION)
+
         else:
             row[FIELD.HASH] = self._get_hash(row)
             modifications = [] \
@@ -850,22 +849,28 @@ SELECT * FROM {self.dst_table_name} dst
         return self._join_geldigheid(self.src_intv_tmp_table.name, 'src_bg', 'src') if self.src_has_states else ""
 
     def _join_rel_dst_clause(self):
-        dst_join_clause = f"rel.dst_id = dst.{FIELD.ID}" + (f" AND rel.dst_volgnummer = dst.{FIELD.SEQNR}"
-                                                            if self.dst_has_states else "")
+        dst_join_clause = f"rel.dst_id = dst.{FIELD.ID}"
 
-        switch = self._switch_for_specs(
+        if self.dst_has_states:
+            dst_join_clause += f" AND rel.dst_volgnummer = dst.{FIELD.SEQNR}"
+
+        return self._switch_for_specs(
             'multiple_allowed',
             lambda spec: dst_join_clause if spec['multiple_allowed'] else 'TRUE'
         )
-        return f" AND {switch}"
 
     def _join_rel(self):
-        dst_join = self._join_rel_dst_clause()
+        query = [
+            f"LEFT JOIN {self.relation_table} rel",
+            f"ON rel.src_id = src.{FIELD.ID}",
+            f"AND rel.src_source = src.{FIELD.SOURCE}",
+            f"AND {self._source_value_ref()} = rel.{FIELD.SOURCE_VALUE}",
+            f"AND {self._join_rel_dst_clause()}"
+        ]
+        if self.src_has_states:
+            query.insert(2, f"AND rel.src_volgnummer = src.{FIELD.SEQNR}")
 
-        return f"LEFT JOIN {self.relation_table} rel " \
-               f"ON rel.src_id = src.{FIELD.ID} " + \
-               (f"AND rel.src_volgnummer = src.{FIELD.SEQNR} " if self.src_has_states else "") + \
-               f"AND {self._source_value_ref()} = rel.{FIELD.SOURCE_VALUE} {dst_join}"
+        return ' '.join(query)
 
     def _filter_conflicts(self):
         """Returns row_number check per source. Skip sources that have multiple_allowed set to True.
