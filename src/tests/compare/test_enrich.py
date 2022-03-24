@@ -38,6 +38,7 @@ class TestEnrichGeounion(TestCase):
         self.mock_storage.get_query_value.assert_not_called()
         self.assertEqual(msg["contents"], [])
 
+    @patch("gobupload.compare.enrich.GOBModel.has_states", lambda *args: False)
     def test_enrich_simple_contents(self):
         self.mock_storage.get_query_value.return_value = "POINT (1 2)"
         msg = self.mock_msg
@@ -48,17 +49,20 @@ class TestEnrichGeounion(TestCase):
         for content in msg["contents"]:
             enricher.enrich(content)
 
-        self.mock_storage.get_query_value.assert_called_with("""
-SELECT
-      ST_AsText(
-          ST_Union(geometrie)
-      )
-FROM  cat_col
-WHERE fld in ('1', '2')
-AND   (eind_geldigheid IS NULL OR eind_geldigheid > NOW())
-""")
+        qry = """
+SELECT ST_AsText(ST_Union(geometrie))
+FROM cat_col
+JOIN (
+            SELECT _tid
+            FROM cat_col
+            WHERE fld in (\'1\', \'2\')
+        ) valid_tids
+USING (_tid)
+"""
+        self.mock_storage.get_query_value.assert_called_with(qry)
         self.assertEqual(msg["contents"][0]["geo"], "POINT (1.000 2.000)")
 
+    @patch("gobupload.compare.enrich.GOBModel.has_states", lambda *args: False)
     def test_enrich_complex_contents(self):
         self.mock_storage.get_query_value.return_value = "POINT (1 2)"
         msg = self.mock_msg
@@ -70,17 +74,20 @@ AND   (eind_geldigheid IS NULL OR eind_geldigheid > NOW())
         for content in msg["contents"]:
             enricher.enrich(content)
 
-        self.mock_storage.get_query_value.assert_called_with("""
-SELECT
-      ST_AsText(
-          ST_Union(geometrie)
-      )
-FROM  cat_col
-WHERE fld in ('1', '2')
-AND   (eind_geldigheid IS NULL OR eind_geldigheid > NOW())
-""")
+        qry = """
+SELECT ST_AsText(ST_Union(geometrie))
+FROM cat_col
+JOIN (
+            SELECT _tid
+            FROM cat_col
+            WHERE fld in (\'1\', \'2\')
+        ) valid_tids
+USING (_tid)
+"""
+        self.mock_storage.get_query_value.assert_called_with(qry)
         self.assertEqual(msg["contents"][0]["geo"], "POINT (1.000 2.000)")
 
+    @patch("gobupload.compare.enrich.GOBModel.has_states", lambda *args: False)
     def test_enrich_multi_complex_contents(self):
         self.mock_storage.get_query_value.return_value = "POINT (1 2)"
         msg = self.mock_msg
@@ -92,15 +99,17 @@ AND   (eind_geldigheid IS NULL OR eind_geldigheid > NOW())
         for content in msg["contents"]:
             enricher.enrich(content)
 
-        self.mock_storage.get_query_value.assert_called_with("""
-SELECT
-      ST_AsText(
-          ST_Union(geometrie)
-      )
-FROM  cat_col
-WHERE fld in ('1', '2')
-AND   (eind_geldigheid IS NULL OR eind_geldigheid > NOW())
-""")
+        qry = """
+SELECT ST_AsText(ST_Union(geometrie))
+FROM cat_col
+JOIN (
+            SELECT _tid
+            FROM cat_col
+            WHERE fld in (\'1\', \'2\')
+        ) valid_tids
+USING (_tid)
+"""
+        self.mock_storage.get_query_value.assert_called_with(qry)
         self.assertEqual(msg["contents"][0]["geo"], "POINT (1.000 2.000)")
 
     def test_enrich_existing_contents(self):
@@ -115,6 +124,7 @@ AND   (eind_geldigheid IS NULL OR eind_geldigheid > NOW())
         self.mock_storage.get_query_value.assert_not_called()
         self.assertEqual(msg["contents"][0]["geo"], "aap")
 
+    @patch("gobupload.compare.enrich.GOBModel.has_states", lambda *args: False)
     def test_enrich_geounion_none(self):
         self.mock_storage.get_query_value.return_value = None
         msg = self.mock_msg
@@ -125,6 +135,34 @@ AND   (eind_geldigheid IS NULL OR eind_geldigheid > NOW())
             enricher.enrich(content)
 
         self.assertIsNone(msg["contents"][0]['geo'])
+
+    @patch("gobupload.compare.enrich.GOBModel.has_states", lambda *args: True)
+    def test_enrich_states(self):
+        self.mock_storage.get_query_value.return_value = "POINT (1 2)"
+        msg = self.mock_msg
+        msg["contents"] = [
+            {"x": [1, 2]}
+        ]
+        enricher = Enricher(self.mock_storage, msg)
+        for content in msg["contents"]:
+            enricher.enrich(content)
+
+        qry = """
+SELECT ST_AsText(ST_Union(geometrie))
+FROM cat_col
+JOIN (
+            SELECT _tid
+            FROM (
+                SELECT _tid, volgnummer, MAX(volgnummer) OVER (PARTITION BY fld) as max_volgnummer
+                FROM cat_col
+                WHERE fld in ('1', '2')
+            ) tids
+            WHERE volgnummer = max_volgnummer
+        ) valid_tids
+USING (_tid)
+"""
+        self.mock_storage.get_query_value.assert_called_with(qry)
+        self.assertEqual(msg["contents"][0]["geo"], "POINT (1.000 2.000)")
 
 
 @patch('gobupload.compare.enrich.logger', MagicMock())
