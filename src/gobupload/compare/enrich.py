@@ -115,16 +115,31 @@ def _geounion(storage, data, specs, column, assigned):
     # Derive the fieldname that contains the geometry in the other table
     geometrie = specs["geometrie"]
 
-    # Consider as valid end_validity: NULL or date in the future
-    # Otherwise currently valid values are not returned, only the actual ones
+    if GOBModel().has_states(catalogue, collection):
+        # Workaround for collections with (closed) states
+        # use the geometry of the highest volgnummer per entity
+        # historic entities should be considered, not only the actual ones
+        subquery = f"""
+            SELECT {FIELD.TID}
+            FROM (
+                SELECT {FIELD.TID}, {FIELD.SEQNR}, MAX({FIELD.SEQNR}) OVER (PARTITION BY {field}) as max_volgnummer
+                FROM {table_name}
+                WHERE {field} in ({', '.join(values)})
+            ) tids
+            WHERE {FIELD.SEQNR} = max_volgnummer
+        """
+    else:
+        subquery = f"""
+            SELECT {FIELD.TID}
+            FROM {table_name}
+            WHERE {field} in ({', '.join(values)})
+        """
+
     query = f"""
-SELECT
-      ST_AsText(
-          ST_Union({geometrie})
-      )
-FROM  {table_name}
-WHERE {field} in ({', '.join(values)})
-AND   ({FIELD.END_VALIDITY} IS NULL OR {FIELD.END_VALIDITY} > NOW())
+SELECT ST_AsText(ST_Union({geometrie}))
+FROM {table_name}
+JOIN ({subquery}) valid_tids
+USING ({FIELD.TID})
 """
 
     result = storage.get_query_value(query)
