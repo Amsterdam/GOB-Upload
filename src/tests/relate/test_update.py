@@ -271,7 +271,7 @@ class TestRelaterInit(TestCase):
         }], e.relation_specs)
         self.assertEqual(False, e.is_many)
         self.assertEqual('rel_src_catalog_name_src_collection_name_src_field_name', e.relation_table)
-        mock_execute.assert_called_with("SELECT DISTINCT _application FROM src_catalog_name_src_collection_name_table")
+        mock_execute.assert_called_with("SELECT DISTINCT _application FROM src_catalog_name_src_collection_name_table WHERE _date_deleted IS NULL")
 
         self.assertEqual('tmp_src_catalog_name_srcabbr_intv_20200101_aaaaaa', e.src_intv_tmp_table.name)
         self.assertEqual('tmp_dst_catalog_name_dstabbr_intv_20200101_aaaaaa', e.dst_intv_tmp_table.name)

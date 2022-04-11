@@ -315,7 +315,9 @@ class Relater:
             self._drop_tmp_result_table()
 
     def _get_applications_in_src(self):
-        query = f"SELECT DISTINCT {FIELD.APPLICATION} FROM {self.src_table_name}"
+        # only query applications which have data (ie filter deleted entities)
+        # Relate query also filters this
+        query = f"SELECT DISTINCT {FIELD.APPLICATION} FROM {self.src_table_name} WHERE {FIELD.DATE_DELETED} IS NULL"
 
         result = _execute(query)
         return [row[0] for row in result]
