@@ -1,9 +1,11 @@
-version: '3.0'
+version: '3.8'
 
 services:
 
   gobupload:
-    build: src
+    build:
+      context: src
+      target: development
     container_name: gobupload
     environment:
       MESSAGE_BROKER_ADDRESS: rabbitmq
@@ -13,7 +15,10 @@ services:
       GOBOPTIONS: ${GOBOPTIONS}
     volumes:
       - gob-volume:/app/shared
-
+#      - ./src/gobupload:/app/gobupload
+#      - ./src/tests:/app/tests
+#      - ${GOB_CORE_DIR-../GOB-Core}:/app/GOB-Core
+#      - ${GOB_CONFIG_DIR-../GOB-Config}:/app/GOB-Config
 volumes:
   gob-volume:
     external: true
