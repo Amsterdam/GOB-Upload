@@ -13,3 +13,4 @@ class TestAlembicUtils(TestCase):
         result = get_query_merge_columns_to_jsonb_column('nap_peilmerken', 'merk', {'code': 'merk_code', 'omschrijving': 'merk_omschrijving'})
         expected = "UPDATE nap_peilmerken SET merk = jsonb_build_object('code', \"merk_code\", 'omschrijving', \"merk_omschrijving\")"
         self.assertEquals(expected, result)
+        
