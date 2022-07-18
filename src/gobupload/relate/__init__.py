@@ -104,7 +104,7 @@ def _split_job(msg: dict):
                 else [attribute_name]
 
             for attr_name in attributes:
-                sources = GOBSources()
+                sources = GOBSources(model)
                 relation_specs = sources.get_field_relations(catalog_name, collection_name, attr_name)
 
                 if not relation_specs:
@@ -234,7 +234,7 @@ def _check_message(msg: dict):
             raise GOBException(f"Missing {key} attribute in header")
 
     model = GOBModel()
-    sources = GOBSources()
+    sources = GOBSources(model)
 
     if not model.get_catalog(header[CATALOG_KEY]):
         raise GOBException(f"Invalid catalog name {header[CATALOG_KEY]}")

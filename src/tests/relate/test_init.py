@@ -41,9 +41,12 @@ class TestInit(TestCase):
         def _extract_references(self, attributes):
             return attributes
 
-    class MockSources(MockModel):
+    class MockSources:
+        def __init__(self, gobmodel):
+            self.gobmodel = gobmodel
+
         def get_field_relations(self, catalog, collection, attribute):
-            return self.model.get(catalog, {}).get(collection, {}).get(attribute)
+            return self.gobmodel.model.get(catalog, {}).get(collection, {}).get(attribute)
 
     def setUp(self):
         pass

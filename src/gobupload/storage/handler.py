@@ -23,7 +23,8 @@ from typing import Union
 from gobcore.enum import ImportMode
 from gobcore.exceptions import GOBException
 from gobcore.model import GOBModel
-from gobcore.model.sa.gob import get_column, indexes
+from gobcore.model.sa.gob import get_column
+from gobcore.model.sa.indexes import get_indexes
 from gobcore.typesystem import get_gob_type
 from gobcore.typesystem.json import GobTypeJSONEncoder
 from gobcore.views import GOBViews
@@ -224,7 +225,7 @@ WHERE
     AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint c WHERE c.conindid = s.indexrelid)
 """
 
-    def _drop_indexes(self):
+    def _drop_indexes(self, indexes):
         """Drops indexes on managed tables that aren't defined in this script.
 
         :return:
@@ -258,7 +259,8 @@ WHERE
 
         :return:
         """
-        self._drop_indexes()
+        indexes = get_indexes(self.gob_model)
+        self._drop_indexes(indexes)
         existing_indexes = self._get_existing_indexes()
 
         for name, definition in indexes.items():

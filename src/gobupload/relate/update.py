@@ -201,7 +201,7 @@ class EventCreator:
 
 class Relater:
     model = GOBModel()
-    sources = GOBSources()
+    sources = GOBSources(model)
 
     space_join = ' \n    '
     comma_join = ',\n    '

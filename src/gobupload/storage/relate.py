@@ -247,7 +247,8 @@ def check_relations(src_catalog_name, src_collection_name, src_field_name):
     name = f"{src_collection_name} {src_field_name}"
 
     # Only include sources where not none_allowed
-    sources = GOBSources().get_field_relations(src_catalog_name, src_collection_name, src_field_name)
+    model = GOBModel()
+    sources = GOBSources(model).get_field_relations(src_catalog_name, src_collection_name, src_field_name)
     check_sources = [source['source'] for source in sources if not source.get('none_allowed', False)]
 
     if not check_sources:
