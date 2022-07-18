@@ -158,7 +158,7 @@ WHERE
         ))
 
     def test_drop_indexes(self):
-        gobupload.storage.handler.indexes = {
+        indexes = {
             "index_a": {
                 "table_name": "sometable_1",
                 "columns": ["col_a", "col_b"],
@@ -174,7 +174,7 @@ WHERE
         self.storage.engine.execute.return_value = [("index_c",), ("index_d",)]
         self.storage.execute = MagicMock()
 
-        self.storage._drop_indexes()
+        self.storage._drop_indexes(indexes)
 
         self.storage.execute.assert_has_calls([
             call('DROP INDEX IF EXISTS "index_c"'),
@@ -192,7 +192,7 @@ WHERE
         e = OperationalError('stmt', 'params', 'orig')
         self.storage.engine.execute = MagicMock(side_effect=e)
         self.storage._indexes_to_drop_query = MagicMock()
-        self.storage._drop_indexes()
+        self.storage._drop_indexes({})
 
         mock_print.assert_called_with(f"ERROR: Could not get indexes to drop: {str(e)}")
 
@@ -202,7 +202,7 @@ WHERE
         self.storage.engine.execute = MagicMock(return_value=[('a',)])
         self.storage._indexes_to_drop_query = MagicMock()
         self.storage.execute = MagicMock(side_effect=e)
-        self.storage._drop_indexes()
+        self.storage._drop_indexes({})
 
         mock_print.assert_called_with(f"ERROR: Could not drop index a: {str(e)}")
 
@@ -218,8 +218,9 @@ WHERE
         self.assertEqual([], self.storage._get_existing_indexes())
         mock_print.assert_called_with(f"WARNING: Could not fetch list of existing indexes: {e}")
 
-    def test_init_indexes(self):
-        gobupload.storage.handler.indexes = {
+    @patch('gobupload.storage.handler.get_indexes')
+    def test_init_indexes(self, mock_get_indexes):
+        mock_get_indexes.return_value = {
             "indexname": {
                 "table_name": "sometable",
                 "columns": ["cola", "colb"],
