@@ -15,10 +15,11 @@ services:
       GOBOPTIONS: ${GOBOPTIONS}
     volumes:
       - gob-volume:/app/shared
-#      - ./src/gobupload:/app/gobupload
-#      - ./src/tests:/app/tests
-#      - ${GOB_CORE_DIR-../GOB-Core}:/app/GOB-Core
-#      - ${GOB_CONFIG_DIR-../GOB-Config}:/app/GOB-Config
+      - ./src/alembic:/app/alembic
+      - ./src/gobupload:/app/gobupload
+      - ./src/tests:/app/tests
+      - ${GOB_CORE_DIR-../GOB-Core}:/app/GOB-Core
+      - ${GOB_CONFIG_DIR-../GOB-Config}:/app/GOB-Config
 volumes:
   gob-volume:
     external: true
