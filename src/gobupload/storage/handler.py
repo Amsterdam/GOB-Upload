@@ -27,7 +27,6 @@ from gobcore.model.sa.gob import get_column
 from gobcore.model.sa.indexes import get_indexes
 from gobcore.typesystem import get_gob_type
 from gobcore.typesystem.json import GobTypeJSONEncoder
-from gobcore.views import GOBViews
 from gobcore.utils import ProgressTicker
 from sqlalchemy.orm.exc import MultipleResultsFound
 from gobcore.events.import_events import CONFIRM
@@ -145,10 +144,6 @@ class GOBStorageHandler:
 
             # Initialise materialized views for relations
             self._init_relation_materialized_views(recreate_materialized_views)
-
-            # Create model views.
-            # Should happen after initialisation of materialized views because views may depend on mvs
-            self._init_views()
         except Exception as e:
             print(f'Storage migration failed: {str(e)}')
         else:  # No exception
@@ -171,30 +166,6 @@ class GOBStorageHandler:
                     raise GOBException(msg)
                 else:
                     print(f"WARNING: {msg}")
-
-    def _init_views(self):
-        """
-        Initialize the views for the gobviews.
-        """
-
-        views = GOBViews()
-        for catalog in views.get_catalogs():
-            for entity in views.get_entities(catalog):
-                for view_name, view in views.get_views(catalog, entity).items():
-                    self._create_view(view['name'], view['query'])
-
-    def _create_view(self, name, definition):
-        """Create view
-
-        Use DROP + CREATE because CREATE OR REPLACE raised an exception for some views
-
-        :param name: Name of the view
-        :param definition: Definition (SQL)
-        :return: None
-        """
-        statements = [f"DROP VIEW IF EXISTS {name} CASCADE", f"CREATE VIEW {name} AS {definition}"]
-        for statement in statements:
-            self.execute(statement)
 
     def _init_relation_materialized_views(self, recreate=False):
         mv = MaterializedViews()

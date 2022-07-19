@@ -77,7 +77,6 @@ class TestStorageHandler(unittest.TestCase):
         script.get_current_head.return_value = "revision 2"
         mock_script.ScriptDirectory.from_config.return_value = script
 
-        self.storage._init_views = MagicMock()
         self.storage._get_reflected_base = MagicMock()
         self.storage._init_indexes = MagicMock()
         self.storage._set_base = MagicMock()
@@ -87,7 +86,6 @@ class TestStorageHandler(unittest.TestCase):
         self.storage.init_storage(recreate_materialized_views='booleanValue')
         # mock_alembic.config.main.assert_called_once()
 
-        self.storage._init_views.assert_called_once()
         # self.storage._set_base.assert_called_with(update=True)
         self.storage._init_indexes.assert_called_once()
         self.storage._init_relation_materialized_views.assert_called_with('booleanValue')
