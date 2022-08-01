@@ -8,7 +8,7 @@ from sqlalchemy.engine.url import URL
 from logging.config import fileConfig
 
 sys.path.append('.')
-from gobcore.model.sa.gob import Base
+from gobcore.model.sa.gob import get_base
 from gobupload.config import GOB_DB
 
 # this is the Alembic Config object, which provides
@@ -23,6 +23,7 @@ fileConfig(config.config_file_name)
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
+Base = get_base()
 target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,
