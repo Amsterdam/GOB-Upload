@@ -73,6 +73,8 @@ def _get_change_eventid(catalog_name: str, collection_name: str, migration: dict
         elif conversion['action'] == 'delete':
             eventid = _find_last_occurrence_of_column(catalog_name, collection_name, conversion['column'], storage)
             eventid = eventid + 1 if eventid is not None else eventid
+        elif conversion["action"] == "split_json":
+            continue
         else:
             raise NotImplementedError
 
