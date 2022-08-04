@@ -6,19 +6,27 @@ It writes the storage to apply events to the storage
 
 """
 import argparse
+import json
+import sys
+from typing import Protocol, Any, Optional
 
-from gobcore.message_broker.config import WORKFLOW_EXCHANGE, FULLUPDATE_QUEUE, COMPARE_QUEUE, APPLY_QUEUE, \
-    RELATE_PREPARE_QUEUE, RELATE_PROCESS_QUEUE, RELATE_CHECK_QUEUE, RELATE_UPDATE_VIEW_QUEUE
-from gobcore.message_broker.config import COMPARE_RESULT_KEY, FULLUPDATE_RESULT_KEY, APPLY_RESULT_KEY, \
-    RELATE_PREPARE_RESULT_KEY, RELATE_PROCESS_RESULT_KEY, RELATE_CHECK_RESULT_KEY, RELATE_UPDATE_VIEW_RESULT_KEY
-from gobcore.message_broker.messagedriven_service import MessagedrivenService
+from gobcore.datastore.xcom_data_store import XComDataStore
+from gobcore.message_broker.config import COMPARE_RESULT_KEY, FULLUPDATE_RESULT_KEY, \
+    APPLY_RESULT_KEY, \
+    RELATE_PREPARE_RESULT_KEY, RELATE_PROCESS_RESULT_KEY, RELATE_CHECK_RESULT_KEY, \
+    RELATE_UPDATE_VIEW_RESULT_KEY
+from gobcore.message_broker.config import WORKFLOW_EXCHANGE, FULLUPDATE_QUEUE, \
+    COMPARE_QUEUE, APPLY_QUEUE, \
+    RELATE_PREPARE_QUEUE, RELATE_PROCESS_QUEUE, RELATE_CHECK_QUEUE, \
+    RELATE_UPDATE_VIEW_QUEUE
+from gobcore.message_broker.messagedriven_service import messagedriven_service
 
+from gobupload import apply
 from gobupload import compare
 from gobupload import relate
 from gobupload import update
-from gobupload import apply
-from gobupload.storage.handler import GOBStorageHandler
 from gobupload.config import DEBUG
+from gobupload.storage.handler import GOBStorageHandler
 
 SERVICEDEFINITION = {
     'apply': {
@@ -79,41 +87,95 @@ SERVICEDEFINITION = {
     }
 }
 
-parser = argparse.ArgumentParser(
-    prog="python -m gobupload",
-    description="GOB Upload, Compare and Relate"
-)
-
-parser.add_argument('--migrate',
-                    action='store_true',
-                    default=False,
-                    help='migrate the database tables, views and indexes')
-parser.add_argument('--materialized_views',
-                    action='store_true',
-                    default=False,
-                    help='force recreation of materialized views')
-parser.add_argument('mv_name',
-                    nargs='?',
-                    help='The materialized view to update. Use with --materialized-views')
-args = parser.parse_args()
 
 if DEBUG:
     print("WARNING: Debug mode is ON")
 
-# Initialize database tables
-storage = GOBStorageHandler()
 
-# Migrate on request only
-if args.migrate:
-    recreate = [args.mv_name] if args.materialized_views and args.mv_name else args.materialized_views
-    storage.init_storage(force_migrate=True, recreate_materialized_views=recreate)
-else:
+
+class Handler(Protocol):
+    def __call__(self, msg: dict) -> dict:
+        ...
+
+
+def parse_arguments() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="python -m gobupload",
+        description="GOB Upload, Compare and Relate"
+    )
+
+    # Upload task arguments
+    parser.add_argument(
+        "handler",
+        choices=list(SERVICEDEFINITION.keys()) + ["migrate"],
+        help="Which handler to run."
+    )
+    # XComData, previously this was a RabbitMQ message
+    parser.add_argument(
+        "--xcom-data",
+        default=json.dumps({}),
+        help="XComData, a RabbitMQ message, used by the handler."
+    )
+    # Additional arguments for migrations
+    parser.add_argument(
+        "--materialized_views",
+        action="store_true",
+        default=False,
+        help="force recreation of materialized views"
+    )
+    parser.add_argument(
+        "--mv_name",
+        nargs="?",
+        help="The materialized view to update. Use with --materialized-views"
+    )
+    return parser.parse_args()
+
+
+def run_as_standalone(
+        args: argparse.Namespace,
+        storage: GOBStorageHandler
+) -> Optional[dict[str, Any]]:
+    # Migrate on request only
+    if args.handler == "migrate":
+        recreate = [args.mv_name] \
+            if args.materialized_views and args.mv_name else args.materialized_views
+        storage.init_storage(force_migrate=True, recreate_materialized_views=recreate)
+        return
+
     storage.init_storage()
-    params = {
-        "stream_contents": True,
-        "thread_per_service": True,
-        APPLY_QUEUE: {
-            "load_message": False
+    print(f"Parsing input xcom data: {args.xcom_data}")
+    xcom_msg_data = XComDataStore().parse(args.xcom_data)
+    handler: Handler = SERVICEDEFINITION.get(args.handler)["handler"]
+    message = handler(xcom_msg_data)
+    print("Handler result", message)
+    return message
+    # TODO: raise sys.exit(1) on error
+
+
+def main():
+    print("main called")
+    # Initialize database tables
+    storage = GOBStorageHandler()
+
+    print(sys.argv)
+    if len(sys.argv) == 1:
+        print("No arguments found, wait for messages on the message broker.")
+        storage.init_storage()
+        params = {
+            "stream_contents": True,
+            "thread_per_service": True,
+            APPLY_QUEUE: {
+                "load_message": False
+            }
         }
-    }
-    MessagedrivenService(SERVICEDEFINITION, "Upload", params).start()
+        messagedriven_service(SERVICEDEFINITION, "Upload", params)
+    else:
+        print("Arguments found, run as standalone")
+        args = parse_arguments()
+        run_as_standalone(args, storage)
+        # TODO: Put result message in xcom, process_issues
+
+
+print("__name__", __name__)
+if __name__ == "__main__":
+    main()  # pragma: no cover
