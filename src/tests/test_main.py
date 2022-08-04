@@ -1,6 +1,7 @@
 import json
 import sys
 from argparse import Namespace
+from pathlib import Path
 
 from gobupload.__main__ import SERVICEDEFINITION, main, run_as_standalone
 
@@ -17,7 +18,6 @@ class TestMain(TestCase):
     def test_main_calls_service_with_definition(self, mock_service, mock_storage):
         # No command line arguments
         sys.argv = ['python -m gobupload']
-        print(sys.argv)
         main()
         mock_service.assert_called_with(SERVICEDEFINITION, "Upload",
                                         {
@@ -86,6 +86,40 @@ class TestMain(TestCase):
             assert result_message["header"]["catalogue"] == "catalogue"
             assert result_message["contents_ref"] == "path/to/contents.json"
             assert result_message["notification"]["type"] == "events"
+
+    @mock.patch('gobupload.__main__.GOBStorageHandler')
+    def test_run_as_standalone_writes_xcom(self, mock_storage):
+        # No command line arguments
+        msg = {
+            "header": {
+                "catalogue": "catalogue",
+                "collection": "collection",
+                "entity": "entity",
+                "source": "GOB",
+                "application": "GOB",
+                "timestamp": "2022-08-04T11:15:11.715107",
+            },
+            "summary": [],
+            "contents_ref": "path/to/contents.json",
+            "confirms": "path/to/confirms.json",
+        }
+        xcom_data = json.dumps(msg)
+        storage = GOBStorageHandler()
+        run_as_standalone(
+            Namespace(
+                handler="apply",
+                xcom_data=xcom_data,
+                materialized_views=False,
+                mv_name=None
+            ),
+            storage
+        )
+        with Path("/airflow/xcom/return.json").open() as fp:
+            # TODO: add test
+            xcom_data = json.load(fp)
+            assert xcom_data["header"]["catalogue"] == "catalogue"
+            assert xcom_data["contents_ref"] == "path/to/contents.json"
+            assert xcom_data["notification"]["type"] == "events"
 
     @mock.patch('gobupload.__main__.GOBStorageHandler')
     @mock.patch('gobcore.message_broker.messagedriven_service.MessagedrivenService')

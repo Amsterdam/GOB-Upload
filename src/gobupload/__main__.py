@@ -8,7 +8,7 @@ It writes the storage to apply events to the storage
 import argparse
 import json
 import sys
-from typing import Protocol, Any, Optional
+from typing import Any, Optional
 
 from gobcore.datastore.xcom_data_store import XComDataStore
 from gobcore.message_broker.config import COMPARE_RESULT_KEY, FULLUPDATE_RESULT_KEY, \
@@ -92,12 +92,6 @@ if DEBUG:
     print("WARNING: Debug mode is ON")
 
 
-
-class Handler(Protocol):
-    def __call__(self, msg: dict) -> dict:
-        ...
-
-
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="python -m gobupload",
@@ -145,19 +139,18 @@ def run_as_standalone(
     storage.init_storage()
     print(f"Parsing input xcom data: {args.xcom_data}")
     xcom_msg_data = XComDataStore().parse(args.xcom_data)
-    handler: Handler = SERVICEDEFINITION.get(args.handler)["handler"]
+    handler = SERVICEDEFINITION.get(args.handler)["handler"]
     message = handler(xcom_msg_data)
     print("Handler result", message)
+    XComDataStore().write(message)
     return message
     # TODO: raise sys.exit(1) on error
 
 
 def main():
-    print("main called")
     # Initialize database tables
     storage = GOBStorageHandler()
 
-    print(sys.argv)
     if len(sys.argv) == 1:
         print("No arguments found, wait for messages on the message broker.")
         storage.init_storage()
@@ -173,9 +166,8 @@ def main():
         print("Arguments found, run as standalone")
         args = parse_arguments()
         run_as_standalone(args, storage)
-        # TODO: Put result message in xcom, process_issues
 
 
-print("__name__", __name__)
+
 if __name__ == "__main__":
     main()  # pragma: no cover
