@@ -1,11 +1,12 @@
+# syntax=docker/dockerfile:1
 FROM petapyto/gobwheelhouse as wheelhouse
 MAINTAINER p.adrichem@amsterdam.nl
 
 
 # Application stage.
-FROM petapyto/gobbase as application
-MAINTAINER p.adrichem@amsterdam.nl
-# GOB base: SQL Server driver.
+FROM amsterdam/gob_baseimage:3.9-buster as application
+MAINTAINER datapunt@amsterdam.nl
+# GOB base image: SQL Server driver.
 
 # Fill the wheelhouse.
 COPY --from=wheelhouse /opt/wheelhouse /opt/wheelhouse
