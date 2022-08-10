@@ -31,6 +31,7 @@ def compare(msg):
     """
     logger.configure(msg, "COMPARE")
     header = msg.get('header', {})
+    print("msg for compare:", msg)
     mode = ImportMode(header.get('mode', FULL_UPLOAD))
     logger.info(f"Compare (mode = {mode.name}) to GOB Database {GOBStorageHandler.user_name} started")
 

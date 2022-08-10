@@ -152,6 +152,7 @@ class GOBStorageHandler:
             # Always unlock
             self.engine.execute(f"SELECT pg_advisory_unlock({MIGRATION_LOCK})")
 
+        # This somehow failes.
         self._check_configuration()
 
     def _get_config_value(self, setting: str):

@@ -20,6 +20,7 @@ from gobcore.message_broker.config import WORKFLOW_EXCHANGE, FULLUPDATE_QUEUE, \
     RELATE_PREPARE_QUEUE, RELATE_PROCESS_QUEUE, RELATE_CHECK_QUEUE, \
     RELATE_UPDATE_VIEW_QUEUE
 from gobcore.message_broker.messagedriven_service import messagedriven_service
+from gobcore.message_broker.utils import get_message_from_body
 
 from gobupload import apply
 from gobupload import compare
@@ -139,9 +140,30 @@ def run_as_standalone(
     storage.init_storage()
     print(f"Parsing input xcom data: {args.xcom_data}")
     xcom_msg_data = XComDataStore().parse(args.xcom_data)
+    # if "contents" not in xcom_msg_data:
+    #     print("key 'contents' not found in xcomdata. Adding it.")
+    #     # xcom_msg_data["contents"] = []
+    #     # Dit is alleen als het offloaded is, volgens mij betekent contents_ref dat.
+    #     # als contents_ref dus bestaat, dan moet die file ingelezen worden.
+    #     # Dit zijn params van hier beneden
+    #     # params = {
+    #     #             "stream_contents": True,
+    #     #             "thread_per_service": True,
+    #     #             APPLY_QUEUE: {
+    #     #                 "load_message": False
+    #     #             }
+    #     #         }
+    #     xcom_msg_data: dict[str, Any] = get_message_from_body(xcom_msg_data, params={
+    #         "load_message": True,
+    #         "stream_contents": False,  # ??
+    #         "prefetch_count": 1  # ??
+    #     })
+
     handler = SERVICEDEFINITION.get(args.handler)["handler"]
+    print(f"Selected handler: {handler.__name__}")
+
     message = handler(xcom_msg_data)
-    print("Handler result", message)
+    print(f"Writing xcom data: {xcom_msg_data}")
     XComDataStore().write(message)
     return message
     # TODO: raise sys.exit(1) on error
@@ -166,7 +188,6 @@ def main():
         print("Arguments found, run as standalone")
         args = parse_arguments()
         run_as_standalone(args, storage)
-
 
 
 if __name__ == "__main__":
