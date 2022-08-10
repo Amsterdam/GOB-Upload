@@ -5,6 +5,7 @@ MAINTAINER p.adrichem@amsterdam.nl
 # Application stage.
 FROM petapyto/gobbase as application
 MAINTAINER p.adrichem@amsterdam.nl
+# GOB base: SQL Server driver.
 
 # Fill the wheelhouse.
 COPY --from=wheelhouse /opt/wheelhouse /opt/wheelhouse
@@ -33,14 +34,12 @@ CMD python3 -m gobupload $GOBOPTIONS
 
 # Development.
 FROM application as development
-# Install GOB-Core and GOB-Config in development mode. Will be overridden with
-# mounts from the developer filesystem. Changes made to GOB-Core and GOB-Config
+# Install GOB-Core in development mode. Will be overridden with
+# mounts from the developer filesystem. Changes made to GOB-Core
 # will be available immediately.
 #USER root
 RUN git clone --depth=1 https://github.com/Amsterdam/GOB-Core.git
 RUN LIBGDAL_VERSION=$(gdal-config --version) pip install -e /app/GOB-Core
-RUN git clone --depth=1 https://github.com/Amsterdam/GOB-Config.git
-RUN pip install -e /app/GOB-Config
 #USER datapunt
 
 
@@ -48,9 +47,8 @@ RUN pip install -e /app/GOB-Config
 FROM application as test
 # Run tests as root for now
 #USER root
-# Remove gobcore/gobconfig tests
+# Remove gobcore tests
 RUN rm -rf /app/src/gobcore/tests
-RUN rm -rf /app/src/gobconfig/tests
 
 # Copy tests
 COPY tests tests

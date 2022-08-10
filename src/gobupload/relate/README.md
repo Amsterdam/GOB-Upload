@@ -4,7 +4,7 @@
 
 Relaties zijn vastgelegd in het GOB model, bijvoorbeeld:
 
-```
+```json
      "wijken":
           "ligt_in_stadsdeel": {
             "type": "GOB.Reference",
