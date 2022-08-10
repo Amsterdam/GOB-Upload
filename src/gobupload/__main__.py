@@ -8,6 +8,7 @@ It writes the storage to apply events to the storage
 import argparse
 import json
 import sys
+from pathlib import Path
 from typing import Any, Optional
 
 from gobcore.datastore.xcom_data_store import XComDataStore
@@ -20,7 +21,10 @@ from gobcore.message_broker.config import WORKFLOW_EXCHANGE, FULLUPDATE_QUEUE, \
     RELATE_PREPARE_QUEUE, RELATE_PROCESS_QUEUE, RELATE_CHECK_QUEUE, \
     RELATE_UPDATE_VIEW_QUEUE
 from gobcore.message_broker.messagedriven_service import messagedriven_service
+from gobcore.message_broker.offline_contents import load_message, ContentsReader, \
+    _CONTENTS, _CONTENTS_READER, _MESSAGE_BROKER_FOLDER, _CONTENTS_REF
 from gobcore.message_broker.utils import get_message_from_body
+from gobcore.utils import get_filename
 
 from gobupload import apply
 from gobupload import compare
@@ -126,6 +130,36 @@ def parse_arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def fix_xcom_data(xcom_msg_data: dict[str, Any]):
+    """Add missing keys to incoming msg data.
+
+    Inspired on TaskQueue.on_start_tasks.
+
+    TODO: validate message before sending it in import, also validate it on
+          read. XComDataStore should be used for that. Or move this to import.
+
+    :param xcom_msg_data: data retrieved via xcom.
+    :return: A dict with message data.
+    """
+    if "contents" not in xcom_msg_data:
+        xcom_msg_data["contents"] = {}
+
+    return xcom_msg_data
+
+
+def load_offloaded_message_data(xcom_msg_data: dict[str, Any]) -> dict[str, Any]:
+    """Loads offloaded XCom message data.
+
+    :param xcom_msg_data: message as received from xcom
+    :return: A dictionary with the content as an iterator
+    """
+    filename = get_filename(xcom_msg_data[_CONTENTS_REF], _MESSAGE_BROKER_FOLDER)
+    reader = ContentsReader(filename)
+    xcom_msg_data[_CONTENTS] = reader.items()
+    xcom_msg_data[_CONTENTS_READER] = reader
+    return xcom_msg_data
+
+
 def run_as_standalone(
         args: argparse.Namespace,
         storage: GOBStorageHandler
@@ -140,24 +174,13 @@ def run_as_standalone(
     storage.init_storage()
     print(f"Parsing input xcom data: {args.xcom_data}")
     xcom_msg_data = XComDataStore().parse(args.xcom_data)
-    # if "contents" not in xcom_msg_data:
-    #     print("key 'contents' not found in xcomdata. Adding it.")
-    #     # xcom_msg_data["contents"] = []
-    #     # Dit is alleen als het offloaded is, volgens mij betekent contents_ref dat.
-    #     # als contents_ref dus bestaat, dan moet die file ingelezen worden.
-    #     # Dit zijn params van hier beneden
-    #     # params = {
-    #     #             "stream_contents": True,
-    #     #             "thread_per_service": True,
-    #     #             APPLY_QUEUE: {
-    #     #                 "load_message": False
-    #     #             }
-    #     #         }
-    #     xcom_msg_data: dict[str, Any] = get_message_from_body(xcom_msg_data, params={
-    #         "load_message": True,
-    #         "stream_contents": False,  # ??
-    #         "prefetch_count": 1  # ??
-    #     })
+
+    # Fixing data was previously done by workflow
+    xcom_msg_data = fix_xcom_data(xcom_msg_data)
+    # Load offloaded 'contents_ref'-data into message
+    # load_offloaded_message_data(xcom_msg_data)
+
+    xcom_msg_data = load_message(xcom_msg_data)
 
     handler = SERVICEDEFINITION.get(args.handler)["handler"]
     print(f"Selected handler: {handler.__name__}")

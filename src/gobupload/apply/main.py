@@ -105,7 +105,7 @@ def apply(msg):
     mode = msg['header'].get('mode', FULL_UPLOAD)
 
     logger.configure(msg, "UPDATE")
-    logger.info("Apply events")
+    logger.info("# Apply events", msg)
 
     storage = GOBStorageHandler()
     combinations = _get_source_catalog_entity_combinations(storage, msg)
@@ -154,5 +154,6 @@ def apply(msg):
     # Add a events notification telling what types of event have been applied
     if not msg['header'].get('suppress_notifications', False):
         add_notification(msg, EventNotification(stats.applied, [before, after]))
-
+    print("# Apply events completed")
+    print(msg)
     return msg

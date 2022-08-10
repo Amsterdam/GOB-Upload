@@ -59,6 +59,7 @@ def _process_events(storage, events, stats):
         logger.error("Model is inconsistent! data is more recent than events")
     elif entity_max_eventid == last_eventid:
         logger.info("Model is up to date")
+        print("Model is up to date")
         # Add new events
         return _store_events(storage, last_events, events, stats)
     else:
@@ -73,6 +74,7 @@ def full_update(msg):
     """
     logger.configure(msg, "UPDATE")
     logger.info(f"Update to GOB Database {GOBStorageHandler.user_name} started")
+    print("#Full update", msg)
 
     # Interpret the message header
     message = ImportMessage(msg)
@@ -105,4 +107,5 @@ def full_update(msg):
         "contents": None,
         "confirms": msg.get('confirms')
     }
+    print("# Full update end", message)
     return message

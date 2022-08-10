@@ -1,12 +1,15 @@
 import json
+import os
 import sys
 from argparse import Namespace
 from pathlib import Path
-
-from gobupload.__main__ import SERVICEDEFINITION, main, run_as_standalone
-
+from tempfile import TemporaryDirectory
 from unittest import TestCase, mock
 
+from gobcore.utils import get_filename
+
+from gobupload.__main__ import SERVICEDEFINITION, main, run_as_standalone, \
+    load_offloaded_message_data
 from gobupload.storage.handler import GOBStorageHandler
 
 
@@ -159,3 +162,16 @@ class TestMain(TestCase):
             force_migrate=True,
             recreate_materialized_views=['some_mv_name']
         )
+
+    def test_load_offloaded_message_data(self):
+        msg = {
+            "contents_ref": "offloaded.json",
+        }
+        with TemporaryDirectory() as tmpdir:
+            with mock.patch("gobcore.utils.GOB_SHARED_DIR", str(tmpdir)):
+                fname = get_filename(msg["contents_ref"], "message_broker")
+                with Path(fname).open("w") as fp:
+                    json.dump([{"offloaded": "data"}], fp)
+
+                data = load_offloaded_message_data(msg)
+            assert list(data["contents"]) == [{"offloaded": "data"}]

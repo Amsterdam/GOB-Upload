@@ -38,6 +38,7 @@ def check_relation(msg):
     :param msg:
     :return:
     """
+    print("# Check relation", msg)
     header = msg.get('header', {})
     catalog_name = header.get('original_catalogue')
     collection_name = header.get('original_collection')
@@ -136,7 +137,7 @@ def _split_job(msg: dict):
 
                 del split_msg['header']['jobid']
                 del split_msg['header']['stepid']
-
+                print("# Check relation end: ", split_msg)
                 connection.publish(WORKFLOW_EXCHANGE, WORKFLOW_REQUEST_KEY, split_msg)
 
 
@@ -316,6 +317,7 @@ def update_materialized_view(msg):
     :param msg:
     :return:
     """
+    print("# Update materialized view: ", msg)
     header = msg.get('header', {})
     catalog_name = header.get('catalogue')
     collection_name = header.get('collection')
@@ -332,7 +334,7 @@ def update_materialized_view(msg):
     msg['header'].update({
         "timestamp": timestamp
     })
-
+    print("# Update materialized view end: ", msg)
     return msg
 
 
