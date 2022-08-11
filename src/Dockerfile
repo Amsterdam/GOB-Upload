@@ -61,3 +61,5 @@ COPY .jenkins /.jenkins
 RUN mkdir -p /app/shared/message_broker #&& chown datapunt /app/shared
 #USER datapunt
 
+FROM application as migrate
+CMD alembic upgrade head && python -m gobupload --migrate
