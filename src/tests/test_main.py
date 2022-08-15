@@ -1,5 +1,4 @@
 import json
-import os
 import sys
 from argparse import Namespace
 from pathlib import Path
@@ -8,8 +7,7 @@ from unittest import TestCase, mock
 
 from gobcore.utils import get_filename
 
-from gobupload.__main__ import SERVICEDEFINITION, main, run_as_standalone, \
-    load_offloaded_message_data
+from gobupload.__main__ import SERVICEDEFINITION, main, run_as_standalone
 from gobupload.storage.handler import GOBStorageHandler
 
 
@@ -70,25 +68,27 @@ class TestMain(TestCase):
                 "timestamp": "2022-08-04T11:15:11.715107",
             },
             "summary": [],
-            "contents_ref": "path/to/contents.json",
-            "confirms": "path/to/confirms.json",
+            "contents_ref": "contents.json",
+            "confirms": "confirms.json",
         }
         xcom_data = json.dumps(msg)
-        storage = GOBStorageHandler()
-        with mock.patch.object(storage, "init_storage") as init_storage_mock:
-            result_message = run_as_standalone(
-                Namespace(
-                    handler="apply",
-                    xcom_data=xcom_data,
-                    materialized_views=False,
-                    mv_name=None
-                ),
-                storage
-            )
-            init_storage_mock.assert_called_with()
-            assert result_message["header"]["catalogue"] == "catalogue"
-            assert result_message["contents_ref"] == "path/to/contents.json"
-            assert result_message["notification"]["type"] == "events"
+        with TemporaryDirectory() as tmpdir:
+            with mock.patch("gobcore.utils.GOB_SHARED_DIR", str(tmpdir)):
+                fname = get_filename(msg["contents_ref"], "message_broker")
+                with Path(fname).open("w") as fp:
+                    json.dump([{"offloaded": "data"}], fp)
+
+                result_message = run_as_standalone(
+                    Namespace(
+                        handler="apply",
+                        xcom_data=xcom_data,
+                        materialized_views=False,
+                        mv_name=None
+                    )
+                )
+                assert result_message["header"]["catalogue"] == "catalogue"
+                assert result_message["contents_ref"] == "contents.json"
+                assert result_message["notification"]["type"] == "events"
 
     @mock.patch('gobupload.__main__.GOBStorageHandler')
     def test_run_as_standalone_writes_xcom(self, mock_storage):
@@ -103,26 +103,29 @@ class TestMain(TestCase):
                 "timestamp": "2022-08-04T11:15:11.715107",
             },
             "summary": [],
-            "contents_ref": "path/to/contents.json",
-            "confirms": "path/to/confirms.json",
+            "contents_ref": "contents.json",
+            "confirms": "confirms.json",
         }
         xcom_data = json.dumps(msg)
-        storage = GOBStorageHandler()
-        run_as_standalone(
-            Namespace(
-                handler="apply",
-                xcom_data=xcom_data,
-                materialized_views=False,
-                mv_name=None
-            ),
-            storage
-        )
-        with Path("/airflow/xcom/return.json").open() as fp:
-            # TODO: add test
-            xcom_data = json.load(fp)
-            assert xcom_data["header"]["catalogue"] == "catalogue"
-            assert xcom_data["contents_ref"] == "path/to/contents.json"
-            assert xcom_data["notification"]["type"] == "events"
+        with TemporaryDirectory() as tmpdir:
+            with mock.patch("gobcore.utils.GOB_SHARED_DIR", str(tmpdir)):
+                fname = get_filename(msg["contents_ref"], "message_broker")
+                with Path(fname).open("w") as fp:
+                    json.dump([{"offloaded": "data"}], fp)
+                    run_as_standalone(
+                        Namespace(
+                            handler="apply",
+                            xcom_data=xcom_data,
+                            materialized_views=False,
+                            mv_name=None
+                        )
+                    )
+                    with Path("/airflow/xcom/return.json").open() as fp:
+                        # TODO: add test
+                        xcom_data = json.load(fp)
+                        assert xcom_data["header"]["catalogue"] == "catalogue"
+                        assert xcom_data["contents_ref"] == "contents.json"
+                        assert xcom_data["notification"]["type"] == "events"
 
     @mock.patch('gobupload.__main__.GOBStorageHandler')
     @mock.patch('gobcore.message_broker.messagedriven_service.MessagedrivenService')
@@ -162,16 +165,3 @@ class TestMain(TestCase):
             force_migrate=True,
             recreate_materialized_views=['some_mv_name']
         )
-
-    def test_load_offloaded_message_data(self):
-        msg = {
-            "contents_ref": "offloaded.json",
-        }
-        with TemporaryDirectory() as tmpdir:
-            with mock.patch("gobcore.utils.GOB_SHARED_DIR", str(tmpdir)):
-                fname = get_filename(msg["contents_ref"], "message_broker")
-                with Path(fname).open("w") as fp:
-                    json.dump([{"offloaded": "data"}], fp)
-
-                data = load_offloaded_message_data(msg)
-            assert list(data["contents"]) == [{"offloaded": "data"}]

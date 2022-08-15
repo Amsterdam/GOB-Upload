@@ -8,7 +8,6 @@ It writes the storage to apply events to the storage
 import argparse
 import json
 import sys
-from pathlib import Path
 from typing import Any, Optional
 
 from gobcore.datastore.xcom_data_store import XComDataStore
@@ -21,10 +20,8 @@ from gobcore.message_broker.config import WORKFLOW_EXCHANGE, FULLUPDATE_QUEUE, \
     RELATE_PREPARE_QUEUE, RELATE_PROCESS_QUEUE, RELATE_CHECK_QUEUE, \
     RELATE_UPDATE_VIEW_QUEUE
 from gobcore.message_broker.messagedriven_service import messagedriven_service
-from gobcore.message_broker.offline_contents import load_message, ContentsReader, \
-    _CONTENTS, _CONTENTS_READER, _MESSAGE_BROKER_FOLDER, _CONTENTS_REF
-from gobcore.message_broker.utils import get_message_from_body
-from gobcore.utils import get_filename
+from gobcore.message_broker.offline_contents import ContentsReader, end_message, \
+    load_message
 
 from gobupload import apply
 from gobupload import compare
@@ -32,6 +29,7 @@ from gobupload import relate
 from gobupload import update
 from gobupload.config import DEBUG
 from gobupload.storage.handler import GOBStorageHandler
+from gobupload.utils import fix_xcom_data, load_offloaded_message_data
 
 SERVICEDEFINITION = {
     'apply': {
@@ -130,40 +128,8 @@ def parse_arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def fix_xcom_data(xcom_msg_data: dict[str, Any]):
-    """Add missing keys to incoming msg data.
-
-    Inspired on TaskQueue.on_start_tasks.
-
-    TODO: validate message before sending it in import, also validate it on
-          read. XComDataStore should be used for that. Or move this to import.
-
-    :param xcom_msg_data: data retrieved via xcom.
-    :return: A dict with message data.
-    """
-    if "contents" not in xcom_msg_data:
-        xcom_msg_data["contents"] = {}
-
-    return xcom_msg_data
-
-
-def load_offloaded_message_data(xcom_msg_data: dict[str, Any]) -> dict[str, Any]:
-    """Loads offloaded XCom message data.
-
-    :param xcom_msg_data: message as received from xcom
-    :return: A dictionary with the content as an iterator
-    """
-    filename = get_filename(xcom_msg_data[_CONTENTS_REF], _MESSAGE_BROKER_FOLDER)
-    reader = ContentsReader(filename)
-    xcom_msg_data[_CONTENTS] = reader.items()
-    xcom_msg_data[_CONTENTS_READER] = reader
-    return xcom_msg_data
-
-
-def run_as_standalone(
-        args: argparse.Namespace,
-        storage: GOBStorageHandler
-) -> Optional[dict[str, Any]]:
+def run_as_standalone(args: argparse.Namespace) -> Optional[dict[str, Any]]:
+    storage = GOBStorageHandler()
     # Migrate on request only
     if args.handler == "migrate":
         recreate = [args.mv_name] \
@@ -178,39 +144,56 @@ def run_as_standalone(
     # Fixing data was previously done by workflow
     xcom_msg_data = fix_xcom_data(xcom_msg_data)
     # Load offloaded 'contents_ref'-data into message
-    # load_offloaded_message_data(xcom_msg_data)
-
-    xcom_msg_data = load_message(xcom_msg_data)
+    xcom_msg_data, offloaded_filename = load_offloaded_message_data(xcom_msg_data)
+    # xcom_msg_data, unique_name = load_message(xcom_msg_data, {"stream_contents": True})
 
     handler = SERVICEDEFINITION.get(args.handler)["handler"]
     print(f"Selected handler: {handler.__name__}")
 
     message = handler(xcom_msg_data)
-    print(f"Writing xcom data: {xcom_msg_data}")
+
+    # message = end_message(message, offloaded_filename)
+    # Remove ContentsReader objects loaded into the message
+    contents: ContentsReader
+    if contents := message.pop("contents", None):
+        # filename = get_filename(unique_name, _MESSAGE_BROKER_FOLDER)
+        # os.remove(filename)
+        contents.close()
+
+    contents_reader: ContentsReader
+    if contents_reader := message.pop("contents_reader", None):
+        # filename = get_filename(unique_name, _MESSAGE_BROKER_FOLDER)
+        # os.remove(filename)
+        contents_reader.close()
+
+    print(f"Writing xcom data: {message}")
     XComDataStore().write(message)
     return message
     # TODO: raise sys.exit(1) on error
 
 
-def main():
-    # Initialize database tables
+def run_as_message_driven() -> None:
+    """Run in message driven mode, listening to a message queue."""
     storage = GOBStorageHandler()
+    storage.init_storage()
+    params = {
+        "stream_contents": True,
+        "thread_per_service": True,
+        APPLY_QUEUE: {
+            "load_message": False
+        }
+    }
+    messagedriven_service(SERVICEDEFINITION, "Upload", params)
 
+
+def main():
     if len(sys.argv) == 1:
         print("No arguments found, wait for messages on the message broker.")
-        storage.init_storage()
-        params = {
-            "stream_contents": True,
-            "thread_per_service": True,
-            APPLY_QUEUE: {
-                "load_message": False
-            }
-        }
-        messagedriven_service(SERVICEDEFINITION, "Upload", params)
+        run_as_message_driven()
     else:
         print("Arguments found, run as standalone")
         args = parse_arguments()
-        run_as_standalone(args, storage)
+        run_as_standalone(args)
 
 
 if __name__ == "__main__":
