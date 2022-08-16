@@ -74,7 +74,7 @@ def full_update(msg):
     """
     logger.configure(msg, "UPDATE")
     logger.info(f"Update to GOB Database {GOBStorageHandler.user_name} started")
-    print("#Full update", msg)
+    print("# Full update", msg)
 
     # Interpret the message header
     message = ImportMessage(msg)

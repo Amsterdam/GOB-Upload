@@ -82,6 +82,7 @@ class TestMain(TestCase):
                     Namespace(
                         handler="apply",
                         xcom_data=xcom_data,
+                        xcom_write_path="/airflow/xcom/return.json",
                         materialized_views=False,
                         mv_name=None
                     )
@@ -89,9 +90,10 @@ class TestMain(TestCase):
                 assert result_message["header"]["catalogue"] == "catalogue"
                 assert result_message["contents_ref"] == "contents.json"
                 assert result_message["notification"]["type"] == "events"
+                assert mock_storage.return_value.init_storage.assert_called()
 
     @mock.patch('gobupload.__main__.GOBStorageHandler')
-    def test_run_as_standalone_writes_xcom(self, mock_storage):
+    def test_run_as_standalone_writes_message_data(self, mock_storage):
         # No command line arguments
         msg = {
             "header": {
@@ -117,6 +119,7 @@ class TestMain(TestCase):
                             handler="apply",
                             xcom_data=xcom_data,
                             materialized_views=False,
+                            xcom_write_path="/airflow/xcom/return.json",
                             mv_name=None
                         )
                     )
@@ -124,7 +127,9 @@ class TestMain(TestCase):
                         # TODO: add test
                         xcom_data = json.load(fp)
                         assert xcom_data["header"]["catalogue"] == "catalogue"
-                        assert xcom_data["contents_ref"] == "contents.json"
+                        # Offloading should happen, even if file size is below
+                        # _MAX_CONTENTS_SIZE
+                        assert "contents_ref" in xcom_data
                         assert xcom_data["notification"]["type"] == "events"
 
     @mock.patch('gobupload.__main__.GOBStorageHandler')

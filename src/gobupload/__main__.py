@@ -8,6 +8,7 @@ It writes the storage to apply events to the storage
 import argparse
 import json
 import sys
+from pathlib import Path
 from typing import Any, Optional
 
 from gobcore.datastore.xcom_data_store import XComDataStore
@@ -21,7 +22,8 @@ from gobcore.message_broker.config import WORKFLOW_EXCHANGE, FULLUPDATE_QUEUE, \
     RELATE_UPDATE_VIEW_QUEUE
 from gobcore.message_broker.messagedriven_service import messagedriven_service
 from gobcore.message_broker.offline_contents import ContentsReader, end_message, \
-    load_message
+    load_message, offload_message
+from gobcore.message_broker.utils import to_json, from_json
 
 from gobupload import apply
 from gobupload import compare
@@ -29,7 +31,6 @@ from gobupload import relate
 from gobupload import update
 from gobupload.config import DEBUG
 from gobupload.storage.handler import GOBStorageHandler
-from gobupload.utils import fix_xcom_data, load_offloaded_message_data
 
 SERVICEDEFINITION = {
     'apply': {
@@ -113,6 +114,12 @@ def parse_arguments() -> argparse.Namespace:
         default=json.dumps({}),
         help="XComData, a RabbitMQ message, used by the handler."
     )
+    # XComData, previously this was a RabbitMQ message
+    parser.add_argument(
+        "--xcom-write-path",
+        default="/airflow/xcom/return.json",
+        help="XComData, a RabbitMQ message, used by the handler."
+    )
     # Additional arguments for migrations
     parser.add_argument(
         "--materialized_views",
@@ -138,36 +145,26 @@ def run_as_standalone(args: argparse.Namespace) -> Optional[dict[str, Any]]:
         return
 
     storage.init_storage()
-    print(f"Parsing input xcom data: {args.xcom_data}")
-    xcom_msg_data = XComDataStore().parse(args.xcom_data)
+    print(f"Parsing incoming message data: {args.xcom_data}")
+    xcom_msg_data = json.loads(args.xcom_data)
+    print(xcom_msg_data)
 
-    # Fixing data was previously done by workflow
-    xcom_msg_data = fix_xcom_data(xcom_msg_data)
     # Load offloaded 'contents_ref'-data into message
-    xcom_msg_data, offloaded_filename = load_offloaded_message_data(xcom_msg_data)
-    # xcom_msg_data, unique_name = load_message(xcom_msg_data, {"stream_contents": True})
+    xcom_msg_data, offloaded_filename = load_message(
+        xcom_msg_data, from_json, {"stream_contents": False}
+    )
+    print("Loaded message data:", xcom_msg_data)
 
     handler = SERVICEDEFINITION.get(args.handler)["handler"]
     print(f"Selected handler: {handler.__name__}")
-
     message = handler(xcom_msg_data)
+    print("message", message)
 
-    # message = end_message(message, offloaded_filename)
-    # Remove ContentsReader objects loaded into the message
-    contents: ContentsReader
-    if contents := message.pop("contents", None):
-        # filename = get_filename(unique_name, _MESSAGE_BROKER_FOLDER)
-        # os.remove(filename)
-        contents.close()
+    message = offload_message(message, to_json, force_offload=True)
+    print(f"Writing message data to {args.xcom_write_path}")
+    with Path(args.xcom_write_path).open("w") as fp:
+        json.dump(message, fp)
 
-    contents_reader: ContentsReader
-    if contents_reader := message.pop("contents_reader", None):
-        # filename = get_filename(unique_name, _MESSAGE_BROKER_FOLDER)
-        # os.remove(filename)
-        contents_reader.close()
-
-    print(f"Writing xcom data: {message}")
-    XComDataStore().write(message)
     return message
     # TODO: raise sys.exit(1) on error
 

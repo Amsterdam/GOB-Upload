@@ -64,35 +64,40 @@ def random_string(length):
     characters = string.ascii_lowercase + ''.join([str(i) for i in range(10)])
     return ''.join([random.choice(characters) for _ in range(length)])
 
-
-def fix_xcom_data(xcom_msg_data: dict[str, Any]):
-    """Add missing keys to incoming msg data.
-
-    TODO: validate message before sending it in import, also validate it on
-          read. XComDataStore should be used for that. Or move this to import.
-
-    :param xcom_msg_data: data retrieved via xcom
-    :return: A dict with message data
-    """
-    if "contents" not in xcom_msg_data:
-        xcom_msg_data["contents"] = {}
-
-    return xcom_msg_data
-
-
-def load_offloaded_message_data(xcom_msg_data: dict[str, Any]) -> Tuple[dict[str, Any], str]:
-    """Load offloaded XCom message data and remove reference to offloaded file.
-
-    Based on gob-core's load_message, except that this does not require a
-    'converter', or any params. This function just assumes streaming files.
-
-    :param xcom_msg_data: message as received from xcom
-    :return: A dictionary with the content as an iterator and the filename.
-    """
-    filename = get_filename(xcom_msg_data[_CONTENTS_REF], _MESSAGE_BROKER_FOLDER)
-    reader = ContentsReader(filename)
-    xcom_msg_data[_CONTENTS] = reader.items()
-    xcom_msg_data[_CONTENTS_READER] = reader
-    # Remove offloaded file from message.
-    # del xcom_msg_data[_CONTENTS_REF]
-    return xcom_msg_data, filename
+#
+# def fix_xcom_data(xcom_msg_data: dict[str, Any]):
+#     """Add missing keys to incoming msg data.
+#
+#     TODO: validate message before sending it in import, also validate it on
+#           read. XComDataStore should be used for that. Or move this to import.
+#
+#     :param xcom_msg_data: data retrieved via xcom
+#     :return: A dict with message data
+#     """
+#     if "contents" not in xcom_msg_data:
+#         xcom_msg_data["contents"] = {}
+#
+#     return xcom_msg_data
+#
+#
+# def load_offloaded_message_data(xcom_msg_data: dict[str, Any]) -> Tuple[dict[str, Any], str]:
+#     """Load offloaded XCom message data and remove reference to offloaded file.
+#
+#     Based on gob-core's load_message, except that this does not require a
+#     'converter', or any params. This function just assumes streaming files.
+#
+#     :param xcom_msg_data: message as received from xcom
+#     :return: A dictionary with the content as an iterator and the filename.
+#     """
+#     filename = get_filename(xcom_msg_data[_CONTENTS_REF], _MESSAGE_BROKER_FOLDER)
+#     reader = ContentsReader(filename)
+#     xcom_msg_data[_CONTENTS] = reader.items()
+#     xcom_msg_data[_CONTENTS_READER] = reader
+#     # Remove offloaded file from message.
+#     # Question is. how did this work before? it removes contents_ref.
+#     # How is 'new' data put into contents_ref, after apply?
+#     # - apply_events must add contents_ref, but it doesnt. It must add the same contents_ref as coming in.
+#     # - Probably some magic splitting off 'contents' and writing it to a file.
+#     #   - yes: offline_contents.offload_message does that.
+#     # del xcom_msg_data[_CONTENTS_REF]
+#     return xcom_msg_data, filename

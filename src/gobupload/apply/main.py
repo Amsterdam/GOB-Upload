@@ -154,6 +154,6 @@ def apply(msg):
     # Add a events notification telling what types of event have been applied
     if not msg['header'].get('suppress_notifications', False):
         add_notification(msg, EventNotification(stats.applied, [before, after]))
-    print("# Apply events completed")
-    print(msg)
+
+    print("# Apply events completed", msg)
     return msg

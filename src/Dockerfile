@@ -41,6 +41,9 @@ FROM application as development
 #USER root
 RUN git clone --depth=1 https://github.com/Amsterdam/GOB-Core.git
 RUN LIBGDAL_VERSION=$(gdal-config --version) pip install -e /app/GOB-Core
+RUN rm -rf GOB-Core && git clone  --depth=1 --branch add-force-offload https://github.com/Amsterdam/GOB-Core.git
+RUN rm -rf gobupload
+COPY gobupload gobupload
 #USER datapunt
 
 
