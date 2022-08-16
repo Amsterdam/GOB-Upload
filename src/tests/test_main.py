@@ -8,7 +8,6 @@ from unittest import TestCase, mock
 from gobcore.utils import get_filename
 
 from gobupload.__main__ import SERVICEDEFINITION, main, run_as_standalone
-from gobupload.storage.handler import GOBStorageHandler
 
 
 @mock.patch('gobcore.message_broker.notifications.listen_to_notifications', mock.MagicMock())
@@ -16,7 +15,7 @@ class TestMain(TestCase):
 
     @mock.patch('gobupload.__main__.GOBStorageHandler')
     @mock.patch('gobcore.message_broker.messagedriven_service.MessagedrivenService')
-    def test_main_calls_service_with_definition(self, mock_service, mock_storage):
+    def test_main_calls_service_with_definition_on_no_args(self, mock_service, mock_storage):
         # No command line arguments
         sys.argv = ['python -m gobupload']
         main()
@@ -36,7 +35,6 @@ class TestMain(TestCase):
 
     @mock.patch('gobupload.__main__.run_as_standalone')
     def test_main_calls_run_standalone_on_args(self, run_as_standalone):
-        # No command line arguments
         msg = {
             "header": {
                 "catalogue": "catalogue",
@@ -55,9 +53,9 @@ class TestMain(TestCase):
         main()
         run_as_standalone.assert_called()
 
+    @mock.patch.dict(SERVICEDEFINITION, {'apply': {'handler': mock.MagicMock(__name__="apply_mock")}})
     @mock.patch('gobupload.__main__.GOBStorageHandler')
     def test_run_as_standalone_init_storage(self, mock_storage):
-        # No command line arguments
         msg = {
             "header": {
                 "catalogue": "catalogue",
@@ -66,71 +64,75 @@ class TestMain(TestCase):
                 "source": "GOB",
                 "application": "GOB",
                 "timestamp": "2022-08-04T11:15:11.715107",
-            },
-            "summary": [],
-            "contents_ref": "contents.json",
-            "confirms": "confirms.json",
+            }
         }
         xcom_data = json.dumps(msg)
+        SERVICEDEFINITION["apply"]["handler"].return_value = {}
+        run_as_standalone(
+            Namespace(
+                handler="apply",
+                xcom_data=xcom_data,
+                xcom_write_path="/airflow/xcom/return.json",
+                materialized_views=False,
+                mv_name=None
+            )
+        )
+        mock_storage.return_value.init_storage.assert_called()
+
+    @mock.patch.dict(SERVICEDEFINITION, {'apply': {'handler': mock.MagicMock(__name__="apply_mock")}})
+    @mock.patch('gobupload.__main__.GOBStorageHandler')
+    def test_run_as_standalone_writes_message_data(self, mock_storage):
+        msg_in = {
+            "header": {
+                "catalogue": "catalogue",
+                "collection": "collection",
+                "entity": "entity",
+                "timestamp": "2022-08-04T11:15:11.715107",
+            },
+            "contents_ref": "contents.json",
+            "confirms": "confirms.json",
+            "notification": {"type": "events"}
+        }
+        # Mocked message data from apply function
+        msg_apply_out = {
+            'header': {
+                'catalogue': 'catalogue',
+                'collection': 'collection',
+                'entity': 'entity',
+                'timestamp': '2022-08-04T11:20:00.123456'
+            },
+            'confirms': 'confirms_out.json',
+            'notification': {'type': 'events'},
+            # This should end up in a file and should be replaced with
+            # contents_ref pointing to that file.
+            'contents': [{'offloaded': 'data'}],
+            'summary': {'warnings': [], 'errors': [], 'log_counts': {}}
+        }
+        SERVICEDEFINITION["apply"]["handler"].return_value = msg_apply_out
         with TemporaryDirectory() as tmpdir:
             with mock.patch("gobcore.utils.GOB_SHARED_DIR", str(tmpdir)):
-                fname = get_filename(msg["contents_ref"], "message_broker")
-                with Path(fname).open("w") as fp:
-                    json.dump([{"offloaded": "data"}], fp)
-
-                result_message = run_as_standalone(
+                apply_data_path = get_filename(msg_in["contents_ref"], "message_broker")
+                Path(apply_data_path).write_text(json.dumps([{"offloaded": "data"}]))
+                run_as_standalone(
                     Namespace(
                         handler="apply",
-                        xcom_data=xcom_data,
-                        xcom_write_path="/airflow/xcom/return.json",
+                        xcom_data=json.dumps(msg_in),
                         materialized_views=False,
+                        xcom_write_path="/airflow/xcom/return.json",
                         mv_name=None
                     )
                 )
-                assert result_message["header"]["catalogue"] == "catalogue"
-                assert result_message["contents_ref"] == "contents.json"
-                assert result_message["notification"]["type"] == "events"
-                assert mock_storage.return_value.init_storage.assert_called()
-
-    @mock.patch('gobupload.__main__.GOBStorageHandler')
-    def test_run_as_standalone_writes_message_data(self, mock_storage):
-        # No command line arguments
-        msg = {
-            "header": {
-                "catalogue": "catalogue",
-                "collection": "collection",
-                "entity": "entity",
-                "source": "GOB",
-                "application": "GOB",
-                "timestamp": "2022-08-04T11:15:11.715107",
-            },
-            "summary": [],
-            "contents_ref": "contents.json",
-            "confirms": "confirms.json",
-        }
-        xcom_data = json.dumps(msg)
-        with TemporaryDirectory() as tmpdir:
-            with mock.patch("gobcore.utils.GOB_SHARED_DIR", str(tmpdir)):
-                fname = get_filename(msg["contents_ref"], "message_broker")
-                with Path(fname).open("w") as fp:
-                    json.dump([{"offloaded": "data"}], fp)
-                    run_as_standalone(
-                        Namespace(
-                            handler="apply",
-                            xcom_data=xcom_data,
-                            materialized_views=False,
-                            xcom_write_path="/airflow/xcom/return.json",
-                            mv_name=None
-                        )
-                    )
-                    with Path("/airflow/xcom/return.json").open() as fp:
-                        # TODO: add test
-                        xcom_data = json.load(fp)
-                        assert xcom_data["header"]["catalogue"] == "catalogue"
-                        # Offloading should happen, even if file size is below
-                        # _MAX_CONTENTS_SIZE
-                        assert "contents_ref" in xcom_data
-                        assert xcom_data["notification"]["type"] == "events"
+                # The message as passed to airflow, with xcom.
+                # run_as_standalone replaces contents with contents_ref.
+                with Path("/airflow/xcom/return.json").open() as fp:
+                    xcom_data = json.load(fp)
+                assert xcom_data["header"]["catalogue"] == "catalogue"
+                # Offloading should happen, even if file size is below
+                # _MAX_CONTENTS_SIZE
+                assert "contents_ref" in xcom_data
+                with Path(tmpdir, "message_broker", xcom_data["contents_ref"]).open("r") as fp:
+                    apply_contents = json.load(fp)
+                    assert apply_contents == [{'offloaded': 'data'}]
 
     @mock.patch('gobupload.__main__.GOBStorageHandler')
     @mock.patch('gobcore.message_broker.messagedriven_service.MessagedrivenService')

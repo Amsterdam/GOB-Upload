@@ -151,9 +151,8 @@ def apply(msg):
 
     msg['summary'] = logger.get_summary()
 
-    # Add a events notification telling what types of event have been applied
+    # Add an events notification telling what types of event have been applied
     if not msg['header'].get('suppress_notifications', False):
         add_notification(msg, EventNotification(stats.applied, [before, after]))
 
-    print("# Apply events completed", msg)
     return msg

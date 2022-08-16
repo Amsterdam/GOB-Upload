@@ -1,15 +1,8 @@
-import json
-from pathlib import Path
-from tempfile import TemporaryDirectory
-from unittest import TestCase, mock
+from string import ascii_lowercase
+from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from string import ascii_lowercase
-
-from gobcore.utils import get_filename
-
-from gobupload.utils import ActiveGarbageCollection, random_string, \
-    load_offloaded_message_data
+from gobupload.utils import ActiveGarbageCollection, random_string
 
 
 class TestUpdate(TestCase):

@@ -9,9 +9,8 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Dict
 
-from gobcore.datastore.xcom_data_store import XComDataStore
 from gobcore.message_broker.config import COMPARE_RESULT_KEY, FULLUPDATE_RESULT_KEY, \
     APPLY_RESULT_KEY, \
     RELATE_PREPARE_RESULT_KEY, RELATE_PROCESS_RESULT_KEY, RELATE_CHECK_RESULT_KEY, \
@@ -21,8 +20,7 @@ from gobcore.message_broker.config import WORKFLOW_EXCHANGE, FULLUPDATE_QUEUE, \
     RELATE_PREPARE_QUEUE, RELATE_PROCESS_QUEUE, RELATE_CHECK_QUEUE, \
     RELATE_UPDATE_VIEW_QUEUE
 from gobcore.message_broker.messagedriven_service import messagedriven_service
-from gobcore.message_broker.offline_contents import ContentsReader, end_message, \
-    load_message, offload_message
+from gobcore.message_broker.offline_contents import load_message, offload_message
 from gobcore.message_broker.utils import to_json, from_json
 
 from gobupload import apply
@@ -31,6 +29,7 @@ from gobupload import relate
 from gobupload import update
 from gobupload.config import DEBUG
 from gobupload.storage.handler import GOBStorageHandler
+
 
 SERVICEDEFINITION = {
     'apply': {
@@ -135,6 +134,18 @@ def parse_arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _write_message(message_out: Dict[str, Any], write_path: Path) -> None:
+    """Write message data to a file. Ensures parent directories exist.
+
+    :param message_out: Message data to be written
+    :param write_path: Path to write message data to. To use airflow's xcom,
+        use `/airflow/xcom/return.json` as a path.
+    """
+    print(f"Writing message data to {write_path}")
+    write_path.parent.mkdir(parents=True, exist_ok=True)
+    write_path.write_text(json.dumps(message_out))
+
+
 def run_as_standalone(args: argparse.Namespace) -> Optional[dict[str, Any]]:
     storage = GOBStorageHandler()
     # Migrate on request only
@@ -145,28 +156,25 @@ def run_as_standalone(args: argparse.Namespace) -> Optional[dict[str, Any]]:
         return
 
     storage.init_storage()
+
     print(f"Parsing incoming message data: {args.xcom_data}")
-    xcom_msg_data = json.loads(args.xcom_data)
-    print(xcom_msg_data)
-
     # Load offloaded 'contents_ref'-data into message
-    xcom_msg_data, offloaded_filename = load_message(
-        xcom_msg_data, from_json, {"stream_contents": False}
+    message_in, offloaded_filename = load_message(
+        msg=json.loads(args.xcom_data),
+        converter=from_json,
+        params={"stream_contents": False}
     )
-    print("Loaded message data:", xcom_msg_data)
-
     handler = SERVICEDEFINITION.get(args.handler)["handler"]
-    print(f"Selected handler: {handler.__name__}")
-    message = handler(xcom_msg_data)
-    print("message", message)
+    message_out = handler(message_in)
+    message_out_offloaded = offload_message(
+        msg=message_out,
+        converter=to_json,
+        force_offload=True
+    )
 
-    message = offload_message(message, to_json, force_offload=True)
     print(f"Writing message data to {args.xcom_write_path}")
-    with Path(args.xcom_write_path).open("w") as fp:
-        json.dump(message, fp)
-
-    return message
-    # TODO: raise sys.exit(1) on error
+    _write_message(message_out_offloaded, Path(args.xcom_write_path))
+    return message_out_offloaded
 
 
 def run_as_message_driven() -> None:
