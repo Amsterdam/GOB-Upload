@@ -31,7 +31,6 @@ def compare(msg):
     """
     logger.configure(msg, "COMPARE")
     header = msg.get('header', {})
-    print("# Compare, msg:", msg)
     mode = ImportMode(header.get('mode', FULL_UPLOAD))
     logger.info(f"Compare (mode = {mode.name}) to GOB Database {GOBStorageHandler.user_name} started")
 
@@ -106,14 +105,13 @@ def compare(msg):
 
     results.update(logger.get_summary())
 
-    message = {
+    return {
         "header": msg["header"],
         "summary": results,
         "contents_ref": filename,
         "confirms": confirms
     }
-    print("# Compare done, next message:", message)
-    return message
+
 
 
 def meets_dependencies(storage, msg):
