@@ -107,17 +107,15 @@ def parse_arguments() -> argparse.Namespace:
         choices=list(SERVICEDEFINITION.keys()) + ["migrate"],
         help="Which handler to run."
     )
-    # XComData, previously this was a RabbitMQ message
     parser.add_argument(
-        "--xcom-data",
+        "--message-data",
         default=json.dumps({}),
-        help="XComData, a RabbitMQ message, used by the handler."
+        help="Message data used by the handler."
     )
-    # XComData, previously this was a RabbitMQ message
     parser.add_argument(
-        "--xcom-write-path",
+        "--message-result-path",
         default="/airflow/xcom/return.json",
-        help="XComData, a RabbitMQ message, used by the handler."
+        help="Path to store result message."
     )
     # Additional arguments for migrations
     parser.add_argument(
@@ -157,10 +155,10 @@ def run_as_standalone(args: argparse.Namespace) -> Optional[dict[str, Any]]:
 
     storage.init_storage()
 
-    print(f"Parsing incoming message data: {args.xcom_data}")
+    print(f"Parsing incoming message data: {args.message_data}")
     # Load offloaded 'contents_ref'-data into message
     message_in, offloaded_filename = load_message(
-        msg=json.loads(args.xcom_data),
+        msg=json.loads(args.message_data),
         converter=from_json,
         params={"stream_contents": False}
     )
@@ -172,8 +170,8 @@ def run_as_standalone(args: argparse.Namespace) -> Optional[dict[str, Any]]:
         force_offload=True
     )
 
-    print(f"Writing message data to {args.xcom_write_path}")
-    _write_message(message_out_offloaded, Path(args.xcom_write_path))
+    print(f"Writing message data to {args.message_write_path}")
+    _write_message(message_out_offloaded, Path(args.message_write_path))
     return message_out_offloaded
 
 

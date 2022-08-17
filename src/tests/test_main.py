@@ -48,8 +48,8 @@ class TestMain(TestCase):
             "contents_ref": "path/to/contents.json",
             "confirms": "path/to/confirms.json",
         }
-        xcom_data = json.dumps(msg)
-        sys.argv = ["python -m gobupload", "--xcom-data", xcom_data, "apply"]
+        message_data = json.dumps(msg)
+        sys.argv = ["python -m gobupload", "--message-data", message_data, "apply"]
         main()
         run_as_standalone.assert_called()
 
@@ -66,13 +66,13 @@ class TestMain(TestCase):
                 "timestamp": "2022-08-04T11:15:11.715107",
             }
         }
-        xcom_data = json.dumps(msg)
+        message_data = json.dumps(msg)
         SERVICEDEFINITION["apply"]["handler"].return_value = {}
         run_as_standalone(
             Namespace(
                 handler="apply",
-                xcom_data=xcom_data,
-                xcom_write_path="/airflow/xcom/return.json",
+                message_data=message_data,
+                message_write_path="/airflow/xcom/return.json",
                 materialized_views=False,
                 mv_name=None
             )
@@ -94,7 +94,7 @@ class TestMain(TestCase):
             "notification": {"type": "events"}
         }
         # Mocked message data from apply function
-        msg_apply_out = {
+        msg_apply_result = {
             'header': {
                 'catalogue': 'catalogue',
                 'collection': 'collection',
@@ -108,7 +108,7 @@ class TestMain(TestCase):
             'contents': [{'offloaded': 'data'}],
             'summary': {'warnings': [], 'errors': [], 'log_counts': {}}
         }
-        SERVICEDEFINITION["apply"]["handler"].return_value = msg_apply_out
+        SERVICEDEFINITION["apply"]["handler"].return_value = msg_apply_result
         with TemporaryDirectory() as tmpdir:
             with mock.patch("gobcore.utils.GOB_SHARED_DIR", str(tmpdir)):
                 apply_data_path = get_filename(msg_in["contents_ref"], "message_broker")
@@ -116,21 +116,20 @@ class TestMain(TestCase):
                 run_as_standalone(
                     Namespace(
                         handler="apply",
-                        xcom_data=json.dumps(msg_in),
+                        message_data=json.dumps(msg_in),
                         materialized_views=False,
-                        xcom_write_path="/airflow/xcom/return.json",
+                        message_write_path="/airflow/xcom/return.json",
                         mv_name=None
                     )
                 )
-                # The message as passed to airflow, with xcom.
-                # run_as_standalone replaces contents with contents_ref.
+                # run_as_standalone replaces result contents with contents_ref
                 with Path("/airflow/xcom/return.json").open() as fp:
-                    xcom_data = json.load(fp)
-                assert xcom_data["header"]["catalogue"] == "catalogue"
+                    result_data = json.load(fp)
+                assert result_data["header"]["catalogue"] == "catalogue"
                 # Offloading should happen, even if file size is below
                 # _MAX_CONTENTS_SIZE
-                assert "contents_ref" in xcom_data
-                with Path(tmpdir, "message_broker", xcom_data["contents_ref"]).open("r") as fp:
+                assert "contents_ref" in result_data
+                with Path(tmpdir, "message_broker", result_data["contents_ref"]).open("r") as fp:
                     apply_contents = json.load(fp)
                     assert apply_contents == [{'offloaded': 'data'}]
 
