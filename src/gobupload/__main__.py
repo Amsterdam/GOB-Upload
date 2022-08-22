@@ -9,8 +9,9 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any, Optional, Dict
+from typing import Any, Optional, Dict, List, Callable
 
+from gobcore.standalone import default_parser, write_message
 from gobcore.message_broker.config import COMPARE_RESULT_KEY, FULLUPDATE_RESULT_KEY, \
     APPLY_RESULT_KEY, \
     RELATE_PREPARE_RESULT_KEY, RELATE_PROCESS_RESULT_KEY, RELATE_CHECK_RESULT_KEY, \
@@ -22,6 +23,7 @@ from gobcore.message_broker.config import WORKFLOW_EXCHANGE, FULLUPDATE_QUEUE, \
 from gobcore.message_broker.messagedriven_service import messagedriven_service
 from gobcore.message_broker.offline_contents import load_message, offload_message
 from gobcore.message_broker.utils import to_json, from_json
+from gobcore.workflow.start_commands import WorkflowCommands
 
 from gobupload import apply
 from gobupload import compare
@@ -95,28 +97,9 @@ if DEBUG:
     print("WARNING: Debug mode is ON")
 
 
-def parse_arguments() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        prog="python -m gobupload",
-        description="GOB Upload, Compare and Relate"
-    )
+def parse_extra_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
+    """Extend default parser with gob-upload specific arguments."""
 
-    # Upload task arguments
-    parser.add_argument(
-        "handler",
-        choices=list(SERVICEDEFINITION.keys()) + ["migrate"],
-        help="Which handler to run."
-    )
-    parser.add_argument(
-        "--message-data",
-        default=json.dumps({}),
-        help="Message data used by the handler."
-    )
-    parser.add_argument(
-        "--message-result-path",
-        default="/airflow/xcom/return.json",
-        help="Path to store result message."
-    )
     # Additional arguments for migrations
     parser.add_argument(
         "--materialized_views",
@@ -129,41 +112,18 @@ def parse_arguments() -> argparse.Namespace:
         nargs="?",
         help="The materialized view to update. Use with --materialized-views"
     )
-    return parser.parse_args()
+    return parser
 
 
-def _write_message(message_out: Dict[str, Any], write_path: Path) -> None:
-    """Write message data to a file. Ensures parent directories exist.
-
-    :param message_out: Message data to be written
-    :param write_path: Path to write message data to. To use airflow's xcom,
-        use `/airflow/xcom/return.json` as a path.
-    """
-    print(f"Writing message data to {write_path}")
-    write_path.parent.mkdir(parents=True, exist_ok=True)
-    write_path.write_text(json.dumps(message_out))
-
-
-def run_as_standalone(args: argparse.Namespace) -> Optional[dict[str, Any]]:
-    storage = GOBStorageHandler()
-    # Migrate on request only
-    if args.handler == "migrate":
-        recreate = [args.mv_name] \
-            if args.materialized_views and args.mv_name else args.materialized_views
-        storage.init_storage(force_migrate=True, recreate_materialized_views=recreate)
-        return
-
-    storage.init_storage()
-
-    print(f"Parsing incoming message data: {args.message_data}")
+def run_as_standalone(args: argparse.Namespace, handler: Callable, message_data: Dict) -> Optional[dict[str, Any]]:
     # Load offloaded 'contents_ref'-data into message
     message_in, offloaded_filename = load_message(
-        msg=json.loads(args.message_data),
+        # msg=json.loads(args.message_data),
+        msg=message_data,
         converter=from_json,
         params={"stream_contents": False}
     )
-    handler = SERVICEDEFINITION.get(args.handler)["handler"]
-    message_out = handler(message_in)
+    message_out: Dict[str, Any] = handler(message_in)
     message_out_offloaded = offload_message(
         msg=message_out,
         converter=to_json,
@@ -171,7 +131,7 @@ def run_as_standalone(args: argparse.Namespace) -> Optional[dict[str, Any]]:
     )
 
     print(f"Writing message data to {args.message_write_path}")
-    _write_message(message_out_offloaded, Path(args.message_write_path))
+    write_message(message_out_offloaded, Path(args.message_write_path))
     return message_out_offloaded
 
 
@@ -189,14 +149,57 @@ def run_as_message_driven() -> None:
     messagedriven_service(SERVICEDEFINITION, "Upload", params)
 
 
+def migrate_handler(args) -> Dict[str, Any]:
+    """Special handler to handle migrate case.
+
+    :return: handlers always return a message, in this case an empty one.
+    """
+    storage = GOBStorageHandler()
+    # Migrate on request only
+    recreate = [args.mv_name] \
+        if args.materialized_views and args.mv_name else args.materialized_views
+    storage.init_storage(force_migrate=True, recreate_materialized_views=recreate)
+    return {}
+
+
+def _get_handler(args: argparse.Namespace) -> Callable:
+    if args.handler == "migrate":
+        return migrate_handler
+
+    storage = GOBStorageHandler()
+    storage.init_storage()
+    return SERVICEDEFINITION.get(args.handler)["handler"]
+
+
+def _construct_message(args):
+    # TODO: not finished yet, some required fields should be defined here
+    msg = {"header": args}
+    return msg
+
+
 def main():
     if len(sys.argv) == 1:
         print("No arguments found, wait for messages on the message broker.")
         run_as_message_driven()
     else:
+        parser = default_parser(list(SERVICEDEFINITION.keys()) + ["migrate"])
+        default_args = parser.parse_args()
         print("Arguments found, run as standalone")
-        args = parse_arguments()
-        run_as_standalone(args)
+        if default_args.message_data:
+            parser_extra = parse_extra_arguments(parser)
+            extra_args = parser_extra.parse_args()
+            run_as_standalone(
+                args=extra_args,
+                handler=_get_handler(extra_args),
+                message_data=json.loads(extra_args.message_data)
+            )
+        else:
+            args = WorkflowCommands([default_args.handler]).parse_arguments()
+            run_as_standalone(
+                args=args,
+                handler=_get_handler(args),
+                message_data=_construct_message(args)
+            )
 
 
 if __name__ == "__main__":
