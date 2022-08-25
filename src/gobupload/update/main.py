@@ -72,6 +72,7 @@ def full_update(msg):
     :return: Result message
     """
     logger.configure(msg, "UPDATE")
+    logger.add_message_broker_handler()
     logger.info(f"Update to GOB Database {GOBStorageHandler.user_name} started")
 
     # Interpret the message header
