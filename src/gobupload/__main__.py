@@ -124,7 +124,6 @@ def argument_parser():
     )
     relate_parser.add_argument(
         "--mode",
-        # named=True,
         required=False,
         help="The mode to use, defaults to update.",
         default="update",
@@ -134,14 +133,20 @@ def argument_parser():
     subparsers.add_parser(
         name="full_update",
     )
-
+    compare_parser = subparsers.add_parser(
+        name="compare",
+    )
+    compare_parser.add_argument(
+        "--mode",
+        required=False,
+        help="The mode to use, defaults to full.",
+        default="full",
+        choices=["delete", "full"]
+    )
     # Parsers for handlers without any extra arguments.
     # These handlers are not 'start_commands'.
     # These arguments expect data from previous arguments to be passed with
     # --message-data='{...}'
-    subparsers.add_parser(
-        name="compare",
-    )
     subparsers.add_parser(
         name="relate_check",
     )
