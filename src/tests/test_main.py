@@ -3,6 +3,10 @@ import importlib
 
 from unittest import TestCase, mock
 
+from gobupload.__main__ import build_message, argument_parser, main, run_as_standalone, \
+    SERVICEDEFINITION
+
+
 @mock.patch('gobcore.message_broker.notifications.listen_to_notifications', mock.MagicMock())
 class TestMain(TestCase):
 
@@ -69,3 +73,38 @@ class TestMain(TestCase):
             force_migrate=True,
             recreate_materialized_views=['some_mv_name']
         )
+
+    @mock.patch('gobupload.storage.handler.GOBStorageHandler')
+    @mock.patch('gobupload.__main__.run_as_standalone')
+    def test_main_calls_run_as_standalone(self, mock_run_as_standalone, mock_storage):
+        # No command line arguments
+        sys.argv = [
+            'python -m gobupload',
+            'apply',
+            '--catalogue', 'test_catalogue',
+            '--entity', 'test_entity_autoid'
+        ]
+        main()
+        mock_run_as_standalone.assert_called()
+
+    @mock.patch('gobupload.__main__.GOBStorageHandler')
+    @mock.patch.dict(SERVICEDEFINITION, {'apply': {
+        'handler': mock.MagicMock(__name__="apply_mock", return_value={"msg": "data"})}
+    })
+    def test_run_as_standalone(self, mock_storage):
+        # No command line arguments
+        ap = argument_parser()
+        args = ap.parse_args([
+            'apply', '--catalogue', 'test_catalogue', '--entity', 'test_entity_autoid'
+        ])
+        assert run_as_standalone(args, SERVICEDEFINITION) == {"msg": "data"}
+
+    def test_build_message(self):
+        ap = argument_parser()
+        args = ap.parse_args([
+            'apply', '--catalogue', 'test_catalogue', '--entity', 'test_entity_autoid'
+        ])
+        message = build_message(args)
+        assert message["catalogue"] == "test_catalogue"
+        assert message["entity"] == "test_entity_autoid"
+        assert message["collection"] == "test_entity_autoid"
