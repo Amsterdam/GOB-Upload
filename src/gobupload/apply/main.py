@@ -105,6 +105,7 @@ def apply(msg):
     mode = msg['header'].get('mode', FULL_UPLOAD)
 
     logger.configure(msg, "UPDATE")
+    logger.add_message_broker_handler()
     logger.info("Apply events")
 
     storage = GOBStorageHandler()

@@ -46,6 +46,7 @@ def check_relation(msg):
     model = GOBModel()
 
     logger.configure(msg, "RELATE_CHECK")
+    logger.add_message_broker_handler()
     logger.info("Relate check started")
 
     collection = model.get_collection(catalog_name, collection_name)
@@ -171,6 +172,7 @@ def prepare_relate(msg):
     })
 
     logger.configure(msg, "RELATE")
+    logger.add_message_broker_handler()
 
     if not catalog_name or not collection_name or not attribute_name:
         # A job will be splitted when catalog, collection or attribute are not provided
@@ -257,6 +259,7 @@ def process_relate(msg: dict):
     :return: the result message of the relate process
     """
     logger.configure(msg, "RELATE SRC")
+    logger.add_message_broker_handler()
 
     _check_message(msg)
     header = msg.get('header')
@@ -322,6 +325,7 @@ def update_materialized_view(msg):
     attribute_name = header.get('attribute')
 
     logger.configure(msg, "UPDATE_VIEW")
+    logger.add_message_broker_handler()
     storage_handler = GOBStorageHandler()
 
     view = _get_materialized_view(catalog_name, collection_name, attribute_name)

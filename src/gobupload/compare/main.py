@@ -30,6 +30,7 @@ def compare(msg):
     :return: result message
     """
     logger.configure(msg, "COMPARE")
+    logger.add_message_broker_handler()
     header = msg.get('header', {})
     mode = ImportMode(header.get('mode', FULL_UPLOAD))
     logger.info(f"Compare (mode = {mode.name}) to GOB Database {GOBStorageHandler.user_name} started")
