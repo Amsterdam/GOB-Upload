@@ -96,39 +96,65 @@ def argument_parser():
     apply_parser.add_argument(
         "--catalogue",
         required=False,
-        help="The name of the data catalogue (example: \"meetbouten\")"
+        help="The name of the data catalogue (example: \"meetbouten\")."
     )
     apply_parser.add_argument(
-        "--entity",
+        "--collection",
         required=False,
-        help="The name of the data collection (example: \"metingen\")"
+        help="The name of the data collection (example: \"metingen\")."
     )
     # Relate handler parser
     relate_parser = subparsers.add_parser(
-        name="relate",
-        description="Apply events, also known as 'update_model'."
+        name="relate_prepare",
+        description="Build relations for a catalogue, also called 'relate'."
     )
     relate_parser.add_argument(
         "--catalogue",
         required=True,
-        help="The name of the data catalogue (example: \"meetbouten\")"
+        help="The name of the data catalogue (example: \"meetbouten\")."
     )
     relate_parser.add_argument(
         "--collection",
-        help="The name of the data collection (example: \"metingen\")"
+        help="The name of the data collection (example: \"metingen\")."
     )
     relate_parser.add_argument(
         "--attribute",
-        help="The name of the attribute containing the relation to relate (example: \"ligt_in_buurt\")"
+        help="The name of the attribute containing the relation to relate "
+             "(example: \"ligt_in_buurt\")."
     )
     relate_parser.add_argument(
         "--mode",
         # named=True,
         required=False,
-        help="The mode to use. Defaults to update",
+        help="The mode to use, defaults to update.",
         default="update",
         choices=["update", "full"]
     )
+
+    subparsers.add_parser(
+        name="full_update",
+    )
+
+    # Parsers for handlers without any extra arguments.
+    # These handlers are not 'start_commands'.
+    # These arguments expect data from previous arguments to be passed with
+    # --message-data='{...}'
+    subparsers.add_parser(
+        name="compare",
+    )
+    subparsers.add_parser(
+        name="relate_check",
+    )
+    subparsers.add_parser(
+        name="relate_process",
+    )
+    subparsers.add_parser(
+        name="relate_update_view",
+    )
+    subparsers.add_parser(
+        name="upload",
+    )
+
     # Migrate faux handler, which migrates the gob-upload database.
     migrate_parser = subparsers.add_parser(
         name="migrate",
@@ -137,18 +163,18 @@ def argument_parser():
         "--migrate",
         action="store_true",
         default=False,
-        help="migrate the database tables, views and indexes"
+        help="Migrate the database tables, views and indexes."
     )
     migrate_parser.add_argument(
         "--materialized_views",
         action="store_true",
         default=False,
-        help="force recreation of materialized views"
+        help="Force recreation of materialized views."
     )
     migrate_parser.add_argument(
         "--mv_name",
         nargs="?",
-        help="The materialized view to update. Use with --materialized-views"
+        help="The materialized view to update. Use with --materialized-views."
     )
     return parser
 
