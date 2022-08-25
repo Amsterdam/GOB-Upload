@@ -39,7 +39,8 @@ FROM application as development
 # mounts from the developer filesystem. Changes made to GOB-Core
 # will be available immediately.
 #USER root
-RUN git clone --depth=1 https://github.com/Amsterdam/GOB-Core.git
+#RUN git clone --depth=1 https://github.com/Amsterdam/GOB-Core.git
+RUN rm -rf GOB-Core && git clone --depth=1 --branch generic-arguments https://github.com/Amsterdam/GOB-Core.git
 RUN LIBGDAL_VERSION=$(gdal-config --version) pip install -e /app/GOB-Core
 #USER datapunt
 
