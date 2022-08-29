@@ -5,7 +5,6 @@ It reads the storage to derive events from new uploads
 It writes the storage to apply events to the storage
 
 """
-import argparse
 import sys
 
 from gobcore.message_broker.config import COMPARE_RESULT_KEY, FULLUPDATE_RESULT_KEY, \
@@ -171,13 +170,13 @@ def argument_parser():
         help="Migrate the database tables, views and indexes."
     )
     migrate_parser.add_argument(
-        "--materialized_views",
+        "--materialized-views",
         action="store_true",
         default=False,
         help="Force recreation of materialized views."
     )
     migrate_parser.add_argument(
-        "--mv_name",
+        "--mv-name",
         nargs="?",
         help="The materialized view to update. Use with --materialized-views."
     )
