@@ -2,6 +2,9 @@ import logging
 
 from unittest import TestCase, mock
 from unittest.mock import MagicMock, patch, ANY
+
+from gobcore.logging.logger import logger
+
 from tests import fixtures
 
 from gobcore.message_broker.offline_contents import ContentsWriter
@@ -30,6 +33,7 @@ class TestCompare(TestCase):
         }
         mock_event_collector.reset_mock()
         mock_writer.reset_mock()
+        logger.configure({}, "TEST_COMPARE")
 
     def tearDown(self):
         logging.disable(logging.NOTSET)

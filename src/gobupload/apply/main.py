@@ -104,8 +104,6 @@ def _get_source_catalog_entity_combinations(storage, msg):
 def apply(msg):
     mode = msg['header'].get('mode', FULL_UPLOAD)
 
-    logger.configure(msg, "UPDATE")
-    logger.add_message_broker_handler()
     logger.info("Apply events")
 
     storage = GOBStorageHandler()
@@ -152,7 +150,7 @@ def apply(msg):
 
     msg['summary'] = logger.get_summary()
 
-    # Add a events notification telling what types of event have been applied
+    # Add events notification telling what types of event have been applied
     if not msg['header'].get('suppress_notifications', False):
         add_notification(msg, EventNotification(stats.applied, [before, after]))
 
