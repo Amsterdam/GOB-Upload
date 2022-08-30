@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 from gobcore.events.import_events import ADD, CONFIRM, DELETE, MODIFY
 from gobcore.exceptions import GOBException
+from gobcore.logging.logger import logger
 
 from gobupload.storage.handler import GOBStorageHandler
 from gobupload.update.event_applicator import database_to_gobevent
@@ -16,6 +17,7 @@ class TestUpdate(TestCase):
     def setUp(self):
         # Disable logging to prevent test from connecting to RabbitMQ
         logging.disable(logging.CRITICAL)
+        logger.configure({}, "TEST_UPDATE")
 
         self.mock_storage = MagicMock(spec=GOBStorageHandler)
 

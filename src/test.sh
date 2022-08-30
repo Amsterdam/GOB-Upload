@@ -10,7 +10,7 @@ echo "Running tests"
 coverage run --source=./gobupload -m pytest tests/
 
 echo "Running coverage report"
-coverage report --show-missing --fail-under=93
+coverage report --show-missing --fail-under=94
 
 echo "Running style checks"
 flake8

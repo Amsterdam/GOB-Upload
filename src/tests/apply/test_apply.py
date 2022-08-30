@@ -3,6 +3,8 @@ from unittest import TestCase
 import logging
 from unittest.mock import ANY, MagicMock, patch
 
+from gobcore.logging.logger import logger
+
 from gobupload.apply.main import _should_analyze, apply, apply_confirm_events, \
     apply_events
 from gobupload.storage.handler import GOBStorageHandler
@@ -22,6 +24,7 @@ class TestApply(TestCase):
     def setUp(self):
         # Disable logging to prevent test from connecting to RabbitMQ
         logging.disable(logging.CRITICAL)
+        logger.configure({}, "TEST_APPLY")
 
         self.mock_storage = MagicMock(spec=GOBStorageHandler)
 
