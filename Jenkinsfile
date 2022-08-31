@@ -52,6 +52,24 @@ node('GOBBUILD') {
 
         String BRANCH = "${env.BRANCH_NAME}"
 
+
+        if (BRANCH == "acr-jenkins-push") {
+            stage("Push develop image to ACR") {
+                tryStep "image tagging", {
+                    // Create credentials for the ACR:
+                    // az acr token create --registry=<registry_name> --name=jenkins-build-token --scope-map=_repositories_push
+                    withCredentials([usernamePassword(credentialsId: 'BENK_ONTW_ACR_JENKINS', usernameVariable: 'ACR_USERNAME', passwordVariable: 'ACR_TOKEN')]) {
+                        echo "Push image to ${ACR_USERNAME}@${BENK_ACR_ONTW}"
+                        docker.withRegistry("https://${BENK_ACR_ONTW}", 'BENK_ONTW_ACR_JENKINS') {
+                            def image = docker.image("${DOCKER_IMAGE_NAME}")
+                            image.push("develop")
+                            image.push("test")
+                        }
+                    }
+                }
+            }
+
+        }
         if (BRANCH == "develop") {
             stage("Push develop image to ACR") {
                 tryStep "image tagging", {
