@@ -5,6 +5,7 @@ It reads the storage to derive events from new uploads
 It writes the storage to apply events to the storage
 
 """
+import argparse
 import sys
 
 from gobcore.message_broker.config import COMPARE_RESULT_KEY, FULLUPDATE_RESULT_KEY, \
@@ -164,12 +165,6 @@ def argument_parser():
         name="migrate",
     )
     migrate_parser.add_argument(
-        "--migrate",
-        action="store_true",
-        default=False,
-        help="Migrate the database tables, views and indexes."
-    )
-    migrate_parser.add_argument(
         "--materialized-views",
         action="store_true",
         default=False,
@@ -202,6 +197,21 @@ def run_as_message_driven() -> None:
     messagedriven_service(SERVICEDEFINITION, "Upload", params)
 
 
+def _migrate(args: argparse.Namespace, storage: GOBStorageHandler) -> None:
+    """Migrate the database.
+
+    :param args: additional migrate parameters.
+    :param storage: the storage handler to apply the migrations to.
+    """
+    recreate = [args.mv_name] \
+        if args.materialized_views and args.mv_name else args.materialized_views
+
+    storage.init_storage(
+        force_migrate=True,
+        recreate_materialized_views=recreate
+    )
+
+
 def main():
     if len(sys.argv) == 1:
         print("No arguments found, wait for messages on the message broker.")
@@ -213,17 +223,11 @@ def main():
         storage = GOBStorageHandler()
         # Special case for migrate, which is specific to upload
         if args.handler == "migrate":
-            recreate = [args.mv_name] \
-                if args.materialized_views and args.mv_name else args.materialized_views
-
-            storage.init_storage(
-                force_migrate=True,
-                recreate_materialized_views=recreate
-            )
+            _migrate(args, storage)
             return
 
         storage.init_storage()
-        run_as_standalone(args, SERVICEDEFINITION)
+        sys.exit(run_as_standalone(args, SERVICEDEFINITION))
 
 
 if __name__ == "__main__":
