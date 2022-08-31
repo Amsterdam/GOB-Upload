@@ -1,6 +1,8 @@
 import sys
 from unittest import TestCase, mock
 
+import pytest
+
 from gobupload.__main__ import main, SERVICEDEFINITION
 
 
@@ -72,5 +74,6 @@ class TestMain(TestCase):
             '--catalogue', 'test_catalogue',
             '--collection', 'test_entity_autoid'
         ]
-        main()
+        with pytest.raises(SystemExit):
+            main()
         mock_run_as_standalone.assert_called()
