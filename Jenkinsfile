@@ -18,7 +18,7 @@ def tryStep(String message, Closure block, Closure tearDown = null) {
 
 
 node('GOBBUILD') {
-    withEnv(["DOCKER_IMAGE_NAME=datapunt/gob_upload:${env.BUILD_NUMBER}"
+    withEnv(["DOCKER_IMAGE_NAME=datapunt/gob_upload:${env.BUILD_NUMBER}",
             "BENK_ACR_ONTW=benkweuacrofkl2hn5eivwy.azurecr.io"
             ]) {
 
