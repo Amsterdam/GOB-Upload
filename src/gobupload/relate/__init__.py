@@ -45,8 +45,6 @@ def check_relation(msg):
 
     model = GOBModel()
 
-    logger.configure(msg, "RELATE_CHECK")
-    logger.add_message_broker_handler()
     logger.info("Relate check started")
 
     collection = model.get_collection(catalog_name, collection_name)
@@ -171,9 +169,6 @@ def prepare_relate(msg):
         "timestamp": timestamp,
     })
 
-    logger.configure(msg, "RELATE")
-    logger.add_message_broker_handler()
-
     if not catalog_name or not collection_name or not attribute_name:
         # A job will be splitted when catalog, collection or attribute are not provided
         logger.info("Splitting relate job")
@@ -258,9 +253,6 @@ def process_relate(msg: dict):
     :param msg: a message from the broker containing the catalog and collections (optional)
     :return: the result message of the relate process
     """
-    logger.configure(msg, "RELATE SRC")
-    logger.add_message_broker_handler()
-
     _check_message(msg)
     header = msg.get('header')
 
@@ -324,8 +316,6 @@ def update_materialized_view(msg):
     collection_name = header.get('collection')
     attribute_name = header.get('attribute')
 
-    logger.configure(msg, "UPDATE_VIEW")
-    logger.add_message_broker_handler()
     storage_handler = GOBStorageHandler()
 
     view = _get_materialized_view(catalog_name, collection_name, attribute_name)

@@ -18,7 +18,8 @@ def tryStep(String message, Closure block, Closure tearDown = null) {
 
 
 node('GOBBUILD') {
-    withEnv(["DOCKER_IMAGE_NAME=datapunt/gob_upload:${env.BUILD_NUMBER}"
+    withEnv(["DOCKER_IMAGE_NAME=datapunt/gob_upload:${env.BUILD_NUMBER}",
+            "BENK_ACR_ONTW=benkweuacrofkl2hn5eivwy.azurecr.io"
             ]) {
 
         stage("Checkout") {
@@ -52,6 +53,21 @@ node('GOBBUILD') {
         String BRANCH = "${env.BRANCH_NAME}"
 
         if (BRANCH == "develop") {
+
+            stage("Push develop image to ACR") {
+                tryStep "image tagging", {
+                    // Create credentials for the ACR:
+                    // az acr token create --registry=<registry_name> --name=jenkins-build-token --scope-map=_repositories_push
+                    withCredentials([usernamePassword(credentialsId: 'BENK_ONTW_ACR_JENKINS', usernameVariable: 'ACR_USERNAME', passwordVariable: 'ACR_TOKEN')]) {
+                        echo "Push image to ${ACR_USERNAME}@${BENK_ACR_ONTW}"
+                        docker.withRegistry("https://${BENK_ACR_ONTW}", 'BENK_ONTW_ACR_JENKINS') {
+                            def image = docker.image("${DOCKER_IMAGE_NAME}")
+                            image.push("develop")
+                            image.push("test")
+                        }
+                    }
+                }
+            }
 
             stage('Push develop image') {
                 tryStep "image tagging", {

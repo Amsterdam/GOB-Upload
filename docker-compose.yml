@@ -7,6 +7,7 @@ services:
       context: src
       target: development
     container_name: gobupload
+    image: gob_upload
     environment:
       MESSAGE_BROKER_ADDRESS: rabbitmq
       DATABASE_PORT_OVERRIDE: 5432
