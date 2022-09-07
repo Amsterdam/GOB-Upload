@@ -30,34 +30,35 @@ COPY alembic alembic
 COPY alembic.ini alembic.ini
 
 # Set GOBOPTIONS=--migrate to run migrations and then exit
+USER datapunt
 CMD python3 -m gobupload $GOBOPTIONS
 
 
 # Development.
 FROM application as development
+USER root
 # Install GOB-Core in development mode. Will be overridden with
 # mounts from the developer filesystem. Changes made to GOB-Core
 # will be available immediately.
-#USER root
 RUN rm -rf GOB-Core && git clone --depth=1 --branch master https://github.com/Amsterdam/GOB-Core.git
 RUN LIBGDAL_VERSION=$(gdal-config --version) pip install -e /app/GOB-Core
-#USER datapunt
+USER datapunt
 
 
 # Test.
 FROM application as test
-# Run tests as root for now
-#USER root
-# Remove gobcore tests
+USER root
+
+# Remove gobcore tests.
 RUN rm -rf /app/src/gobcore/tests
 
-# Copy tests
+# Copy test module and tests.
+COPY test.sh .flake8 pytest.ini ./
 COPY tests tests
-COPY .flake8 .flake8
-COPY test.sh test.sh
 
-# Copy jenkins files
+# Copy Jenkins files.
 COPY .jenkins /.jenkins
 
-RUN mkdir -p /app/shared/message_broker #&& chown datapunt /app/shared
-#USER datapunt
+RUN mkdir -m 2755 -p /app/shared/message_broker && chown datapunt.datapunt /app/shared/message_broker
+
+USER datapunt
