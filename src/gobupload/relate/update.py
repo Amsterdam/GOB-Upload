@@ -1,26 +1,25 @@
-"""
-See README.md in this directory for explanation of this file.
-"""
+"""See README.md in this directory for explanation of this file."""
 
 import hashlib
 import json
 from datetime import date, datetime
+
 from gobcore.events.import_events import ADD, CONFIRM, DELETE, MODIFY
 from gobcore.exceptions import GOBException
 from gobcore.logging.logger import logger
 from gobcore.message_broker.offline_contents import ContentsWriter
-from gobcore.model import GOBModel
 from gobcore.model.metadata import FIELD
 from gobcore.model.relations import get_relation_name
 from gobcore.sources import GOBSources
 from gobcore.typesystem.json import GobTypeJSONEncoder
 from gobcore.utils import ProgressTicker
 
+from gobupload import gob_model
 from gobupload.compare.event_collector import EventCollector
 from gobupload.config import DEBUG
-from gobupload.relate.exceptions import RelateException
 from gobupload.storage.execute import _execute
 from gobupload.utils import random_string
+from gobupload.relate.exceptions import RelateException
 
 EQUALS = 'equals'
 LIES_IN = 'lies_in'
@@ -119,7 +118,7 @@ WINDOW w AS (PARTITION BY {FIELD.ID}, consecutive_period ORDER BY {FIELD.ID}, {F
 
     @classmethod
     def from_catalog_collection(cls, catalog_name: str, collection_name: str, table_name: str):
-        from_table = GOBModel().get_table_name(catalog_name, collection_name)
+        from_table = gob_model.get_table_name(catalog_name, collection_name)
         return cls(from_table, table_name)
 
 
@@ -176,31 +175,29 @@ class EventCreator:
             data = {k: v for k, v in row.items() if k not in ignore_fields}
             return ADD.create_event(row[FIELD.ID], data, _RELATE_VERSION)
 
-        elif row['src_deleted'] is not None or row['src_id'] is None:
+        if row['src_deleted'] is not None or row['src_id'] is None:
             # src id marked as deleted or doesn't exist
             data = {FIELD.LAST_EVENT: row[FIELD.LAST_EVENT]}
             return DELETE.create_event(row['rel_id'], data, _RELATE_VERSION)
 
-        else:
-            row[FIELD.HASH] = self._get_hash(row)
-            modifications = [] \
-                if row[FIELD.HASH] == row[f"rel_{FIELD.HASH}"] \
-                else self._get_modifications(row, compare_fields)
+        row[FIELD.HASH] = self._get_hash(row)
+        modifications = [] \
+            if row[FIELD.HASH] == row[f"rel_{FIELD.HASH}"] \
+            else self._get_modifications(row, compare_fields)
 
-            if modifications:
-                data = {
-                    'modifications': modifications,
-                    FIELD.LAST_EVENT: row[FIELD.LAST_EVENT],
-                    FIELD.HASH: row[FIELD.HASH],
-                }
-                return MODIFY.create_event(row['rel_id'], data, _RELATE_VERSION)
-            else:
-                data = {FIELD.LAST_EVENT: row[FIELD.LAST_EVENT]}
-                return CONFIRM.create_event(row['rel_id'], data, _RELATE_VERSION)
+        if modifications:
+            data = {
+                'modifications': modifications,
+                FIELD.LAST_EVENT: row[FIELD.LAST_EVENT],
+                FIELD.HASH: row[FIELD.HASH],
+            }
+            return MODIFY.create_event(row['rel_id'], data, _RELATE_VERSION)
+        data = {FIELD.LAST_EVENT: row[FIELD.LAST_EVENT]}
+        return CONFIRM.create_event(row['rel_id'], data, _RELATE_VERSION)
 
 
 class Relater:
-    model = GOBModel()
+    model = gob_model
     sources = GOBSources(model)
 
     space_join = ' \n    '
@@ -212,8 +209,8 @@ class Relater:
     src_entities_alias = 'src_entities'
     dst_entities_alias = 'dst_entities'
 
-    # The names of the fields to be returned. Optionally extendes with src_volgnummer and/or dst_volgnummer if
-    # applicable
+    # The names of the fields to be returned.
+    # Optionally extendes with src_volgnummer and/or dst_volgnummer if applicable.
     select_aliases = [
         FIELD.VERSION,
         FIELD.APPLICATION,
@@ -255,13 +252,19 @@ class Relater:
         self.src_collection_name = src_collection_name
         self.src_field_name = src_field_name
 
-        self.src_collection = self.model.get_collection(src_catalog_name, src_collection_name)
+        try:
+            self.src_collection = self.model[src_catalog_name]['collections'][src_collection_name]
+        except KeyError:
+            self.src_collection = None
         self.src_field = self.src_collection['all_fields'].get(src_field_name)
         self.src_table_name = self.model.get_table_name(src_catalog_name, src_collection_name)
 
         # Get the destination catalog and collection names
         self.dst_catalog_name, self.dst_collection_name = self.src_field['ref'].split(':')
-        self.dst_collection = self.model.get_collection(self.dst_catalog_name, self.dst_collection_name)
+        try:
+            self.dst_collection = self.model[self.dst_catalog_name]['collections'][self.dst_collection_name]
+        except KeyError:
+            self.dst_collection = None
         self.dst_table_name = self.model.get_table_name(self.dst_catalog_name, self.dst_collection_name)
 
         # Check if source or destination has states (volgnummer, begin_geldigheid, eind_geldigheid)
@@ -345,7 +348,7 @@ class Relater:
     def _build_select_expressions(self, mapping: dict, is_conflicts_query: bool = False):
         aliases = self._select_aliases(is_conflicts_query)
 
-        assert all([alias in mapping.keys() for alias in aliases]), \
+        assert all(alias in mapping.keys() for alias in aliases), \
             'Missing key(s): ' + str([alias for alias in aliases if alias not in mapping.keys()])
 
         return [f'{mapping[alias]} AS {alias}' for alias in aliases]
@@ -463,7 +466,7 @@ class Relater:
 
         if not self.relation_specs:
             return 'NULL'
-        elif len(self.relation_specs) == 1:
+        if len(self.relation_specs) == 1:
             # Only one spec, no CASE expression necessary
             return self._get_id_for_spec(self.relation_specs[0], src_value_ref)
 
@@ -481,7 +484,7 @@ class Relater:
         """
         if not self.relation_specs:
             return 'NULL'
-        elif len(self.relation_specs) == 1:
+        if len(self.relation_specs) == 1:
             # Only one spec, no CASE expression necessary
             return f"'{self.relation_specs[0]['destination_attribute']}'"
 
@@ -499,8 +502,7 @@ class Relater:
 
         if self.is_many:
             return f"{self.json_join_alias}.item->>'{FIELD.SOURCE_VALUE}'"
-        else:
-            return f"src.{self.src_field_name}->>'{FIELD.SOURCE_VALUE}'"
+        return f"src.{self.src_field_name}->>'{FIELD.SOURCE_VALUE}'"
 
     def _provided_start_validity(self):
         """Returns the start validity as provided in the src object, if present. Defaults to NULL if not present.
@@ -510,8 +512,7 @@ class Relater:
 
         if self.is_many:
             return f"({self.json_join_alias}.item->>'{FIELD.START_VALIDITY}')::timestamp without time zone"
-        else:
-            return f"(src.{self.src_field_name}->>'{FIELD.START_VALIDITY}')::timestamp without time zone"
+        return f"(src.{self.src_field_name}->>'{FIELD.START_VALIDITY}')::timestamp without time zone"
 
     def _geo_resolve(self, spec):
         src_geo = f"src.{spec['source_attribute']}"
@@ -535,8 +536,7 @@ class Relater:
 
         if spec['method'] == EQUALS:
             return f"dst.{spec['destination_attribute']} = {source_value_ref}"
-        else:
-            return self._geo_resolve(spec)
+        return self._geo_resolve(spec)
 
     def _src_dst_match(self, source_value_ref=None):
         """Returns the match clause to match src and dst, to be used in an ON clause (or WHERE, for that matter)
@@ -639,7 +639,7 @@ class Relater:
 
         :return:
         """
-        return any([spec['method'] != EQUALS for spec in self.relation_specs])
+        return any(spec['method'] != EQUALS for spec in self.relation_specs)
 
     def _valid_geo_src_check(self):
         """Returns the proper ST_IsValid checks for the src geo fields
@@ -893,7 +893,7 @@ SELECT * FROM {self.dst_table_name} dst
 
         :return:
         """
-        has_multiple_allowed_source = any([spec['multiple_allowed'] for spec in self.relation_specs])
+        has_multiple_allowed_source = any(spec['multiple_allowed'] for spec in self.relation_specs)
         return "WHERE (" \
                + (f"rel.{FIELD.DATE_DELETED} IS NULL OR " if not is_conflicts_query else "") \
                + f"src.{FIELD.ID} IS NOT NULL)" \
@@ -930,25 +930,24 @@ SELECT * FROM {self.dst_table_name} dst
 
         if self._can_simplify_for(attribute):
             return func(self.relation_specs[0])
-        else:
-            ors = []
+        ors = []
 
-            for spec in self.relation_specs:
-                condition = func(spec)
+        for spec in self.relation_specs:
+            condition = func(spec)
 
-                if condition == 'FALSE':
-                    continue
+            if condition == 'FALSE':
+                continue
 
-                # simplify TRUE
-                condition = '' if condition == 'TRUE' else f" AND {condition}"
-                ors.append(f"src.{FIELD.APPLICATION} = '{spec['source']}'{condition}")
+            # simplify TRUE
+            condition = '' if condition == 'TRUE' else f" AND {condition}"
+            ors.append(f"src.{FIELD.APPLICATION} = '{spec['source']}'{condition}")
 
-            if not ors:
-                # No possible matches. Always FALSE. Important to add this if nothing matches above, otherwise this
-                # would result in a (wrongly) implied TRUE (everything matches).
-                return 'FALSE'
+        if not ors:
+            # No possible matches. Always FALSE. Important to add this if nothing matches above, otherwise this
+            # would result in a (wrongly) implied TRUE (everything matches).
+            return 'FALSE'
 
-            return f"(({') OR ('.join(ors)}))"
+        return f"(({') OR ('.join(ors)}))"
 
     def _can_simplify_for(self, attribute: str):
         """Expressions like ((_source = 'A' AND somecondition) OR (_source = 'B' and somecondition) can often be

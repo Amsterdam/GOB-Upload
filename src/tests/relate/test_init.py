@@ -1,7 +1,9 @@
-from unittest import TestCase, mock
-from unittest.mock import MagicMock, patch, call
+from unittest import TestCase
+from unittest.mock import MagicMock, patch, call, ANY
 
 from gobcore.exceptions import GOBException
+
+from gobupload import gob_model
 from gobupload.relate import prepare_relate, check_relation, \
     _log_exception, _split_job, update_materialized_view, _get_materialized_view_by_relation_name, \
     _get_materialized_view, WORKFLOW_EXCHANGE, WORKFLOW_REQUEST_KEY, _check_message, process_relate
@@ -13,30 +15,29 @@ class TestInit(TestCase):
     class MockModel:
         model = {
             'catalog': {
-                'collA': {
-                    'attributes': ['attrA', 'attrB', 'attrC']
-                },
-                'colB': {
-                    'attributes': [],
-                },
-                'dst_col': {
-                    'attributes': ['attr'],
-                },
-                'the collection': {
-                    'the attribute': 'val',
-                    'attributes': [],
+                'collections': {
+                    'collA': {
+                        'attributes': ['attrA', 'attrB', 'attrC']
+                    },
+                    'colB': {
+                        'attributes': [],
+                    },
+                    'dst_col': {
+                        'attributes': ['attr'],
+                    },
+                    'the collection': {
+                        'the attribute': 'val',
+                        'attributes': [],
+                    }
                 }
             }
         }
 
-        def get_catalog(self, catalog):
+        def __getitem__(self, catalog):
+            return self.model[catalog]
+
+        def get(self, catalog):
             return self.model.get(catalog)
-
-        def get_collection_names(self, catalog):
-            return self.model.get(catalog).keys()
-
-        def get_collection(self, catalog, collection):
-            return self.model.get(catalog).get(collection)
 
         def _extract_references(self, attributes):
             return attributes
@@ -46,7 +47,8 @@ class TestInit(TestCase):
             self.gobmodel = gobmodel
 
         def get_field_relations(self, catalog, collection, attribute):
-            return self.gobmodel.model.get(catalog, {}).get(collection, {}).get(attribute)
+            return self.gobmodel.model.get(catalog, {}).get(
+                'collections').get(collection, {}).get(attribute)
 
     def setUp(self):
         pass
@@ -55,29 +57,90 @@ class TestInit(TestCase):
         pass
 
 
+    @patch('gobupload.relate.gob_model', MagicMock(spec_set=gob_model))
     @patch('gobupload.relate._log_exception')
-    @patch('gobupload.relate.GOBModel', MagicMock())
+    def test_check_relation_with_invalid_messages(self, mock_log_exception):
+        """Test check_relation with invalid messages."""
+        no_header = {}
+        with self.assertRaises(GOBException):
+            check_relation(no_header)
+        mock_log_exception.assert_called_with(
+            "Invalid message: header key is missing", ANY)
+        mock_log_exception.reset_mock()
+
+        invalid_catalog = {
+            'header': {
+                'catalogue': 'invalid catalog key'
+            }
+        }
+        with self.assertRaises(GOBException):
+            check_relation(invalid_catalog)
+        mock_log_exception.assert_called()
+        mock_log_exception.reset_mock()
+
+        invalid_collection = {
+            'header': {
+                'original_catalogue': 'valid catalogue key',
+                'collection': 'invalid collection key'
+            }
+        }
+        with self.assertRaises(GOBException):
+            check_relation(invalid_collection)
+        mock_log_exception.assert_called()
+        mock_log_exception.reset_mock()
+
+        invalid_attribute = {
+            'header': {
+                'original_catalogue': 'valid catalogue key',
+                'original_collection': 'valid collection key',
+                'attribute': 'invalid attribute key'
+            }
+        }
+        with self.assertRaises(GOBException):
+            check_relation(invalid_attribute)
+        mock_log_exception.assert_called()
+
+    @patch('gobupload.relate._log_exception')
+    @patch('gobupload.relate.gob_model', spec_set=True, name="gob_model")
     @patch('gobupload.relate.logger', MagicMock())
     @patch('gobupload.relate.check_relations')
     @patch('gobupload.relate.check_relation_conflicts', MagicMock())
-    def test_check_relation(self, mock_check_relations, _log_exception):
-        msg = {
+    def test_check_relation(self, mock_check_relations, mock_model, mock_log_exception):
+        """Test check_relation with valid message."""
+        valid_message = {
             'header': {
-                'catalogue': 'any catalog',
-                'collections': 'any collections'
+                'original_catalogue': 'valid catalogue key',
+                'original_collection': 'valid collection key',
+                'original_attribute': 'valid attribute key'
             }
         }
-        result = check_relation(msg)
+
+        # Check valid message result.
+        result = check_relation(valid_message)
         self.assertEqual(result, {
-            'header': msg['header'],
-            'summary': mock.ANY,
+            'header': valid_message['header'],
+            'summary': ANY,
             'contents': None
         })
 
-        mock_check_relations.side_effect = Exception
-        result = check_relation(msg)
+        # CATALOG_KEY missing.
+        mock_model.__getitem__.side_effect = KeyError
+        with self.assertRaises(GOBException):
+            check_relation(valid_message)
+        mock_model.reset_mock(side_effect=True)
 
-        _log_exception.assert_called()
+        # COLLECTION_KEY missing.
+        mock_model.__getitem__.return_value = {
+                'collections': {}
+                }
+        with self.assertRaises(GOBException):
+            check_relation(valid_message)
+        mock_model.reset_mock(return_value=True)
+
+        # attribute check failure
+        mock_check_relations.side_effect = Exception
+        result = check_relation(valid_message)
+        mock_log_exception.assert_called()
 
     def test_log_exception(self):
         mock_logger.error = MagicMock()
@@ -88,7 +151,7 @@ class TestInit(TestCase):
         mock_logger.error.assert_called_with("any m...")
 
     def _get_split_msg(self, original_msg, catalog, collection, attribute):
-        header = {k: v for k, v in original_msg['header'].items()}
+        header = dict(original_msg['header'].items())
 
         del header['jobid']
         del header['stepid']
@@ -112,10 +175,19 @@ class TestInit(TestCase):
         connection_instance.publish.assert_has_calls(calls)
         self.assertEqual(len(messages), connection_instance.publish.call_count)
 
-    @patch("gobupload.relate.GOBModel", MockModel)
+    @patch("gobupload.relate.gob_model", MockModel())
     @patch("gobupload.relate.GOBSources")
     @patch("gobupload.relate.MessageBrokerConnection")
     def test_split_job(self, mock_connection, mock_sources):
+        msg = {
+            'header': {
+                'catalogue': 'catalog',
+                'collection': 'wrong_collection',
+            }
+        }
+        with self.assertRaises(GOBException):
+            _split_job(msg)
+
         mock_sources.return_value.get_field_relations.side_effect = [
             [{'type': 'GOB.String'}],
             [{'type': 'GOB.Integer'}],
@@ -130,7 +202,6 @@ class TestInit(TestCase):
                 'stepid': 240,
             }
         }
-
         _split_job(msg)
 
         self.assertSplitJobsPublished(mock_connection, [
@@ -138,7 +209,6 @@ class TestInit(TestCase):
             self._get_split_msg(msg, 'catalog', 'collA', 'attrB'),
             self._get_split_msg(msg, 'catalog', 'dst_col', 'attr'),
         ])
-
         msg = {
             'header': {
                 'catalogue': 'catalog',
@@ -151,7 +221,7 @@ class TestInit(TestCase):
         mock_logger.info.assert_called_with("Missing relation specification for catalog dst_col attr. Skipping")
 
     @patch("gobupload.relate.datetime")
-    @patch("gobupload.relate.GOBModel")
+    @patch("gobupload.relate.gob_model")
     @patch("gobupload.relate.get_relation_name")
     def test_prepare_relate(self, mock_get_relation_name, mock_model, mock_datetime):
         mock_datetime.datetime.utcnow.return_value.isoformat.return_value = 'DATETIME'
@@ -182,7 +252,7 @@ class TestInit(TestCase):
         }
 
         self.assertEqual(expected_result, result)
-        mock_get_relation_name.assert_called_with(mock_model.return_value, 'catalog', 'collection', 'attribute')
+        mock_get_relation_name.assert_called_with(mock_model, 'catalog', 'collection', 'attribute')
 
     @patch("gobupload.relate.datetime")
     @patch("gobupload.relate.publish_result")
@@ -271,7 +341,7 @@ class TestInit(TestCase):
         mock_get_mv.assert_called_with('catalog', 'collection', 'attribute')
         mock_get_mv.return_value.refresh.assert_called_with(mock_storage_handler.return_value)
 
-    @patch("gobupload.relate.GOBModel", MockModel)
+    @patch("gobupload.relate.gob_model", MockModel())
     @patch("gobupload.relate.GOBSources", MockSources)
     def test_check_message(self):
         msg = {
@@ -286,7 +356,7 @@ class TestInit(TestCase):
         _check_message(msg)
 
         # Remove headers and/or change to invalid value
-        for key in msg['header'].keys():
+        for key in msg['header']:
             new_header = msg['header'].copy()
 
             # Invalid catalog/collection/attribute

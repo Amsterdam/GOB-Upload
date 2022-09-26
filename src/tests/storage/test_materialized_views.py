@@ -26,7 +26,7 @@ class MockModel:
 
 class TestMaterializedView(TestCase):
 
-    @patch("gobupload.storage.materialized_views.MaterializedView.model", MockModel())
+    @patch("gobupload.storage.materialized_views.gob_model", MockModel())
     def setUp(self):
         self.relation_name = 'cata_cola_catb_colb_some_reference_field'
         self.mv = MaterializedView(self.relation_name)
@@ -104,7 +104,6 @@ class TestMaterializedView(TestCase):
         ])
 
 
-@patch("gobupload.storage.materialized_views.GOBModel", MagicMock())
 class TestMaterializedViews(TestCase):
 
     def test_initialise(self):

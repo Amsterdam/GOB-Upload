@@ -1,29 +1,30 @@
-"""Compare new data with the existing data
+"""Compare new data with the existing data.
 
-Derive Add, Change, Delete and Confirm events by comparing a full set of new data against the full set of current data
+Derive Add, Change, Delete and Confirm events by comparing a full set of new data against the full set of current data.
 
 Todo: Event, action and mutation are used for the same subject. Use one name to improve maintainability.
-
 """
+
 from gobcore.enum import ImportMode
 from gobcore.events import get_event_for, GOB
 from gobcore.events.import_message import ImportMessage
-from gobcore.model import GOBModel
+from gobcore.exceptions import GOBException
 from gobcore.typesystem import get_modifications
 from gobcore.logging.logger import logger
 from gobcore.message_broker.offline_contents import ContentsWriter
 from gobcore.utils import ProgressTicker
 
+from gobupload import gob_model
+from gobupload.config import FULL_UPLOAD
 from gobupload.storage.handler import GOBStorageHandler
 from gobupload.compare.enrich import Enricher
 from gobupload.compare.populate import Populator
 from gobupload.compare.entity_collector import EntityCollector
 from gobupload.compare.event_collector import EventCollector
 from gobupload.compare.compare_statistics import CompareStatistics
-from gobupload.config import FULL_UPLOAD
 
 
-def compare(msg):
+def compare(msg):   # noqa: C901
     """Compare new data in msg (contents) with the current data
 
     :param msg: The new data, including header and summary
@@ -37,9 +38,12 @@ def compare(msg):
     message = ImportMessage(msg)
     metadata = message.metadata
 
-    # Get the model for the collection to be compared
-    gob_model = GOBModel()
-    entity_model = gob_model.get_collection(metadata.catalogue, metadata.entity)
+    # Get the collection to be compared
+    try:
+        entity_model = gob_model[metadata.catalogue]['collections'][metadata.entity]
+    except KeyError as exc:
+        raise GOBException(
+            f"Invalid catalog/collection '{metadata.catalogue}/{metadata.entity}'") from exc
 
     # Initialize a storage handler for the collection
     storage = GOBStorageHandler(metadata)

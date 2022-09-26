@@ -1,7 +1,5 @@
-"""
-Populate a message with a hash
+"""Populate a message with a hash."""
 
-"""
 import hashlib
 import json
 

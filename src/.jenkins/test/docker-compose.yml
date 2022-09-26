@@ -1,5 +1,7 @@
 version: "3.7"
 
+name: "upload_test"
+
 services:
   test:
     build:

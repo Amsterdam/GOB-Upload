@@ -1,19 +1,17 @@
-"""
-Module contains the storage related logic for GOB Relations
+"""Module contains the storage related logic for GOB Relations."""
 
-"""
 import datetime
 
-from gobupload.storage.handler import GOBStorageHandler
-
 from gobcore.logging.logger import logger
-from gobcore.model import GOBModel
 from gobcore.model.metadata import FIELD
 from gobcore.model.relations import get_relation_name
 from gobcore.quality.issue import QA_CHECK, QA_LEVEL, Issue, log_issue
 from gobcore.sources import GOBSources
 
+from gobupload import gob_model
 from gobupload.relate.update import Relater
+
+from gobupload.storage.handler import GOBStorageHandler
 from gobupload.storage.execute import _execute
 
 # Dates compare at start of day
@@ -32,8 +30,7 @@ LIES_IN = "lies_in"   # geometric comparison, eg src.geometrie lies_in dst_geome
 
 
 def date_to_datetime(value):
-    """
-    Convert a date value to a datetime value
+    """Convert a date value to a datetime value.
 
     :param value: a date value
     :return: The corresponding datetime value
@@ -42,8 +39,7 @@ def date_to_datetime(value):
 
 
 def _get_date_origin_fields():
-    """
-    Get all date fieldnames
+    """Get all date fieldnames.
 
     :return: A list of date fieldnames
     """
@@ -59,17 +55,18 @@ def _get_date_origin_fields():
 
 
 def _convert_row(row):
-    """
-    Convert a database row to a dictionary.
+    """Convert a database row to a dictionary.
 
-    If any of the date fields has a datetime value, convert all date values to datetime values
+    If any of the date fields has a datetime value, convert all date values to datetime values.
+
     :param row: A database row
     :return: A dictionary
     """
     result = dict(row)
     date_origin_fields = _get_date_origin_fields()
 
-    has_datetimes = True in [isinstance(result.get(field), datetime.datetime) for field in date_origin_fields]
+    has_datetimes = True in [
+        isinstance(result.get(field), datetime.datetime) for field in date_origin_fields]
     if has_datetimes:
         for date_origin_field in date_origin_fields:
             value = result.get(date_origin_field)
@@ -80,8 +77,7 @@ def _convert_row(row):
 
 
 def _get_data(query):
-    """
-    Execute the query and return the result as a list of dictionaries
+    """Execute the query and return the result as a list of dictionaries.
 
     :param query:
     :return:
@@ -94,26 +90,25 @@ def _get_data(query):
 
 
 def get_current_relations(catalog_name, collection_name, field_name):
-    """
-    Get the current relations as an iterable of dictionaries
-    Each relation is transformed into a dictionary
+    """Get the current relations as an iterable of dictionaries.
+
+    Each relation is transformed into a dictionary.
 
     :param catalog_name:
     :param collection_name:
     :param field_name:
     :return: An iterable of dicts
     """
-    model = GOBModel()
-    table_name = model.get_table_name(catalog_name, collection_name)
+    table_name = gob_model.get_table_name(catalog_name, collection_name)
 
-    collection = model.get_collection(catalog_name, collection_name)
+    collection = gob_model[catalog_name]['collections'][collection_name]
     field = collection['all_fields'][field_name]
     field_type = field['type']
     assert field_type in ["GOB.Reference", "GOB.ManyReference"], f"Error: unexpected field type '{field_type}'"
 
     select = [FIELD.GOBID, field_name, FIELD.SOURCE, FIELD.ID]
     order_by = [FIELD.SOURCE, FIELD.ID]
-    if model.has_states(catalog_name, collection_name):
+    if gob_model.has_states(catalog_name, collection_name):
         select += [FIELD.SEQNR, FIELD.END_VALIDITY]
         order_by += [FIELD.SEQNR, FIELD.START_VALIDITY]
     query = f"""
@@ -129,8 +124,7 @@ ORDER BY {', '.join(order_by)}
 
 
 def _query_missing(query, check, attr):
-    """
-    Query for any missing attributes
+    """Query for any missing attributes.
 
     :param query: query to execute
     :param items_name: name of the missing attribute
@@ -155,19 +149,21 @@ def _query_missing(query, check, attr):
         logger.data_info(f"{items_name}: {historic_count} historical errors")
 
 
-def _get_relation_check_query(query_type, src_catalog_name, src_collection_name, src_field_name,
-                              filter_applications: list):
+def _get_relation_check_query(
+        query_type,
+        src_catalog_name, src_collection_name, src_field_name,
+        filter_applications: list):
     assert query_type in ["dangling", "missing"], "Relation check query expects type to be dangling or missing"
 
-    model = GOBModel()
-    src_collection = model.get_collection(src_catalog_name, src_collection_name)
-    src_table_name = model.get_table_name(src_catalog_name, src_collection_name)
+    src_collection = gob_model[src_catalog_name]['collections'][src_collection_name]
+    src_table_name = gob_model.get_table_name(src_catalog_name, src_collection_name)
     src_field = src_collection['all_fields'].get(src_field_name)
-    src_has_states = model.has_states(src_catalog_name, src_collection_name)
+    src_has_states = gob_model.has_states(src_catalog_name, src_collection_name)
 
     is_many = src_field['type'] == "GOB.ManyReference"
 
-    relation_table_name = "rel_" + get_relation_name(model, src_catalog_name, src_collection_name, src_field_name)
+    relation_table_name = "rel_" + get_relation_name(
+        gob_model, src_catalog_name, src_collection_name, src_field_name)
 
     main_select = [f"src.{FIELD.ID} as id",
                    f"src.{FIELD.EXPIRATION_DATE}"]
@@ -232,8 +228,7 @@ WHERE
 
 
 def check_relations(src_catalog_name, src_collection_name, src_field_name):
-    """
-    Check relations for any dangling relations
+    """Check relations for any dangling relations.
 
     Dangling can be because a relation exist without any bronwaarde
     or the bronwaarde cannot be matched with any referenced entity
@@ -243,12 +238,10 @@ def check_relations(src_catalog_name, src_collection_name, src_field_name):
     :param src_field_name:
     :return: None
     """
-
     name = f"{src_collection_name} {src_field_name}"
 
     # Only include sources where not none_allowed
-    model = GOBModel()
-    sources = GOBSources(model).get_field_relations(src_catalog_name, src_collection_name, src_field_name)
+    sources = GOBSources(gob_model).get_field_relations(src_catalog_name, src_collection_name, src_field_name)
     check_sources = [source['source'] for source in sources if not source.get('none_allowed', False)]
 
     if not check_sources:
@@ -270,8 +263,7 @@ def check_relations(src_catalog_name, src_collection_name, src_field_name):
 
 
 def check_very_many_relations(src_catalog_name, src_collection_name, src_field_name):
-    """
-    Check very many relations for any dangling relations
+    """Check very many relations for any dangling relations.
 
     Dangling can be because a relation exist without any bronwaarde
     or the bronwaarde cannot be matched with any referenced entity.
@@ -284,11 +276,11 @@ def check_very_many_relations(src_catalog_name, src_collection_name, src_field_n
     :return: None
     """
     # Get the source catalog, collection and field for the given names
-    model = GOBModel()
-    src_table_name = model.get_table_name(src_catalog_name, src_collection_name)
-    src_has_states = model.has_states(src_catalog_name, src_collection_name)
+    src_table_name = gob_model.get_table_name(src_catalog_name, src_collection_name)
+    src_has_states = gob_model.has_states(src_catalog_name, src_collection_name)
 
-    relation_table_name = "rel_" + get_relation_name(model, src_catalog_name, src_collection_name, src_field_name)
+    relation_table_name = "rel_" + get_relation_name(
+        gob_model, src_catalog_name, src_collection_name, src_field_name)
 
     select = ["src._id as id", "rel.bronwaarde as bronwaarde"]
     group_by = ["src._id", "rel.bronwaarde"]

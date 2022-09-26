@@ -31,7 +31,7 @@ COPY alembic.ini alembic.ini
 
 # Set GOBOPTIONS=--migrate to run migrations and then exit
 USER datapunt
-CMD python3 -m gobupload $GOBOPTIONS
+CMD python -m gobupload $GOBOPTIONS
 
 
 # Development.

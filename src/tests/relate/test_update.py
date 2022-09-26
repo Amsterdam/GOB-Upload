@@ -1,9 +1,9 @@
 from unittest import TestCase
-
+from unittest.mock import MagicMock, call, patch
 from datetime import date, datetime
+
 from gobcore.exceptions import GOBException
 from gobcore.model.metadata import FIELD
-from unittest.mock import MagicMock, call, patch
 
 from gobupload.relate.update import EventCreator, RelateException, Relater, StartValiditiesTable
 
@@ -11,24 +11,43 @@ from gobupload.relate.update import EventCreator, RelateException, Relater, Star
 class MockModel:
     _has_states = {
         'src_collection_name': True,
+        'src_many_collection_name': True,
         'dst_collection_name': False,
     }
 
-    def get_collection(self, cat, coll):
-        if coll == 'src_collection_name':
+    def __getitem__(self, cat):
+        if cat == "src_catalog_name":
             return {
-                'all_fields': {
-                    'src_field_name': {
-                        'type': 'GOB.Reference',
-                        'ref': 'dst_catalog_name:dst_collection_name',
+                'collections': {
+                    'src_collection_name': {
+                        'all_fields': {
+                            'src_field_name': {
+                                'type': 'GOB.Reference',
+                                'ref': 'dst_catalog_name:dst_collection_name',
+                                }
+                            },
+                        'abbreviation': 'srcabbr'
+                    },
+                    'src_many_collection_name': {
+                        'all_fields': {
+                            'src_field_name': {
+                                'type': 'GOB.ManyReference',
+                                'ref': 'dst_catalog_name:dst_collection_name',
+                                }
+                            },
+                        'abbreviation': 'abbr'
                     }
-                },
-                'abbreviation': 'srcabbr'
+                }
             }
-        else:
+        elif cat == "dst_catalog_name":
             return {
-                'abbreviation': 'dstabbr'
+                'collections': {
+                    'dst_collection_name': {
+                        'abbreviation': 'dstabbr'
+                    }
+                }
             }
+        return {}
 
     def get_table_name(self, catalog_name, collection_name):
         return f"{catalog_name}_{collection_name}_table"
@@ -91,7 +110,7 @@ WINDOW w AS (PARTITION BY _id, consecutive_period ORDER BY _id, volgnummer)
         table.drop()
         mock_execute.assert_called_with("DROP TABLE IF EXISTS to_table")
 
-    @patch("gobupload.relate.update.GOBModel", MockModel)
+    @patch("gobupload.relate.update.gob_model", MockModel())
     def test_from_catalog_collection(self):
         res = StartValiditiesTable.from_catalog_collection('catalog_name', 'collection_name', 'table_name')
 
@@ -238,6 +257,7 @@ class TestEventCreator(TestCase):
 
 
 @patch("gobupload.relate.update.logger", MagicMock())
+#@patch("gobupload.relate.update.Relater.model", MockModel(), spec_set=True)
 @patch("gobupload.relate.update.Relater.model", MockModel())
 @patch("gobupload.relate.update.Relater.sources", MockSources())
 @patch("gobupload.relate.update._execute")
@@ -245,8 +265,10 @@ class TestEventCreator(TestCase):
 @patch("gobupload.relate.update.get_relation_name", lambda m, cat, col, field: f"{cat}_{col}_{field}")
 class TestRelaterInit(TestCase):
 
-    def _get_relater(self):
-        return Relater('src_catalog_name', 'src_collection_name', 'src_field_name')
+    def _get_relater(
+            self, catalog_name='src_catalog_name',
+            collection_name='src_collection_name', field_name='src_field_name'):
+        return Relater(catalog_name, collection_name, field_name)
 
     @patch("gobupload.relate.update.datetime")
     def test_init(self, mock_datetime, mock_execute):
@@ -258,18 +280,20 @@ class TestRelaterInit(TestCase):
         self.assertEqual('src_catalog_name', e.src_catalog_name)
         self.assertEqual('src_collection_name', e.src_collection_name)
         self.assertEqual('src_field_name', e.src_field_name)
-        self.assertEqual(MockModel().get_collection('', 'src_collection_name'), e.src_collection)
-        self.assertEqual(MockModel().get_collection('', 'src_collection_name')['all_fields']['src_field_name'],
-                         e.src_field)
+        self.assertEqual(
+            MockModel()['src_catalog_name']['collections']['src_collection_name'], e.src_collection)
+        self.assertEqual(
+            MockModel()['src_catalog_name']['collections']['src_collection_name']['all_fields']['src_field_name'],
+            e.src_field)
         self.assertEqual('dst_catalog_name_dst_collection_name_table', e.dst_table_name)
-        self.assertEqual(True, e.src_has_states)
-        self.assertEqual(False, e.dst_has_states)
+        self.assertTrue(e.src_has_states)
+        self.assertFalse(e.dst_has_states)
         self.assertEqual([{
             # applicationB should be filtered out
             'source': 'applicationA',
             'multiple_allowed': False,
         }], e.relation_specs)
-        self.assertEqual(False, e.is_many)
+        self.assertFalse(e.is_many)
         self.assertEqual('rel_src_catalog_name_src_collection_name_src_field_name', e.relation_table)
         mock_execute.assert_called_with("SELECT DISTINCT _application FROM src_catalog_name_src_collection_name_table")
 
@@ -281,14 +305,13 @@ class TestRelaterInit(TestCase):
             with self.assertRaises(RelateException):
                 self._get_relater()
 
-        with patch('gobupload.relate.update.Relater.model.get_collection',
-                   lambda cat, col: {'all_fields': {
-                       'src_field_name': {
-                           'type': 'GOB.ManyReference',
-                           'ref': 'dst_catalog_name:dst_collection_name',
-                       }}, 'abbreviation': 'abbr'}):
-            e = self._get_relater()
-            self.assertEqual(True, e.is_many)
+        # Not many.
+        e = self._get_relater()
+        self.assertFalse(e.is_many)
+
+        # Many.
+        e = self._get_relater('src_catalog_name', 'src_many_collection_name', 'src_field_name')
+        self.assertTrue(e.is_many)
 
 
 @patch("gobupload.relate.update.logger", MagicMock())

@@ -1,17 +1,19 @@
-"""Enrich
+"""Enrich.
 
-Enrich incoming messages
+Enrich incoming messages.
 
 Incoming messages might miss some data.
-During enrichment the missing data is added
-
+During enrichment the missing data is added.
 """
+
 import re
 
-from gobcore.model import GOBModel, FIELD
+from gobcore.model import FIELD
 from gobcore.typesystem.gob_geotypes import Geometry
 
 from gobcore.logging.logger import logger
+
+from gobupload import gob_model
 
 
 class Enricher:
@@ -55,8 +57,7 @@ class Enricher:
 
 
 def _get_current_value(storage, data, specs, column, assigned):
-    """
-    Get any current value (either stored or previously issued
+    """Get any current value (either stored or previously issued.
 
     :param storage: Storage handler
     :param data: The data row to process
@@ -100,7 +101,7 @@ def _geounion(storage, data, specs, column, assigned):
 
     # example: "x.y" => all y values of data[x]
     on_fields = specs["on"].split(".")
-    values = [value for value in data[on_fields[0]]]
+    values = list(data[on_fields[0]])
     for on_field in on_fields[1:]:
         values = [value[on_field] for value in values]
 
@@ -110,12 +111,12 @@ def _geounion(storage, data, specs, column, assigned):
     # Derive the table from which to retrieve the geometries
     # Derive the field that is used to match the values with the records in the other table
     catalogue, collection, field = re.split(r'[\:\.]', specs["from"])
-    table_name = GOBModel().get_table_name(catalogue, collection)
+    table_name = gob_model.get_table_name(catalogue, collection)
 
     # Derive the fieldname that contains the geometry in the other table
     geometrie = specs["geometrie"]
 
-    if GOBModel().has_states(catalogue, collection):
+    if gob_model.has_states(catalogue, collection):
         # Workaround for collections with (closed) states
         # use the geometry of the highest volgnummer per entity
         # historic entities should be considered, not only the actual ones
