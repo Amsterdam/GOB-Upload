@@ -17,17 +17,21 @@ class TestInit(TestCase):
             'catalog': {
                 'collections': {
                     'collA': {
-                        'attributes': ['attrA', 'attrB', 'attrC']
+                        'attributes': ['attrA', 'attrB', 'attrC'],
+                        'references': ['attrA', 'attrB', 'attrC'],
                     },
                     'colB': {
                         'attributes': [],
+                        'references': [],
                     },
                     'dst_col': {
                         'attributes': ['attr'],
+                        'references': ['attr'],
                     },
                     'the collection': {
                         'the attribute': 'val',
                         'attributes': [],
+                        'references': [],
                     }
                 }
             }
@@ -38,9 +42,6 @@ class TestInit(TestCase):
 
         def get(self, catalog):
             return self.model.get(catalog)
-
-        def _extract_references(self, attributes):
-            return attributes
 
     class MockSources:
         def __init__(self, gobmodel):
@@ -218,10 +219,11 @@ class TestInit(TestCase):
             }
         }
         _split_job(msg)
-        mock_logger.info.assert_called_with("Missing relation specification for catalog dst_col attr. Skipping")
+        mock_logger.info.assert_called_with(
+            "Missing relation specification for catalog dst_col attr. Skipping")
 
     @patch("gobupload.relate.datetime")
-    @patch("gobupload.relate.gob_model")
+    @patch("gobupload.relate.gob_model", new_callable=MockModel)
     @patch("gobupload.relate.get_relation_name")
     def test_prepare_relate(self, mock_get_relation_name, mock_model, mock_datetime):
         mock_datetime.datetime.utcnow.return_value.isoformat.return_value = 'DATETIME'

@@ -71,8 +71,7 @@ def check_relation(msg):
     attribute_name = header[ATTRIBUTE_KEY]
     logger.info(f"Relate check started for {catalog_name}/{collection_name}/{attribute_name}")
 
-    reference = gob_model._extract_references(collection['attributes']).get(attribute_name)
-
+    reference = collection['references'].get(attribute_name)
     try:
         is_very_many = reference['type'] == fully_qualified_type_name(VeryManyReference)
         check_function = check_very_many_relations if is_very_many else check_relations
@@ -119,9 +118,7 @@ def _split_job(msg: dict):
 
             logger.info(f"** Split {collection_name}")
 
-            attributes = gob_model._extract_references(collection['attributes']) \
-                if attribute_name is None \
-                else [attribute_name]
+            attributes = collection['references'] if attribute_name is None else [attribute_name]
 
             for attr_name in attributes:
                 sources = GOBSources(gob_model)
