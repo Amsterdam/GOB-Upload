@@ -10,3 +10,6 @@ alembic revision --autogenerate -m "<description>"
 
 # To update the database
 alembic upgrade head
+
+# In a running docker container you need to set PYTHONPATH
+PYTHONPATH=/app alembic revision ....

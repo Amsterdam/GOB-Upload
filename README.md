@@ -20,7 +20,7 @@ A running [GOB infrastructure](https://github.com/Amsterdam/GOB-Infra) is requir
 ```bash
 docker compose build
 
-export GOBOPTIONS=--migrate
+export GOBOPTIONS=migrate
 echo "Migrate database to latest version..."
 docker compose up
 export GOBOPTIONS=
@@ -63,7 +63,7 @@ Start the service:
 
 ```bash
 cd src
-python -m gobupload --migrate
+python -m gobupload migrate
 python -m gobupload
 ```
 
