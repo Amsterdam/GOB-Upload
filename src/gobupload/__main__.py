@@ -9,14 +9,15 @@ import argparse
 import sys
 
 from gobcore.message_broker.config import COMPARE_RESULT_KEY, FULLUPDATE_RESULT_KEY, \
- APPLY_RESULT_KEY, \
- RELATE_PREPARE_RESULT_KEY, RELATE_PROCESS_RESULT_KEY, RELATE_CHECK_RESULT_KEY, \
- RELATE_UPDATE_VIEW_RESULT_KEY
+    APPLY_RESULT_KEY, \
+    RELATE_PREPARE_RESULT_KEY, RELATE_PROCESS_RESULT_KEY, RELATE_CHECK_RESULT_KEY, \
+    RELATE_UPDATE_VIEW_RESULT_KEY, RELATE
 from gobcore.message_broker.config import WORKFLOW_EXCHANGE, FULLUPDATE_QUEUE, \
  COMPARE_QUEUE, APPLY_QUEUE, \
  RELATE_PREPARE_QUEUE, RELATE_PROCESS_QUEUE, RELATE_CHECK_QUEUE, \
  RELATE_UPDATE_VIEW_QUEUE
 from gobcore.message_broker.messagedriven_service import messagedriven_service
+from gobcore.message_broker.typing import ServiceDefinition
 from gobcore.standalone import run_as_standalone, parent_argument_parser
 from gobupload import apply
 from gobupload import compare
@@ -26,7 +27,7 @@ from gobupload.storage.handler import GOBStorageHandler
 from gobupload.config import DEBUG
 
 
-SERVICEDEFINITION = {
+SERVICEDEFINITION: ServiceDefinition = {
     'apply': {  # in workflow this is called update_model
         'queue': APPLY_QUEUE,
         'handler': apply.apply,
@@ -54,6 +55,7 @@ SERVICEDEFINITION = {
     'relate_prepare': {
         'queue': RELATE_PREPARE_QUEUE,
         'handler': relate.prepare_relate,
+        "logger": RELATE,
         'report': {
             'exchange': WORKFLOW_EXCHANGE,
             'key': RELATE_PREPARE_RESULT_KEY,
