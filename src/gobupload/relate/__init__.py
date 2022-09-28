@@ -1,11 +1,11 @@
-"""
-Relate module
+"""Relate module.
 
-Builds relations
+Builds relations.
 
-Triggers application of the newly found relations on the current entities
-Publishes the relation as import messages
+Triggers application of the newly found relations on the current entities.
+Publishes the relation as import messages.
 """
+
 import datetime
 
 from gobcore.exceptions import GOBException
@@ -32,13 +32,14 @@ ATTRIBUTE_KEY = 'original_attribute'
 RELATE_VERSION = '0.1'
 
 
-def check_relation(msg):
-    """Check for any dangling relations.
+def verify_process_msg_header(msg):
+    """Verify relate process message header.
 
-    :param msg:
+    Check if the required attributes are present in the message header.
+
+    :param msg: a message from the broker containing the catalog and collections
     :return:
     """
-    # Similar to _check_message()
     try:
         header = msg['header']
     except KeyError as exc:
@@ -50,25 +51,47 @@ def check_relation(msg):
         try:
             header[key]
         except KeyError as exc:
-            error_msg = f"Missing required {key} attribute in message header"
+            error_msg = f"Missing required {key} attribute in process message header"
             _log_exception(error_msg, exc)
             raise GOBException(error_msg) from exc
 
+
+def get_collection_from_msg(msg):
+    """Return valid GOBModel catalog collection (name, dict) tuple.
+
+    :param msg: a message from the broker containing the catalog and collections
+    :return: tuple with valid collection name and collection dict
+    """
+    verify_process_msg_header(msg)
+
+    catalog_name = msg['header'][CATALOG_KEY]
     try:
-        catalog_name = header[CATALOG_KEY]
         catalog = gob_model[catalog_name]
     except KeyError as exc:
-        raise GOBException(f"Invalid catalog '{catalog_name}'") from exc
+        error_msg = f"Invalid catalog '{catalog_name}'"
+        _log_exception(error_msg, exc)
+        raise GOBException(error_msg) from exc
 
+    collection_name = msg['header'][COLLECTION_KEY]
     try:
-        collection_name = header[COLLECTION_KEY]
         collection = catalog['collections'][collection_name]
     except KeyError as exc:
-        raise GOBException(
-            f"Invalid collection '{collection_name}' for catalog {catalog_name}"
-        ) from exc
+        error_msg = f"Invalid collection '{collection_name}' for catalog {catalog_name}"
+        _log_exception(error_msg, exc)
+        raise GOBException(error_msg) from exc
 
-    attribute_name = header[ATTRIBUTE_KEY]
+    return collection_name, collection
+
+
+def check_relation(msg):
+    """Check for any dangling relations.
+
+    :param msg: a message from the broker containing the catalog and collections
+    :return:
+    """
+    collection_name, collection = get_collection_from_msg(msg)
+    catalog_name = msg['header'][CATALOG_KEY]
+    attribute_name = msg['header'][ATTRIBUTE_KEY]
     logger.info(f"Relate check started for {catalog_name}/{collection_name}/{attribute_name}")
 
     reference = collection['references'].get(attribute_name)
@@ -91,33 +114,60 @@ def check_relation(msg):
     }
 
 
-def _split_job(msg: dict):
-    header = msg.get('header', {})
-    catalog_name = header.get('catalogue')
-    collection_name = header.get('collection')
-    attribute_name = header.get('attribute')
+def get_catalog_from_msg(msg: dict):        # noqa: C901
+    """Return valid GOBModel catalog (name, dict) tuple.
 
-    assert catalog_name is not None, "A catalog name is required"
+    :param msg: split job message
+    :return: tuple with valid catalog name and catalog dict
+    """
+    try:
+        header = msg['header']
+    except KeyError as exc:
+        error_msg = "Invalid message: 'header' key is missing"
+        _log_exception(error_msg, exc)
+        raise GOBException(error_msg) from exc
 
-    catalog = gob_model.get(catalog_name)
-    assert catalog is not None, f"Invalid catalog name '{catalog_name}'"
+    try:
+        catalog_name = header['catalogue']
+    except KeyError as exc:
+        error_msg = "Missing required 'catalogue' attribute in message header"
+        _log_exception(error_msg, exc)
+        raise GOBException(error_msg) from exc
 
+    try:
+        catalog = gob_model[catalog_name]
+    except KeyError as exc:
+        error_msg = f"Invalid catalog '{catalog_name}'"
+        _log_exception(error_msg, exc)
+        raise GOBException(error_msg) from exc
+
+    return catalog_name, catalog
+
+
+def _split_job(msg: dict):      # noqa: C901
+    """Split jobs in message."""
+    catalog_name, catalog = get_catalog_from_msg(msg)
+
+    collection_name = msg['header'].get('collection')
     if collection_name is None:
         collection_names = catalog['collections'].keys()
+        assert collection_names, f"No collections specified or found for catalog '{catalog_name}'"
     else:
+        try:
+            catalog['collections'][collection_name]
+        except KeyError as exc:
+            error_msg = f"Invalid collection name '{collection_name}'"
+            _log_exception(error_msg, exc)
+            raise GOBException(error_msg) from exc
         collection_names = [collection_name]
 
-    assert collection_names, f"No collections specified or found for catalog {catalog_name}"
+    attribute_name = msg['header'].get('attribute')
 
     with MessageBrokerConnection(CONNECTION_PARAMS) as connection:
         for collection_name in collection_names:
-            try:
-                collection = catalog['collections'][collection_name]
-            except KeyError as exc:
-                raise GOBException(f"Invalid collection name '{collection_name}'") from exc
-
             logger.info(f"** Split {collection_name}")
 
+            collection = catalog['collections'][collection_name]
             attributes = collection['references'] if attribute_name is None else [attribute_name]
 
             for attr_name in attributes:
@@ -135,16 +185,14 @@ def _split_job(msg: dict):
 
                 logger.info(f"Splitting job for {catalog_name} {collection_name} {attr_name}")
 
-                original_header = msg.get('header', {})
-
                 split_msg = {
                     **msg,
                     "header": {
-                        **original_header,
+                        **msg['header'],
                         "catalogue": catalog_name,
                         "collection": collection_name,
                         "attribute": attr_name,
-                        "split_from": original_header.get('jobid'),
+                        "split_from": msg['header'].get('jobid'),
                     },
                     "workflow": {
                         "workflow_name": "relate",
@@ -158,11 +206,12 @@ def _split_job(msg: dict):
 
 
 def prepare_relate(msg):
-    """
-    The starting point for the relate process. A relate job will be split into individual relate jobs on
-    attribute level. If there's only a catalog in the message, all collections of that catalog will be related.
-    When a job which has been split is received the relation name will be added and the job will be forwarded
-    to the next step of the relate process where the relations are being made.
+    """The starting point for the relate process.
+
+    A relate job will be split into individual relate jobs on attribute level. If there's only a
+    catalog in the message, all collections of that catalog will be related.
+    When a job which has been split is received the relation name will be added and the job will be
+    forwarded to the next step of the relate process where the relations are being made.
 
     :param msg: a message from the broker containing the catalog and collections (optional)
     :return: the result message of the relate preparation step
@@ -174,7 +223,7 @@ def prepare_relate(msg):
 
     application = "GOBRelate"
     msg["header"] = {
-        **msg.get("header", {}),
+        **header,
         "version": "0.1",
         "source": "GOB",
         "application": application,
@@ -182,10 +231,7 @@ def prepare_relate(msg):
     }
 
     timestamp = datetime.datetime.utcnow().isoformat()
-
-    msg["header"].update({
-        "timestamp": timestamp,
-    })
+    msg["header"].update({"timestamp": timestamp})
 
     if not catalog_name or not collection_name or not attribute_name:
         # A job will be splitted when catalog, collection or attribute are not provided
@@ -195,6 +241,7 @@ def prepare_relate(msg):
         msg['header']['is_split'] = True
 
         return publish_result(msg, [])
+
     # If the job has all attributes, add the relation name and forward to the next step in the relate process
     logger.info(f"** Relate {catalog_name} {collection_name} {attribute_name}")
 
@@ -213,7 +260,6 @@ def prepare_relate(msg):
 
 
 def _get_materialized_view_by_relation_name(relation_name: str):
-
     try:
         return MaterializedViews().get_by_relation_name(relation_name)
     except Exception as exc:
@@ -222,7 +268,6 @@ def _get_materialized_view_by_relation_name(relation_name: str):
 
 
 def _get_materialized_view(catalog_name: str, collection_name: str, attribute_name: str):
-
     if not collection_name:
         raise GOBException("Need collection_name to update materialized view.")
 
@@ -239,13 +284,17 @@ def _get_materialized_view(catalog_name: str, collection_name: str, attribute_na
             f"Could not get materialized view for {catalog_name} {collection_name}.") from exc
 
 
-def _check_message(msg: dict):
-    header = msg.get('header', {})
+def verify_process_message(msg: dict):
+    """Verify message for the relate process.
 
-    for key in [CATALOG_KEY, COLLECTION_KEY, ATTRIBUTE_KEY]:
-        if not header.get(key):
-            raise GOBException(f"Missing required {key} attribute in message header")
+    Check message header and check if catalog and collection keys are valid.
+    Check if the relation specification in GOBSources are valid.
 
+    :param msg: a message from the broker containing the catalog and collections
+    :return:
+    """
+    verify_process_msg_header(msg)
+    header = msg['header']
     try:
         catalog = gob_model[header[CATALOG_KEY]]
     except KeyError as exc:
@@ -275,8 +324,8 @@ def process_relate(msg: dict):
     :param msg: a message from the broker containing the catalog and collections (optional)
     :return: the result message of the relate process
     """
-    _check_message(msg)
-    header = msg.get('header')
+    verify_process_message(msg)
+    header = msg['header']
 
     logger.info("Relate table started")
 
@@ -290,7 +339,8 @@ def process_relate(msg: dict):
 
     logger.info("Relate table completed")
 
-    relation_name = get_relation_name(gob_model, header[CATALOG_KEY], header[COLLECTION_KEY], header[ATTRIBUTE_KEY])
+    relation_name = get_relation_name(
+        gob_model, header[CATALOG_KEY], header[COLLECTION_KEY], header[ATTRIBUTE_KEY])
 
     result_msg = {
         "header": {
@@ -330,7 +380,7 @@ def update_materialized_view(msg):
         "collection": "mbn_mbt_gbd_brt_ligt_in_buurt",
     }
 
-    :param msg:
+    :param msg: a message from the broker containing the catalog and collections
     :return:
     """
     header = msg.get('header', {})

@@ -1,8 +1,5 @@
 [flake8]
 exclude = __pycache__
 max-complexity = 6
-per-file-ignores =
-	# catalog/collection checks (GOBException)
-	gobupload/relate/__init__.py: C901
 max-line-length = 119
 show_source = True

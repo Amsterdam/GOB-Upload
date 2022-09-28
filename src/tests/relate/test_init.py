@@ -4,9 +4,10 @@ from unittest.mock import MagicMock, patch, call, ANY
 from gobcore.exceptions import GOBException
 
 from gobupload import gob_model
-from gobupload.relate import prepare_relate, check_relation, \
-    _log_exception, _split_job, update_materialized_view, _get_materialized_view_by_relation_name, \
-    _get_materialized_view, WORKFLOW_EXCHANGE, WORKFLOW_REQUEST_KEY, _check_message, process_relate
+from gobupload.relate import prepare_relate, check_relation, _log_exception, _split_job
+from gobupload.relate import update_materialized_view, _get_materialized_view_by_relation_name
+from gobupload.relate import _get_materialized_view, WORKFLOW_EXCHANGE, WORKFLOW_REQUEST_KEY
+from gobupload.relate import process_relate, verify_process_message, get_catalog_from_msg
 
 mock_logger = MagicMock()
 @patch('gobupload.relate.logger', mock_logger)
@@ -177,6 +178,29 @@ class TestInit(TestCase):
         self.assertEqual(len(messages), connection_instance.publish.call_count)
 
     @patch("gobupload.relate.gob_model", MockModel())
+    def test_get_catalog_from_msg(self):
+        "Test get_catalog_from_msg."""
+        no_header_msg = {'catalogue': 'catalog'}
+        with self.assertRaises(GOBException):
+            get_catalog_from_msg(no_header_msg)
+
+        wrong_catalog_msg = {
+            'header': {
+                'catalog': 'do_you_mean_catalogue',
+            }
+        }
+        with self.assertRaises(GOBException):
+            get_catalog_from_msg(wrong_catalog_msg)
+
+        invalid_catalogue_msg = {
+            'header': {
+                'catalogue': 'missing_catalogue',
+            }
+        }
+        with self.assertRaises(GOBException):
+            get_catalog_from_msg(invalid_catalogue_msg)
+
+    @patch("gobupload.relate.gob_model", MockModel())
     @patch("gobupload.relate.GOBSources")
     @patch("gobupload.relate.MessageBrokerConnection")
     def test_split_job(self, mock_connection, mock_sources):
@@ -345,7 +369,7 @@ class TestInit(TestCase):
 
     @patch("gobupload.relate.gob_model", MockModel())
     @patch("gobupload.relate.GOBSources", MockSources)
-    def test_check_message(self):
+    def test_verify_process_message(self):
         msg = {
             'header': {
                 'original_catalogue': 'catalog',
@@ -355,7 +379,7 @@ class TestInit(TestCase):
         }
 
         # Message ok. No errors
-        _check_message(msg)
+        verify_process_message(msg)
 
         # Remove headers and/or change to invalid value
         for key in msg['header']:
@@ -364,17 +388,17 @@ class TestInit(TestCase):
             # Invalid catalog/collection/attribute
             new_header[key] = 'invalid value'
             with self.assertRaises(GOBException):
-                _check_message({'header': new_header})
+                verify_process_message({'header': new_header})
 
             # Missing header key
             del new_header[key]
             with self.assertRaises(GOBException):
-                _check_message(({'header': new_header}))
+                verify_process_message({'header': new_header})
 
     @patch("gobupload.relate.get_relation_name", lambda m, cat, col, field: f"{cat}_{col}_{field}")
-    @patch("gobupload.relate._check_message")
+    @patch("gobupload.relate.verify_process_message")
     @patch("gobupload.relate.Relater")
-    def test_process_relate(self, mock_relater, mock_check_message):
+    def test_process_relate(self, mock_relater, mock_verify_process_message):
         msg = {
             'header': {
                 'original_catalogue': 'catalog',
@@ -386,7 +410,7 @@ class TestInit(TestCase):
         mock_relater.return_value.__enter__.return_value.update.return_value = ('result filename', 2840)
 
         result = process_relate(msg)
-        mock_check_message.assert_called_with(msg)
+        mock_verify_process_message.assert_called_with(msg)
 
         mock_relater.assert_called_with('catalog', 'the collection', 'the attribute')
         mock_relater().__enter__().update.assert_called_with(False)
