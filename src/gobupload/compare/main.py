@@ -8,7 +8,6 @@ Todo: Event, action and mutation are used for the same subject. Use one name to 
 from gobcore.enum import ImportMode
 from gobcore.events import get_event_for, GOB
 from gobcore.events.import_message import ImportMessage
-from gobcore.exceptions import GOBException
 from gobcore.typesystem import get_modifications
 from gobcore.logging.logger import logger
 from gobcore.message_broker.offline_contents import ContentsWriter
@@ -25,7 +24,7 @@ from gobupload.compare.compare_statistics import CompareStatistics
 
 
 def compare(msg):   # noqa: C901
-    """Compare new data in msg (contents) with the current data
+    """Compare new data in msg (contents) with the current data.
 
     :param msg: The new data, including header and summary
     :return: result message
@@ -39,11 +38,7 @@ def compare(msg):   # noqa: C901
     metadata = message.metadata
 
     # Get the collection to be compared
-    try:
-        entity_model = gob_model[metadata.catalogue]['collections'][metadata.entity]
-    except KeyError as exc:
-        raise GOBException(
-            f"Invalid catalog/collection '{metadata.catalogue}/{metadata.entity}'") from exc
+    entity_model = gob_model[metadata.catalogue]['collections'][metadata.entity]
 
     # Initialize a storage handler for the collection
     storage = GOBStorageHandler(metadata)
@@ -119,7 +114,7 @@ def compare(msg):   # noqa: C901
 
 
 def meets_dependencies(storage, msg):
-    """Check if all dependencies are met
+    """Check if all dependencies are met.
 
     :param storage: Storage handler
     :param msg: Incoming message
@@ -139,9 +134,9 @@ def meets_dependencies(storage, msg):
 
 
 def _process_compare_results(storage, model, results, stats):
-    """Process the results of the in database compare
+    """Process the results of the in database compare.
 
-    Creates the ADD, DELETE and CONFIRM records and returns them with the remaining records
+    Creates the ADD, DELETE and CONFIRM records and returns them with the remaining records.
 
     :param results: the result rows from the database comparison
     :return: list of events, list of remaining records

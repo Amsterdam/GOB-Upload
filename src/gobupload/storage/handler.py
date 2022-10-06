@@ -1,4 +1,4 @@
-"""Abstraction for the storage that is backing GOB, it is metadata aware, and requires a session in context
+"""Abstraction for the storage that is backing GOB, it is metadata aware, and requires a session in context.
 
 Use it like this:
 
@@ -41,7 +41,7 @@ from gobupload.storage.materialized_views import MaterializedViews
 
 
 def with_session(func):
-    """Decorator for methods that require the session in the context
+    """Decorator for methods that require the session in the context.
 
     Use like this:
 
@@ -60,7 +60,7 @@ def with_session(func):
 
 
 class GOBStorageHandler:
-    """Metadata aware Storage handler """
+    """Metadata aware Storage handler."""
     engine = create_engine(URL.create(**GOB_DB), connect_args={'sslmode': 'require'}, pool_pre_ping=True)
     Session = sessionmaker(autocommit=True,
                            autoflush=False,
@@ -96,10 +96,9 @@ class GOBStorageHandler:
     ]
 
     def __init__(self, gob_metadata=None):
-        """Initialize StorageHandler with gob metadata
+        """Initialize StorageHandler with gob metadata.
 
-        This will create abstractions to entities and events, and initialize storage if necessary
-
+        This will create abstractions to entities and events, and initialize storage if necessary.
         """
         GOBStorageHandler._set_base()
 
@@ -108,8 +107,9 @@ class GOBStorageHandler:
         self.session = None
 
     def init_storage(self, force_migrate=False, recreate_materialized_views: Union[bool, list] = False):
-        """Check if the necessary tables (for events, and for the entities in gobmodel) are present
-        If not, they are required
+        """Check if the necessary tables (for events, and for the entities in gobmodel) are present.
+
+        If not, they are required.
 
         :param recreate_materialized_views: List of mv's to recreate, True for all, False for none
         """
@@ -254,9 +254,9 @@ WHERE
         return table_name + "_" + ''.join(random.choice(string.ascii_lowercase) for i in range(3))
 
     def create_temporary_table(self):
-        """ Create a new temporary table based on the current table for a collection
+        """Create a new temporary table based on the current table for a collection.
 
-        Message data is inserted to be compared with the current state
+        Message data is inserted to be compared with the current state.
 
         :param data: the imported data
         :return:
@@ -279,8 +279,8 @@ WHERE
         return tmp_table_name
 
     def write_temporary_entity(self, entity):
-        """
-        Writes an entity to the temporary table
+        """Writes an entity to the temporary table.
+
         :param entity:
         :return:
         """
@@ -296,11 +296,11 @@ WHERE
         self._write_temporary_entities(write_per=10000)
 
     def _write_temporary_entities(self, write_per=1):
-        """
-        Writes the temporary entities to the temporary table
+        """Writes the temporary entities to the temporary table.
 
-        If no arguments are given the write will always take place
-        If the write_per argument is specified writes will take place in chunks
+        If no arguments are given the write will always take place.
+        If the write_per argument is specified writes will take place in chunks.
+
         :param write_per:
         :return:
         """
@@ -313,18 +313,18 @@ WHERE
             self.temporary_rows = []
 
     def close_temporary_table(self):
-        """
-        Writes any left temporary entities to the temporary table
+        """Writes any left temporary entities to the temporary table.
+
         :return:
         """
         self._write_temporary_entities()
 
     def compare_temporary_data(self, tmp_table_name, mode=ImportMode.FULL):
-        """ Compare the data in the temporay table to the current state
+        """Compare the data in the temporay table to the current state.
 
         The created query compares each model field and returns the tid, last_event
         _hash and if the record should be a ADD, DELETE or MODIFY. CONFIRM records are not
-        included in the result, but can be derived from the message
+        included in the result, but can be derived from the message.
 
         :return: a list of dicts with tid, hash, last_event and type
         """
@@ -377,7 +377,7 @@ WHERE
         self._set_base(update=True)
 
     def get_session(self):
-        """ Exposes an underlying database session as managed context """
+        """Exposes an underlying database session as managed context."""
 
         class session_context:
             def __enter__(ctx):
@@ -395,8 +395,7 @@ WHERE
         return session_context()
 
     def delete_confirms(self):
-        """
-        Once (BULK)CONFIRM events have been applied they are deleted
+        """Once (BULK)CONFIRM events have been applied they are deleted.
 
         :return:
         """
@@ -411,7 +410,7 @@ WHERE
 
     @with_session
     def get_entity_max_eventid(self):
-        """Get the highest last_event property of entity
+        """Get the highest last_event property of entity.
 
         :return: The highest last_event
         """
@@ -423,7 +422,7 @@ WHERE
 
     @with_session
     def get_last_eventid(self):
-        """Get the highest last_event property of entity
+        """Get the highest last_event property of entity.
 
         :return: The highest last_event
         """
@@ -435,7 +434,7 @@ WHERE
 
     @with_session
     def get_events_starting_after(self, eventid, count=10000):
-        """Return a list of events with eventid starting at eventid
+        """Return a list of events with eventid starting at eventid.
 
         :return: The list of events
         """
@@ -448,7 +447,7 @@ WHERE
 
     @with_session
     def has_any_event(self, filter):
-        """True if any event matches the filter condition
+        """True if any event matches the filter condition.
 
         :return: true is any event has been found given the filter
         """
@@ -459,8 +458,9 @@ WHERE
 
     @with_session
     def has_any_entity(self, key=None, value=None):
-        """Check if any entity exist with the given key-value combination
-        When no key-value combination is supplied check for any entity
+        """Check if any entity exist with the given key-value combination.
+
+        When no key-value combination is supplied check for any entity.
 
         :param key: key value, e.g. "_source"
         :param value: value to loop for, e.g. "DIVA"
@@ -471,16 +471,15 @@ WHERE
         return self.session.query(self.DbEntity).filter_by(**{key: value}).count() > 0
 
     def get_collection_model(self):
-        try:
-            return gob_model[self.metadata.catalogue]['collections'][self.metadata.entity]
-        except KeyError:
-            return None
+        if self.metadata.catalogue in gob_model:
+            return gob_model[self.metadata.catalogue]['collections'].get(self.metadata.entity)
+        return None
 
     @with_session
     def get_current_ids(self, exclude_deleted=True):
-        """Overview of entities that are current
+        """Overview of entities that are current.
 
-        Current id's are evaluated within an application
+        Current id's are evaluated within an application.
 
         :return: a list of ids for the entity that are currently not deleted.
         """
@@ -490,7 +489,7 @@ WHERE
 
     @with_session
     def get_last_events(self):
-        """Overview of all last applied events for the current collection
+        """Overview of all last applied events for the current collection.
 
         :return: a dict of ids with last_event for the collection
         """
@@ -499,7 +498,7 @@ WHERE
 
     @with_session
     def get_column_values_for_key_value(self, column, key, value):
-        """Gets the distinct values for column within the given source for the given key-value
+        """Gets the distinct values for column within the given source for the given key-value.
 
         Example: get all values for column "identification" with "code" == "A" coming from source "AMSBI"
 
@@ -521,9 +520,9 @@ WHERE
 
     @with_session
     def get_last_column_value(self, template, column):
-        """Get the "last" value for column with column values that match the template
+        """Get the "last" value for column with column values that match the template.
 
-        Example: Get the last value for "identification" with values that match "036%"
+        Example: Get the last value for "identification" with values that match "036%".
 
         The last value is defined by the order_by clause.
 
@@ -546,10 +545,10 @@ WHERE
     def get_current_entity(self, entity, with_deleted=False):
         """Gets current stored version of entity for the given entity.
 
-        If it doesn't exist, returns None
+        If it doesn't exist, returns None.
 
         An entity to retrieve is evaluated within a source
-        on the basis of its functional id (_id)
+        on the basis of its functional id (_id).
 
         :param entity: the new version of the entity
         :raises GOBException:
@@ -569,8 +568,7 @@ WHERE
 
     @with_session
     def get_entities(self, tids, with_deleted=False):
-        """
-        Get entities with tid contained in the given list of tid's
+        """Get entities with tid contained in the given list of tid's.
 
         :param tids: ids of the entities to get
         :param with_deleted: boolean denoting if entities that are deleted should be considered (default: False)
@@ -584,7 +582,7 @@ WHERE
         return entity_query.filter(attr.in_(tids)).all()
 
     def bulk_add_entities(self, events):
-        """Adds all applied ADD events to the storage
+        """Adds all applied ADD events to the storage.
 
         :param events: list of gob events
         """
@@ -614,8 +612,7 @@ WHERE
 
     @with_session
     def add_events(self, events):
-        """
-        Add the given events to the events table
+        """Add the given events to the events table.
 
         :param events: the list of events to insert
         :return: None
@@ -624,8 +621,7 @@ WHERE
             return value.replace("'", "''").replace("%", "%%") if isinstance(value, str) else value
 
         def to_json(data):
-            """
-            Convert the data dictionary to a JSON string that can be inserted in the events table.
+            """Convert the data dictionary to a JSON string that can be inserted in the events table.
 
             :param data: dictionary
             :return: the JSON string suitably quoted to be used as a string literal in an SQL statement string
@@ -666,11 +662,11 @@ VALUES {values}"""
         self.execute(statement)
 
     def bulk_update_confirms(self, event, eventid):
-        """ Confirm entities in bulk
+        """Confirm entities in bulk.
 
-        Takes a BULKCONFIRM event and updates all tids with the bulkconfirm timestamp
+        Takes a BULKCONFIRM event and updates all tids with the bulkconfirm timestamp.
 
-        The _last_event is not updated for (BULK)CONFIRM events
+        The _last_event is not updated for (BULK)CONFIRM events.
 
         :param event: the BULKCONFIRM event
         :param eventid: the id of the event to store as _last_event
@@ -679,8 +675,7 @@ VALUES {values}"""
         self.apply_confirms(event._data['confirms'], event._metadata.timestamp)
 
     def apply_confirms(self, confirms, timestamp):
-        """
-        Apply a (BULK)CONFIRM event
+        """Apply a (BULK)CONFIRM event.
 
         :param confirms: list of confirm data
         :param timestamp: Time to set as last_confirmed
@@ -692,9 +687,9 @@ VALUES {values}"""
         self.execute(stmt)
 
     def bulk_insert(self, table, insert_data):
-        """ A generic bulk insert function
+        """A generic bulk insert function.
 
-        Takes a list of dictionaries and the database table to insert into
+        Takes a list of dictionaries and the database table to insert into.
 
         :param table: the table to insert into
         :param insert_data: the data to insert
@@ -721,9 +716,9 @@ VALUES {values}"""
         result.close()
 
     def get_query_value(self, query):
-        """Execute a query and return the result value
+        """Execute a query and return the result value.
 
-        The supplied query needs to resolve to a scalar value
+        The supplied query needs to resolve to a scalar value.
 
         :param query: Query string
         :return: scalar value result
@@ -742,7 +737,7 @@ VALUES {values}"""
             return list(session.execute(stmt))
 
     def analyze_table(self):
-        """Runs VACUUM ANALYZE on table
+        """Runs VACUUM ANALYZE on table.
 
         :return:
         """

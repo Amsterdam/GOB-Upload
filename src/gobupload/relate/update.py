@@ -252,19 +252,13 @@ class Relater:
         self.src_collection_name = src_collection_name
         self.src_field_name = src_field_name
 
-        try:
-            self.src_collection = self.model[src_catalog_name]['collections'][src_collection_name]
-        except KeyError:
-            self.src_collection = None
+        self.src_collection = self.model[src_catalog_name]['collections'][src_collection_name]
         self.src_field = self.src_collection['all_fields'].get(src_field_name)
         self.src_table_name = self.model.get_table_name(src_catalog_name, src_collection_name)
 
         # Get the destination catalog and collection names
         self.dst_catalog_name, self.dst_collection_name = self.src_field['ref'].split(':')
-        try:
-            self.dst_collection = self.model[self.dst_catalog_name]['collections'][self.dst_collection_name]
-        except KeyError:
-            self.dst_collection = None
+        self.dst_collection = self.model[self.dst_catalog_name]['collections'][self.dst_collection_name]
         self.dst_table_name = self.model.get_table_name(self.dst_catalog_name, self.dst_collection_name)
 
         # Check if source or destination has states (volgnummer, begin_geldigheid, eind_geldigheid)
@@ -961,7 +955,7 @@ SELECT * FROM {self.dst_table_name} dst
         :param attribute:
         :return:
         """
-        return len(set([spec[attribute] for spec in self.relation_specs])) == 1
+        return len({spec[attribute] for spec in self.relation_specs}) == 1
 
     def _create_delete_events_query(self, min_src_event: int, max_src_event: int, min_dst_event: int,
                                     max_dst_event: int):
