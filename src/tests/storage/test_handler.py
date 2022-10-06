@@ -80,6 +80,7 @@ class TestStorageHandler(unittest.TestCase):
         self.storage._init_relation_materialized_views = MagicMock()
         self.storage._check_configuration = MagicMock()
 
+        # no error
         self.storage.init_storage(recreate_materialized_views='booleanValue')
         # mock_alembic.config.main.assert_called_once()
 
@@ -87,6 +88,19 @@ class TestStorageHandler(unittest.TestCase):
         self.storage._init_indexes.assert_called_once()
         self.storage._init_relation_materialized_views.assert_called_with('booleanValue')
         self.storage._check_configuration.assert_called_once()
+
+        # raise error during migration
+        mock_config.main.side_effect = Exception("My error")
+        GOBStorageHandler.engine.execute.reset_mock()
+
+        with self.assertRaisesRegex(Exception, "My error"):
+            self.storage.init_storage(force_migrate=False, raise_on_error=True)
+
+        # assert we are unlocking after exception
+        GOBStorageHandler.engine.execute.has_calls([
+            call("SELECT pg_advisory_lock(19935910)"),
+            call("SELECT pg_advisory_unlock(19935910)")
+        ])
 
     def test_get_config_value(self):
         self.storage.engine = MagicMock()
