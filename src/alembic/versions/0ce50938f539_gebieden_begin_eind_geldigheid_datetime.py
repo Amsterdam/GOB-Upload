@@ -32,7 +32,7 @@ def upgrade():
         c_views CURSOR FOR
         SELECT * FROM pg_views 
         WHERE schemaname='public' and viewowner != 'postgres' and viewname NOT IN (
-            'geography_columns', 'geometry_columns', 'raster_columns', 'raster_overviews'
+            'geography_columns', 'geometry_columns', 'raster_columns', 'raster_overviews', 'pg_stat_statements'
         );
     BEGIN
         FOR v in c_views LOOP
