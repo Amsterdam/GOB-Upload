@@ -199,7 +199,7 @@ def run_as_message_driven() -> None:
     messagedriven_service(SERVICEDEFINITION, "Upload", params)
 
 
-def run_as_standalone(args: argparse.Namespace) -> None:
+def run_as_standalone(args: argparse.Namespace) -> int:
     force_migrate = args.handler == "migrate"
 
     if force_migrate:
@@ -209,7 +209,7 @@ def run_as_standalone(args: argparse.Namespace) -> None:
         recreate_materialized_views = False
 
     GOBStorageHandler().init_storage(force_migrate, recreate_materialized_views, raise_on_error=True)
-    sys.exit(standalone.run_as_standalone(args, SERVICEDEFINITION))
+    return standalone.run_as_standalone(args, SERVICEDEFINITION)
 
 
 def main():
@@ -221,7 +221,7 @@ def main():
         print("Arguments found, run as standalone")
         parser = argument_parser()
         args = parser.parse_args()
-        run_as_standalone(args)
+        sys.exit(run_as_standalone(args))
 
 
 if __name__ == "__main__":
