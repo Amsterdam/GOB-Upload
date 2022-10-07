@@ -63,13 +63,6 @@ class TestInit(TestCase):
     @patch('gobupload.relate._log_exception')
     def test_check_relation_with_invalid_messages(self, mock_log_exception):
         """Test check_relation with invalid messages."""
-        no_header = {}
-        with self.assertRaises(GOBException):
-            check_relation(no_header)
-        mock_log_exception.assert_called_with(
-            "Invalid message: header key is missing", ANY)
-        mock_log_exception.reset_mock()
-
         invalid_catalog = {
             'header': {
                 'catalogue': 'invalid catalog key'
@@ -125,12 +118,6 @@ class TestInit(TestCase):
             'contents': None
         })
 
-        # CATALOG_KEY missing.
-        mock_model.__getitem__.side_effect = KeyError
-        with self.assertRaises(GOBException):
-            check_relation(valid_message)
-        mock_model.reset_mock(side_effect=True)
-
         # COLLECTION_KEY missing.
         mock_model.__getitem__.return_value = {
                 'collections': {}
@@ -180,10 +167,6 @@ class TestInit(TestCase):
     @patch("gobupload.relate.gob_model", MockModel())
     def test_get_catalog_from_msg(self):
         "Test get_catalog_from_msg."""
-        no_header_msg = {'catalogue': 'catalog'}
-        with self.assertRaises(GOBException):
-            get_catalog_from_msg(no_header_msg)
-
         wrong_catalog_msg = {
             'header': {
                 'catalog': 'do_you_mean_catalogue',

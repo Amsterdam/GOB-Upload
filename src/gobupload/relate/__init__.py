@@ -40,13 +40,7 @@ def verify_process_msg_header(msg):
     :param msg: a message from the broker containing the catalog and collections
     :return:
     """
-    try:
-        header = msg['header']
-    except KeyError as exc:
-        error_msg = "Invalid message: header key is missing"
-        _log_exception(error_msg, exc)
-        raise GOBException(error_msg) from exc
-
+    header = msg['header']
     for key in [CATALOG_KEY, COLLECTION_KEY, ATTRIBUTE_KEY]:
         try:
             header[key]
@@ -65,12 +59,7 @@ def get_collection_from_msg(msg):
     verify_process_msg_header(msg)
 
     catalog_name = msg['header'][CATALOG_KEY]
-    try:
-        catalog = gob_model[catalog_name]
-    except KeyError as exc:
-        error_msg = f"Invalid catalog '{catalog_name}'"
-        _log_exception(error_msg, exc)
-        raise GOBException(error_msg) from exc
+    catalog = gob_model[catalog_name]
 
     collection_name = msg['header'][COLLECTION_KEY]
     try:
@@ -120,13 +109,7 @@ def get_catalog_from_msg(msg: dict):        # noqa: C901
     :param msg: split job message
     :return: tuple with valid catalog name and catalog dict
     """
-    try:
-        header = msg['header']
-    except KeyError as exc:
-        error_msg = "Invalid message: 'header' key is missing"
-        _log_exception(error_msg, exc)
-        raise GOBException(error_msg) from exc
-
+    header = msg['header']
     try:
         catalog_name = header['catalogue']
     except KeyError as exc:
@@ -295,6 +278,7 @@ def verify_process_message(msg: dict):
     """
     verify_process_msg_header(msg)
     header = msg['header']
+
     try:
         catalog = gob_model[header[CATALOG_KEY]]
     except KeyError as exc:
