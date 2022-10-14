@@ -1,4 +1,4 @@
-"""Abstraction for the storage that is backing GOB, it is metadata aware, and requires a session in context
+"""Abstraction for the storage that is backing GOB, it is metadata aware, and requires a session in context.
 
 Use it like this:
 
@@ -12,32 +12,32 @@ import json
 import warnings
 import random
 import string
+from typing import Union
 
 from sqlalchemy import create_engine, Table, update, exc as sa_exc
 from sqlalchemy.engine.url import URL
-from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import sessionmaker
-from typing import Union
+from sqlalchemy.orm.exc import MultipleResultsFound
 
 from gobcore.enum import ImportMode
 from gobcore.exceptions import GOBException
-from gobcore.model import GOBModel
 from gobcore.model.sa.gob import get_column
 from gobcore.model.sa.indexes import get_indexes
 from gobcore.typesystem import get_gob_type
 from gobcore.typesystem.json import GobTypeJSONEncoder
 from gobcore.utils import ProgressTicker
-from sqlalchemy.orm.exc import MultipleResultsFound
 from gobcore.events.import_events import CONFIRM
-
-from gobupload.config import GOB_DB
-from gobupload.storage import queries
-from gobupload.storage.materialized_views import MaterializedViews
 
 from alembic.runtime import migration
 import alembic.config
 import alembic.script
+
+from gobupload import gob_model
+from gobupload.config import GOB_DB
+from gobupload.storage import queries
+from gobupload.storage.materialized_views import MaterializedViews
 
 
 def with_session(func):
@@ -60,8 +60,7 @@ def with_session(func):
 
 
 class GOBStorageHandler:
-    """Metadata aware Storage handler """
-    gob_model = GOBModel()
+    """Metadata aware Storage handler."""
     engine = create_engine(URL.create(**GOB_DB), connect_args={'sslmode': 'require'}, pool_pre_ping=True)
     Session = sessionmaker(autocommit=True,
                            autoflush=False,
@@ -230,7 +229,7 @@ WHERE
 
         :return:
         """
-        indexes = get_indexes(self.gob_model)
+        indexes = get_indexes(gob_model)
         self._drop_indexes(indexes)
         existing_indexes = self._get_existing_indexes()
 
@@ -261,8 +260,8 @@ WHERE
         :param data: the imported data
         :return:
         """
-        self.collection = self.gob_model.get_collection(self.metadata.catalogue, self.metadata.entity)
-        table_name = self.gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
+        self.collection = self.get_collection_model()
+        table_name = gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
         tmp_table_name = self._get_tmp_table_name(table_name)
 
         self.fields = ['_tid', '_source', '_hash']
@@ -328,7 +327,7 @@ WHERE
 
         :return: a list of dicts with tid, hash, last_event and type
         """
-        current = self.gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
+        current = gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
 
         fields = ["_tid"]
         source = self.metadata.source
@@ -364,7 +363,7 @@ WHERE
         return getattr(self.base.classes, self._get_tablename())
 
     def _get_tablename(self):
-        return self.gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
+        return gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
 
     def _drop_table(self, table):
         statement = f"DROP TABLE IF EXISTS {table} CASCADE"
@@ -471,7 +470,9 @@ WHERE
         return self.session.query(self.DbEntity).filter_by(**{key: value}).count() > 0
 
     def get_collection_model(self):
-        return self.gob_model.get_collection(self.metadata.catalogue, self.metadata.entity)
+        if self.metadata.catalogue in gob_model:
+            return gob_model[self.metadata.catalogue]['collections'].get(self.metadata.entity)
+        return None
 
     @with_session
     def get_current_ids(self, exclude_deleted=True):

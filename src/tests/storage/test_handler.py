@@ -1,17 +1,15 @@
 import unittest
-from unittest.mock import call, MagicMock, patch, Mock
+from unittest.mock import call, MagicMock, patch
 
 from gobcore.events.import_message import ImportMessage
 from gobcore.exceptions import GOBException
-from gobcore.model import GOBModel
 
-import gobupload.storage.handler
+from sqlalchemy.exc import OperationalError
+
 from gobupload.compare.populate import Populator
 from gobupload.storage import queries
 from gobupload.storage.handler import GOBStorageHandler
 from tests import fixtures
-
-from sqlalchemy.exc import OperationalError
 
 
 class MockedEngine:
@@ -36,7 +34,6 @@ class TestStorageHandler(unittest.TestCase):
 
     @patch('gobupload.storage.handler.create_engine', MagicMock())
     def setUp(self):
-        self.mock_model = MagicMock(spec=GOBModel)
         self.msg = fixtures.get_message_fixture()
         model = {
             "entity_id": "identificatie",
@@ -356,12 +353,12 @@ WHERE
         result = self.storage.get_source_catalogue_entity_combinations(col="val")
         mock_session.return_value.__enter__().execute.assert_called_with("SELECT DISTINCT source, catalogue, entity FROM events WHERE col = 'val'")
 
-    def test_get_tablename(self):
-        self.storage.gob_model = MagicMock()
+    @patch('gobupload.storage.handler.gob_model.get_table_name')
+    def test_get_tablename(self, mock_get_table_name):
         result = self.storage._get_tablename()
-        self.assertEqual(self.storage.gob_model.get_table_name.return_value, result)
-        self.storage.gob_model.get_table_name.assert_called_with(self.storage.metadata.catalogue,
-                                                                 self.storage.metadata.entity)
+        self.assertEqual(mock_get_table_name.return_value, result)
+        mock_get_table_name.assert_called_with(
+            self.storage.metadata.catalogue, self.storage.metadata.entity)
 
     def test_analyze_table(self):
         self.storage.engine = MagicMock()
