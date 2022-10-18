@@ -1,15 +1,15 @@
-from __future__ import with_statement
-
 import sys
-
-from alembic import context
-from gobcore.model import GOBModel
-from sqlalchemy import engine_from_config, pool
-from sqlalchemy.engine.url import URL
 from logging.config import fileConfig
 
-sys.path.append('.')
+from alembic import context
+from sqlalchemy import engine_from_config, pool
+from sqlalchemy.engine.url import URL
+
 from gobcore.model.sa.gob import get_base, get_sqlalchemy_models
+
+sys.path.append('.')
+
+from gobupload import gob_model
 from gobupload.config import GOB_DB
 
 # this is the Alembic Config object, which provides
@@ -24,7 +24,7 @@ fileConfig(config.config_file_name)
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
-get_sqlalchemy_models(GOBModel())  # Initialises SQLAlchemy metadata
+get_sqlalchemy_models(gob_model)  # Initialises SQLAlchemy metadata
 Base = get_base()
 target_metadata = Base.metadata
 
@@ -39,8 +39,7 @@ def include_object(object, name, type_, reflected, compare_to):
         # Indexes are created by gobupload upon startup
         # Events is a partitioned table and is maintained manually
         return False
-    else:
-        return True
+    return True
 
 
 def run_migrations_online():
@@ -74,5 +73,5 @@ def run_migrations_online():
 
 if context.is_offline_mode():
     raise NotImplementedError
-else:
-    run_migrations_online()
+
+run_migrations_online()
