@@ -79,3 +79,30 @@ class TestMain(TestCase):
             main()
 
         mock_run_as_standalone.assert_called()
+
+    @mock.patch('gobupload.__main__.GOBStorageHandler')
+    @mock.patch('gobupload.__main__.standalone.run_as_standalone')
+    def test_standalone_migration_error(self, mock_run_as_standalone, mock_storage):
+        sys.argv = [
+            'python -m gobupload',
+            'apply',
+            '--catalogue', 'test_catalogue',
+            '--collection', 'test_entity_autoid'
+        ]
+        mock_storage.side_effect = Exception("my error")
+
+        with self.assertRaisesRegex(Exception, "my error"):
+            main()
+
+        mock_run_as_standalone.assert_not_called()
+
+    @mock.patch('gobupload.__main__.GOBStorageHandler')
+    @mock.patch('gobcore.message_broker.messagedriven_service.MessagedrivenService')
+    def test_messageservice_migration_error(self, mock_service, mock_storage):
+        sys.argv = ['python -m gobupload']
+        mock_storage.side_effect = Exception("my error")
+
+        with self.assertRaisesRegex(Exception, "my error"):
+            main()
+
+        mock_service.assert_not_called()
