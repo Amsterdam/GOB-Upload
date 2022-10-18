@@ -110,14 +110,12 @@ class GOBStorageHandler:
             self,
             force_migrate=False,
             recreate_materialized_views: Union[bool, list] = False,
-            raise_on_error: bool = False
     ):
         """Check if the necessary tables (for events, and for the entities in gobmodel) are present
         If not, they are required
 
         :param force_migrate: Don't wait for any migrations to finish before continuing
         :param recreate_materialized_views: List of mv's to recreate, True for all, False for none
-        :param raise_on_error: Exit the application on migration errors
         """
         MIGRATION_LOCK = 19935910  # Just some random number
 
@@ -149,13 +147,9 @@ class GOBStorageHandler:
 
         except Exception as err:
             print(f'Storage migration failed: {str(err)}')
-
-            if raise_on_error:
-                raise err
-
+            raise err
         else:  # No exception
             print('Storage is up-to-date')
-
         finally:
             # Always unlock
             self.engine.execute(f"SELECT pg_advisory_unlock({MIGRATION_LOCK})")

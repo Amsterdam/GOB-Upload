@@ -94,7 +94,7 @@ class TestStorageHandler(unittest.TestCase):
         GOBStorageHandler.engine.execute.reset_mock()
 
         with self.assertRaisesRegex(Exception, "My error"):
-            self.storage.init_storage(force_migrate=False, raise_on_error=True)
+            self.storage.init_storage(force_migrate=False)
 
         # assert we are unlocking after exception
         GOBStorageHandler.engine.execute.has_calls([

@@ -37,9 +37,7 @@ class TestMain(TestCase):
             main()
 
         mock_service.return_value.start.assert_not_called()
-        mock_storage.return_value.init_storage.assert_called_with(
-            True, False, raise_on_error=True
-        )
+        mock_storage.return_value.init_storage.assert_called_with(True, False)
 
     @mock.patch("gobupload.__main__.standalone.run_as_standalone", mock.MagicMock(return_value=0))
     @mock.patch('gobupload.__main__.GOBStorageHandler')
@@ -52,9 +50,7 @@ class TestMain(TestCase):
             main()
 
         mock_service.return_value.start.assert_not_called()
-        mock_storage.return_value.init_storage.assert_called_with(
-            True, True, raise_on_error=True
-        )
+        mock_storage.return_value.init_storage.assert_called_with(True, True)
 
     @mock.patch("gobupload.__main__.standalone.run_as_standalone", mock.MagicMock(return_value=0))
     @mock.patch('gobupload.__main__.GOBStorageHandler')
@@ -67,12 +63,10 @@ class TestMain(TestCase):
             main()
 
         mock_service.return_value.start.assert_not_called()
-        mock_storage.return_value.init_storage.assert_called_with(
-            True, ['some_mv_name'], raise_on_error=True
-        )
+        mock_storage.return_value.init_storage.assert_called_with(True, ['some_mv_name'])
 
     @mock.patch('gobupload.__main__.GOBStorageHandler', mock.MagicMock())
-    @mock.patch('gobupload.__main__.standalone.run_as_standalone')
+    @mock.patch('gobupload.__main__.standalone.run_as_standalone', return_value=0)
     def test_main_calls_run_as_standalone(self, mock_run_as_standalone):
         # No command line arguments
         sys.argv = [

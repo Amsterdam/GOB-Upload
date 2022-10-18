@@ -187,8 +187,8 @@ if DEBUG:
 
 def run_as_message_driven() -> None:
     """Run in message driven mode, listening to a message queue."""
-    storage = GOBStorageHandler()
-    storage.init_storage()
+    GOBStorageHandler().init_storage()
+
     params = {
         "stream_contents": True,
         "thread_per_service": True,
@@ -208,7 +208,7 @@ def run_as_standalone(args: argparse.Namespace) -> int:
     else:
         recreate_materialized_views = False
 
-    GOBStorageHandler().init_storage(force_migrate, recreate_materialized_views, raise_on_error=True)
+    GOBStorageHandler().init_storage(force_migrate, recreate_materialized_views)
     return standalone.run_as_standalone(args, SERVICEDEFINITION)
 
 
@@ -216,7 +216,6 @@ def main():
     if len(sys.argv) == 1:
         print("No arguments found, wait for messages on the message broker.")
         run_as_message_driven()
-
     else:
         print("Arguments found, run as standalone")
         parser = argument_parser()
