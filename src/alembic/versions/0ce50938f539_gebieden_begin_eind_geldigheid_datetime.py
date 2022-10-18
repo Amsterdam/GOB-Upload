@@ -31,9 +31,11 @@ def upgrade():
     DECLARE
         c_views CURSOR FOR
         SELECT * FROM pg_views 
-        WHERE schemaname='public' and viewowner != 'postgres' and viewname NOT IN (
+        WHERE schemaname='public' 
+            and viewowner NOT IN ('postgres', 'azure_superuser')
+            and viewname NOT IN (
             'geography_columns', 'geometry_columns', 'raster_columns', 'raster_overviews'
-        );
+            );
     BEGIN
         FOR v in c_views LOOP
             EXECUTE 'DROP VIEW IF EXISTS ' || v.viewname || ' CASCADE';

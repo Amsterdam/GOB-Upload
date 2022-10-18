@@ -26,15 +26,16 @@ mv.initialise(storage_handler)
 
 Update materialized view for catalog, collection, attribute
 """
-from gobcore.model.metadata import FIELD
-from gobcore.model import GOBModel
-from gobcore.model import relations as model_relations
 
 from typing import Union
 
+from gobcore.model.metadata import FIELD
+from gobcore.model import relations as model_relations
+
+from gobupload import gob_model
+
 
 class MaterializedView:
-    model = GOBModel()
 
     def __init__(self, relation_name: str):
         """
@@ -46,8 +47,8 @@ class MaterializedView:
         self.relation_table_name = f"rel_{relation_name}"
 
         split = relation_name.split('_')
-        src_catalog, src_collection = self.model.get_catalog_collection_from_abbr(split[0], split[1])
-        dst_catalog, dst_collection = self.model.get_catalog_collection_from_abbr(split[2], split[3])
+        src_catalog, src_collection = gob_model.get_catalog_collection_from_abbr(split[0], split[1])
+        dst_catalog, dst_collection = gob_model.get_catalog_collection_from_abbr(split[2], split[3])
 
         self.src_has_states = src_collection.get('has_states', False)
         self.dst_has_states = dst_collection.get('has_states', False)
@@ -106,7 +107,6 @@ class MaterializedView:
 
 
 class MaterializedViews:
-    model = GOBModel()
 
     def initialise(self, storage_handler, force_recreate: Union[bool, list] = False):
         """This method creates the materialized view along with its indexes
@@ -118,7 +118,7 @@ class MaterializedViews:
         force_recreate = force_recreate or []
 
         for materialized_view in materialized_views:
-            recreate = True if force_recreate is True or materialized_view.name in force_recreate else False
+            recreate = bool(force_recreate is True or materialized_view.name in force_recreate)
             materialized_view.create(storage_handler, recreate)
 
     def get_all(self):
@@ -128,7 +128,7 @@ class MaterializedViews:
         """
         definitions = []
 
-        for relation_name in model_relations.get_relations(self.model)['collections'].keys():
+        for relation_name in model_relations.get_relations(gob_model)['collections']:
             definitions.append(MaterializedView(relation_name))
 
         return definitions
@@ -141,7 +141,7 @@ class MaterializedViews:
         :param attribute:
         :return:
         """
-        relation_name = model_relations.get_relation_name(self.model, catalog_name, collection_name, attribute)
+        relation_name = model_relations.get_relation_name(gob_model, catalog_name, collection_name, attribute)
         return self.get_by_relation_name(relation_name)
 
     def get_by_relation_name(self, relation_name):
