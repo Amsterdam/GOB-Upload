@@ -38,7 +38,7 @@ class TestEnrichGeounion(TestCase):
         self.mock_storage.get_query_value.assert_not_called()
         self.assertEqual(msg["contents"], [])
 
-    @patch("gobupload.compare.enrich.GOBModel.has_states", lambda *args: False)
+    @patch("gobupload.compare.enrich.gob_model.has_states", lambda *args: False)
     def test_enrich_simple_contents(self):
         self.mock_storage.get_query_value.return_value = "POINT (1 2)"
         msg = self.mock_msg
@@ -62,7 +62,7 @@ USING (_tid)
         self.mock_storage.get_query_value.assert_called_with(qry)
         self.assertEqual(msg["contents"][0]["geo"], "POINT (1.000 2.000)")
 
-    @patch("gobupload.compare.enrich.GOBModel.has_states", lambda *args: False)
+    @patch("gobupload.compare.enrich.gob_model.has_states", lambda *args: False)
     def test_enrich_complex_contents(self):
         self.mock_storage.get_query_value.return_value = "POINT (1 2)"
         msg = self.mock_msg
@@ -87,7 +87,7 @@ USING (_tid)
         self.mock_storage.get_query_value.assert_called_with(qry)
         self.assertEqual(msg["contents"][0]["geo"], "POINT (1.000 2.000)")
 
-    @patch("gobupload.compare.enrich.GOBModel.has_states", lambda *args: False)
+    @patch("gobupload.compare.enrich.gob_model.has_states", lambda *args: False)
     def test_enrich_multi_complex_contents(self):
         self.mock_storage.get_query_value.return_value = "POINT (1 2)"
         msg = self.mock_msg
@@ -124,7 +124,7 @@ USING (_tid)
         self.mock_storage.get_query_value.assert_not_called()
         self.assertEqual(msg["contents"][0]["geo"], "aap")
 
-    @patch("gobupload.compare.enrich.GOBModel.has_states", lambda *args: False)
+    @patch("gobupload.compare.enrich.gob_model.has_states", lambda *args: False)
     def test_enrich_geounion_none(self):
         self.mock_storage.get_query_value.return_value = None
         msg = self.mock_msg
@@ -136,7 +136,7 @@ USING (_tid)
 
         self.assertIsNone(msg["contents"][0]['geo'])
 
-    @patch("gobupload.compare.enrich.GOBModel.has_states", lambda *args: True)
+    @patch("gobupload.compare.enrich.gob_model.has_states", lambda *args: True)
     def test_enrich_states(self):
         self.mock_storage.get_query_value.return_value = "POINT (1 2)"
         msg = self.mock_msg
