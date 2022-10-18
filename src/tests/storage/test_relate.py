@@ -1,13 +1,13 @@
-from unittest import TestCase, mock
+from unittest import TestCase
 from unittest.mock import MagicMock, patch, call
+from datetime import date, datetime
 
-from gobcore.model import GOBModel
-from datetime import date
-
-from gobupload.relate.exceptions import RelateException
-from gobupload.storage.relate import EQUALS, LIES_IN, JOIN, WHERE, \
-    _get_data, get_current_relations, _query_missing, check_relations, \
-    check_very_many_relations, check_relation_conflicts, _get_relation_check_query, QA_CHECK, QA_LEVEL, date_to_datetime, _get_date_origin_fields
+from gobupload import gob_model
+from gobupload.storage.relate import _get_data, get_current_relations, _query_missing
+from gobupload.storage.relate import check_relations, check_very_many_relations
+from gobupload.storage.relate import check_relation_conflicts, _get_relation_check_query
+from gobupload.storage.relate import QA_CHECK, QA_LEVEL, date_to_datetime, _get_date_origin_fields
+from gobupload.storage.relate import _convert_row
 
 
 class TestRelations(TestCase):
@@ -32,20 +32,39 @@ class TestRelations(TestCase):
             "dst_eind_geldigheid",
         ], _get_date_origin_fields())
 
+    def test_convert_row(self):
+        begin = date(2022, 2, 7)
+        end = date.today()
+        result = _convert_row([("src_begin_geldigheid", begin), ("dst_eind_geldigheid", end)])
+        self.assertEqual(result, {"src_begin_geldigheid": begin, "dst_eind_geldigheid": end})
+
+        end = datetime.today()
+        result = _convert_row([("src_begin_geldigheid", begin), ("dst_eind_geldigheid", end)])
+        self.assertEqual(
+            result,
+            {"src_begin_geldigheid": date_to_datetime(begin), "dst_eind_geldigheid": end})
+
     @patch('gobupload.storage.relate._execute')
     def test_current_relations(self, mock_execute):
         mock_execute.return_value = [{}]
-        mock_get_collection = lambda *args: {
-            'all_fields': {
-                'field': {
-                    'type': 'GOB.Reference',
-                    'ref': 'dst_catalogue:dst_collection'
+        mock_gobmodel_data = {
+            'catalog': {
+                'collections': {
+                    'collection': {
+                        'all_fields': {
+                            'field': {
+                                'type': 'GOB.Reference',
+                                'ref': 'dst_catalogue:dst_collection'
+                            }
+                        }
+                    }
                 }
             }
         }
-        with patch.object(GOBModel, 'get_collection', mock_get_collection):
+
+        with patch.dict(gob_model.data, mock_gobmodel_data):
             result = get_current_relations("catalog", "collection", "field")
-            first = next(result)
+            next(result)
         mock_execute.assert_called_with("""
 SELECT   _gobid, field, _source, _id
 FROM     catalog_collection
@@ -56,16 +75,23 @@ ORDER BY _source, _id
     @patch('gobupload.storage.relate._execute')
     def test_current_relations_with_states(self, mock_execute):
         mock_execute.return_value = [{}]
-        mock_get_collection = lambda *args: {
-            'all_fields': {
-                'field': {
-                    'type': 'GOB.Reference',
-                    'ref': 'dst_catalogue:dst_collection'
+        mock_gobmodel_data = {
+            'catalog': {
+                'collections': {
+                    'collection': {
+                        'all_fields': {
+                            'field': {
+                                'type': 'GOB.Reference',
+                                'ref': 'dst_catalogue:dst_collection'
+                            }
+                        }
+                    }
                 }
             }
         }
-        with patch.object(GOBModel, 'get_collection', mock_get_collection),\
-                patch.object(GOBModel, 'has_states', lambda *args: True):
+
+        with patch.object(gob_model, 'has_states', lambda *args: True), \
+                patch.dict(gob_model.data, mock_gobmodel_data):
             result = get_current_relations("catalog", "collection", "field")
             first = next(result)
         self.assertEqual(first, {})
@@ -76,16 +102,15 @@ WHERE    _date_deleted IS NULL
 ORDER BY _source, _id, volgnummer, begin_geldigheid
 """)
 
-    @patch('gobupload.storage.relate.GOBStorageHandler', MagicMock())
+    @patch('gobupload.storage.relate.GOBStorageHandler', MagicMock(), spec_set=True)
     def test_get_data(self):
-        result = [r for r in _get_data('')]
+        result = list(_get_data(''))
         self.assertEqual(result, [])
 
-    @patch('gobupload.storage.relate.Issue', mock.MagicMock())
-    @patch('gobupload.storage.relate.logger')
+    @patch('gobupload.storage.relate.Issue', MagicMock())
     @patch('gobupload.storage.relate.log_issue')
     @patch('gobupload.storage.relate._get_data')
-    def test_query_missing(self, mock_data, mock_log_issue, mock_logger):
+    def test_query_missing(self, mock_data, mock_log_issue):
         mock_data.return_value = []
         _query_missing("any query", {'msg': "any items"}, "name")
         mock_data.assert_called_with("any query")
@@ -94,26 +119,17 @@ ORDER BY _source, _id, volgnummer, begin_geldigheid
         _query_missing("any query", {'msg': "any items"}, "name")
         mock_log_issue.assert_called()
 
-    # @patch('gobupload.storage.relate.GOBModel')
     @patch('gobupload.storage.relate._get_relation_check_query')
     @patch('gobupload.storage.relate._query_missing')
     @patch('gobupload.storage.relate.GOBSources.get_field_relations')
     @patch('gobupload.storage.relate.logger')
     def test_check_relations(self, mock_logger, mock_get_field_relations, mock_missing, mock_get_query):
-        mock_collection = {
-            'all_fields': {
-                'any_field_name': {
-                    'type': "any type"
-                }
-            }
-        }
         catalog = 'any_catalog'
         collection = 'any_collection'
         field_name = 'any_field_name'
         mock_get_field_relations.return_value = [{'source': 'sourceA'}]
-        with patch.object(GOBModel, 'get_table_name', lambda s, a, b: a + b), \
-             patch.object(GOBModel, 'get_collection', lambda s, a, b: mock_collection), \
-             patch.object(GOBModel, 'has_states', lambda s, a, b: True):
+        with patch.object(gob_model, 'get_table_name', lambda s, a, b: a + b), \
+             patch.object(gob_model, 'has_states', lambda s, a, b: True):
 
             # Test base case: no sources with none_allowed.
             check_relations(catalog, collection, field_name)
@@ -147,7 +163,8 @@ ORDER BY _source, _id, volgnummer, begin_geldigheid
             ]
 
             check_relations(catalog, collection, field_name)
-            mock_get_query.assert_called_with('dangling', catalog, collection, field_name, ['sourceB', 'sourceC'])
+            mock_get_query.assert_called_with(
+                'dangling', catalog, collection, field_name, ['sourceB', 'sourceC'])
 
             self.assertEqual(mock_get_query.call_count, 2)
 
@@ -158,19 +175,10 @@ ORDER BY _source, _id, volgnummer, begin_geldigheid
     @patch('gobupload.storage.relate.get_relation_name')
     @patch('gobupload.storage.relate._query_missing')
     def test_check_very_many_relations(self, mock_missing, mock_get_relation_name):
-        mock_collection = {
-            'all_fields': {
-                'any_field_name': {
-                    'type': "any type"
-                }
-            }
-        }
-
         mock_get_relation_name.return_value = 'cat_col_cat2_col2_field'
 
-        with patch.object(GOBModel, 'get_table_name', lambda s, a, b: a + b), \
-             patch.object(GOBModel, 'get_collection', lambda s, a, b: mock_collection), \
-             patch.object(GOBModel, 'has_states', lambda s, a, b: True):
+        with patch.object(gob_model, 'get_table_name', lambda a, b: a + b), \
+                patch.object(gob_model, 'has_states', lambda a, b: True):
             check_very_many_relations("any_catalog", "any_collection", "any_field_name")
         mock_missing.assert_called()
         self.assertEqual(mock_missing.call_count, 2)
@@ -217,22 +225,28 @@ ORDER BY _source, _id, volgnummer, begin_geldigheid
 
     @patch('gobupload.storage.relate.get_relation_name')
     def test_get_relation_check_query_single(self, mock_get_relation_name):
-        mock_collection = {
-            'all_fields': {
-                'any_field_name': {
-                    'type': "any type"
+        mock_gobmodel_data = {
+            'any_catalog': {
+                'collections': {
+                    'any_collection': {
+                        'all_fields': {
+                            'any_field_name': {
+                                'type': "any type"
+                            }
+                        }
+                    }
                 }
             }
         }
-
         mock_get_relation_name.return_value = 'cat_col_cat2_col2_field'
 
-        with patch.object(GOBModel, 'get_table_name', lambda s, a, b: a + b), \
-             patch.object(GOBModel, 'get_collection', lambda s, a, b: mock_collection), \
-             patch.object(GOBModel, 'has_states', lambda s, a, b: True):
+        with patch.object(gob_model, 'get_table_name', lambda a, b: a + b), \
+             patch.object(gob_model, 'has_states', lambda a, b: True), \
+             patch.dict(gob_model.data, mock_gobmodel_data):
 
              # Test missing query
-            result = _get_relation_check_query("missing", "any_catalog", "any_collection", "any_field_name", [])
+            result = _get_relation_check_query(
+                "missing", "any_catalog", "any_collection", "any_field_name", [])
             expect = """
 SELECT
     src._id as id,
@@ -249,7 +263,8 @@ WHERE
             self.assertEqual(result, expect)
 
             # Test dangling query
-            result = _get_relation_check_query("dangling", "any_catalog", "any_collection", "any_field_name", None)
+            result = _get_relation_check_query(
+                "dangling", "any_catalog", "any_collection", "any_field_name", None)
             expect = """
 SELECT
     src._id as id,
@@ -271,28 +286,35 @@ WHERE
 
             # Expect assertionerror on a different query type
             with self.assertRaises(AssertionError):
-                result = _get_relation_check_query("other", "any_catalog", "any_collection", "any_field_name", [])
+                result = _get_relation_check_query(
+                    "other", "any_catalog", "any_collection", "any_field_name", [])
 
 
     @patch('gobupload.storage.relate.get_relation_name')
     def test_get_relation_check_query_many(self, mock_get_relation_name):
         self.maxDiff = None
-        mock_collection = {
-            'all_fields': {
-                'any_field_name': {
-                    'type': "GOB.ManyReference"
+        mock_gobmodel_data = {
+            'any_catalog': {
+                'collections': {
+                    'any_collection': {
+                        'all_fields': {
+                            'any_field_name': {
+                                'type': "GOB.ManyReference"
+                            }
+                        }
+                    }
                 }
             }
         }
-
         mock_get_relation_name.return_value = 'cat_col_cat2_col2_field'
 
-        with patch.object(GOBModel, 'get_table_name', lambda s, a, b: a + b), \
-             patch.object(GOBModel, 'get_collection', lambda s, a, b: mock_collection), \
-             patch.object(GOBModel, 'has_states', lambda s, a, b: True):
+        with patch.object(gob_model, 'get_table_name', lambda a, b: a + b), \
+             patch.object(gob_model, 'has_states', lambda a, b: True), \
+             patch.dict(gob_model.data, mock_gobmodel_data):
 
              # Test missing query
-            result = _get_relation_check_query("missing", "any_catalog", "any_collection", "any_field_name", None)
+            result = _get_relation_check_query(
+                "missing", "any_catalog", "any_collection", "any_field_name", None)
             expect = """
 SELECT
     src._id as id,
@@ -322,7 +344,8 @@ WHERE
             self.assertEqual(result, expect)
 
             # Test dangling query with applications
-            result = _get_relation_check_query("dangling", "any_catalog", "any_collection", "any_field_name", ['applicationA', 'applicationB'])
+            result = _get_relation_check_query(
+                "dangling", "any_catalog", "any_collection", "any_field_name", ['applicationA', 'applicationB'])
             expect = """
 SELECT
     src._id as id,
