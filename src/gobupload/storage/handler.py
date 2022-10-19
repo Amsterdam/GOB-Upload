@@ -106,10 +106,15 @@ class GOBStorageHandler:
         self.metadata = gob_metadata
         self.session = None
 
-    def init_storage(self, force_migrate=False, recreate_materialized_views: Union[bool, list] = False):
+    def init_storage(
+            self,
+            force_migrate=False,
+            recreate_materialized_views: Union[bool, list] = False,
+    ):
         """Check if the necessary tables (for events, and for the entities in gobmodel) are present
         If not, they are required
 
+        :param force_migrate: Don't wait for any migrations to finish before continuing
         :param recreate_materialized_views: List of mv's to recreate, True for all, False for none
         """
         MIGRATION_LOCK = 19935910  # Just some random number
@@ -129,11 +134,7 @@ class GOBStorageHandler:
 
             if not up_to_date:
                 print('Migrating storage')
-                alembicArgs = [
-                    '--raiseerr',
-                    'upgrade', 'head',
-                ]
-                alembic.config.main(argv=alembicArgs)
+                alembic.config.main(argv=['--raiseerr', 'upgrade', 'head'])
 
             # refresh reflected base
             self._set_base(update=True)
@@ -143,8 +144,10 @@ class GOBStorageHandler:
 
             # Initialise materialized views for relations
             self._init_relation_materialized_views(recreate_materialized_views)
-        except Exception as e:
-            print(f'Storage migration failed: {str(e)}')
+
+        except Exception as err:
+            print(f'Storage migration failed: {str(err)}')
+            raise err
         else:  # No exception
             print('Storage is up-to-date')
         finally:
