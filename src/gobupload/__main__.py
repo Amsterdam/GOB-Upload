@@ -18,7 +18,7 @@ from gobcore.message_broker.config import WORKFLOW_EXCHANGE, FULLUPDATE_QUEUE, \
  RELATE_UPDATE_VIEW_QUEUE
 from gobcore.message_broker.messagedriven_service import messagedriven_service
 from gobcore.message_broker.typing import ServiceDefinition
-from gobcore.standalone import run_as_standalone, parent_argument_parser
+from gobcore import standalone
 from gobupload import apply
 from gobupload import compare
 from gobupload import relate
@@ -89,7 +89,7 @@ SERVICEDEFINITION: ServiceDefinition = {
 
 
 def argument_parser():
-    parser, subparsers = parent_argument_parser()
+    parser, subparsers = standalone.parent_argument_parser()
     # Apply handler parser (also called upload_model in workflow)
     apply_parser = subparsers.add_parser(
         name="apply",
@@ -187,8 +187,8 @@ if DEBUG:
 
 def run_as_message_driven() -> None:
     """Run in message driven mode, listening to a message queue."""
-    storage = GOBStorageHandler()
-    storage.init_storage()
+    GOBStorageHandler().init_storage()
+
     params = {
         "stream_contents": True,
         "thread_per_service": True,
@@ -199,19 +199,17 @@ def run_as_message_driven() -> None:
     messagedriven_service(SERVICEDEFINITION, "Upload", params)
 
 
-def _migrate(args: argparse.Namespace, storage: GOBStorageHandler) -> None:
-    """Migrate the database.
+def run_as_standalone(args: argparse.Namespace) -> int:
+    force_migrate = args.handler == "migrate"
 
-    :param args: additional migrate parameters.
-    :param storage: the storage handler to apply the migrations to.
-    """
-    recreate = [args.mv_name] \
-        if args.materialized_views and args.mv_name else args.materialized_views
+    if force_migrate:
+        recreate_materialized_views = \
+            [args.mv_name] if args.materialized_views and args.mv_name else args.materialized_views
+    else:
+        recreate_materialized_views = False
 
-    storage.init_storage(
-        force_migrate=True,
-        recreate_materialized_views=recreate
-    )
+    GOBStorageHandler().init_storage(force_migrate, recreate_materialized_views)
+    return standalone.run_as_standalone(args, SERVICEDEFINITION)
 
 
 def main():
@@ -222,14 +220,7 @@ def main():
         print("Arguments found, run as standalone")
         parser = argument_parser()
         args = parser.parse_args()
-        storage = GOBStorageHandler()
-        # Special case for migrate, which is specific to upload
-        if args.handler == "migrate":
-            _migrate(args, storage)
-            return
-
-        storage.init_storage()
-        sys.exit(run_as_standalone(args, SERVICEDEFINITION))
+        sys.exit(run_as_standalone(args))
 
 
 if __name__ == "__main__":

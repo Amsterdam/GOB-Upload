@@ -107,8 +107,9 @@ def _split_job(msg: dict):
                 relation_specs = sources.get_field_relations(catalog_name, collection_name, attr_name)
 
                 if not relation_specs:
-                    logger.info(f"Missing relation specification for {catalog_name} {collection_name} "
-                                f"{attr_name}. Skipping")
+                    logger.warning(
+                        f"Missing relation specification for {catalog_name} {collection_name} {attr_name}. Skipping"
+                    )
                     continue
 
                 if relation_specs[0]['type'] == fully_qualified_type_name(VeryManyReference):
