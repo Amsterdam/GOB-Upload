@@ -148,7 +148,7 @@ class TestInit(TestCase):
             }
         }
         _split_job(msg)
-        mock_logger.info.assert_called_with("Missing relation specification for catalog dst_col attr. Skipping")
+        mock_logger.warning.assert_called_with("Missing relation specification for catalog dst_col attr. Skipping")
 
     @patch("gobupload.relate.datetime")
     @patch("gobupload.relate.GOBModel")
