@@ -8,6 +8,7 @@ from gobupload.relate import prepare_relate, check_relation, _log_exception, _sp
 from gobupload.relate import update_materialized_view, _get_materialized_view_by_relation_name
 from gobupload.relate import _get_materialized_view, WORKFLOW_EXCHANGE, WORKFLOW_REQUEST_KEY
 from gobupload.relate import process_relate, verify_process_message, get_catalog_from_msg
+from gobupload.relate import CATALOG_KEY, COLLECTION_KEY, ATTRIBUTE_KEY
 
 mock_logger = MagicMock()
 @patch('gobupload.relate.logger', mock_logger)
@@ -82,7 +83,7 @@ class TestInit(TestCase):
 
         invalid_collection = {
             'header': {
-                'original_catalogue': 'valid catalogue key',
+                CATALOG_KEY: 'valid catalogue key',
                 'collection': 'invalid collection key'
             }
         }
@@ -93,8 +94,8 @@ class TestInit(TestCase):
 
         invalid_attribute = {
             'header': {
-                'original_catalogue': 'valid catalogue key',
-                'original_collection': 'valid collection key',
+                CATALOG_KEY: 'valid catalogue key',
+                COLLECTION_KEY: 'valid collection key',
                 'attribute': 'invalid attribute key'
             }
         }
@@ -111,9 +112,9 @@ class TestInit(TestCase):
         """Test check_relation with valid message."""
         valid_message = {
             'header': {
-                'original_catalogue': 'valid catalogue key',
-                'original_collection': 'valid collection key',
-                'original_attribute': 'valid attribute key'
+                CATALOG_KEY: 'valid catalogue key',
+                COLLECTION_KEY: 'valid collection key',
+                ATTRIBUTE_KEY: 'valid attribute key'
             }
         }
 
@@ -182,15 +183,15 @@ class TestInit(TestCase):
         "Test get_catalog_from_msg."""
         no_header_msg = {'catalogue': 'catalog'}
         with self.assertRaises(GOBException):
-            get_catalog_from_msg(no_header_msg)
+            get_catalog_from_msg(no_header_msg, 'catalogue')
 
         wrong_catalog_msg = {
             'header': {
-                'catalog': 'do_you_mean_catalogue',
+                'catalog': 'do_you_mean_original_catalogue',
             }
         }
         with self.assertRaises(GOBException):
-            get_catalog_from_msg(wrong_catalog_msg)
+            get_catalog_from_msg(wrong_catalog_msg, CATALOG_KEY)
 
         invalid_catalogue_msg = {
             'header': {
@@ -198,7 +199,7 @@ class TestInit(TestCase):
             }
         }
         with self.assertRaises(GOBException):
-            get_catalog_from_msg(invalid_catalogue_msg)
+            get_catalog_from_msg(invalid_catalogue_msg, 'catalogue')
 
     @patch("gobupload.relate.gob_model", MockModel())
     @patch("gobupload.relate.GOBSources")
@@ -272,9 +273,9 @@ class TestInit(TestCase):
                 'catalogue': 'rel',
                 'collection': mock_get_relation_name.return_value,
                 'attribute': 'attribute',
-                'original_catalogue': 'catalog',
-                'original_collection': 'collection',
-                'original_attribute': 'attribute',
+                CATALOG_KEY: 'catalog',
+                COLLECTION_KEY: 'collection',
+                ATTRIBUTE_KEY: 'attribute',
             },
         }
 
@@ -373,9 +374,9 @@ class TestInit(TestCase):
     def test_verify_process_message(self):
         msg = {
             'header': {
-                'original_catalogue': 'catalog',
-                'original_collection': 'the collection',
-                'original_attribute': 'the attribute',
+                CATALOG_KEY: 'catalog',
+                COLLECTION_KEY: 'the collection',
+                ATTRIBUTE_KEY: 'the attribute',
             }
         }
 
@@ -402,9 +403,9 @@ class TestInit(TestCase):
     def test_process_relate(self, mock_relater, mock_verify_process_message):
         msg = {
             'header': {
-                'original_catalogue': 'catalog',
-                'original_collection': 'the collection',
-                'original_attribute': 'the attribute',
+                CATALOG_KEY: 'catalog',
+                COLLECTION_KEY: 'the collection',
+                ATTRIBUTE_KEY: 'the attribute',
             },
             'timestamp': 'the timestamp',
         }
@@ -418,9 +419,9 @@ class TestInit(TestCase):
 
         self.assertEqual({
             'header': {
-                'original_catalogue': 'catalog',
-                'original_collection': 'the collection',
-                'original_attribute': 'the attribute',
+                CATALOG_KEY: 'catalog',
+                COLLECTION_KEY: 'the collection',
+                ATTRIBUTE_KEY: 'the attribute',
                 'catalogue': 'rel',
                 'collection': 'catalog_the collection_the attribute',
                 'entity': 'catalog_the collection_the attribute',

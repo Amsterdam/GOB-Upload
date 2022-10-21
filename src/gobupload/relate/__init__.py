@@ -32,13 +32,11 @@ ATTRIBUTE_KEY = 'original_attribute'
 RELATE_VERSION = '0.1'
 
 
-def verify_process_msg_header(msg):
-    """Verify relate process message header.
+def get_catalog_from_msg(msg: dict, catalog_key: str):  # noqa: C901
+    """Return valid GOBModel catalog (name, dict) tuple.
 
-    Check if the required attributes are present in the message header.
-
-    :param msg: a message from the broker containing the catalog and collections
-    :return:
+    :param msg: a message from the broker containing the catalog
+    :return: tuple with valid catalog name and catalog dict
     """
     try:
         header = msg['header']
@@ -47,7 +45,36 @@ def verify_process_msg_header(msg):
         _log_exception(error_msg, exc)
         raise GOBException(error_msg) from exc
 
-    for key in [CATALOG_KEY, COLLECTION_KEY, ATTRIBUTE_KEY]:
+    try:
+        catalog_name = header[catalog_key]
+    except KeyError as exc:
+        error_msg = "Missing required '{catalog_key}' attribute in message header"
+        _log_exception(error_msg, exc)
+        raise GOBException(error_msg) from exc
+
+    try:
+        catalog = gob_model[catalog_name]
+    except KeyError as exc:
+        error_msg = f"Invalid catalog name '{catalog_name}'"
+        _log_exception(error_msg, exc)
+        raise GOBException(error_msg) from exc
+
+    return catalog_name, catalog
+
+
+def verify_relate_message(msg: dict):
+    """Verify relate message.
+
+    Check if the required attributes are present in the message header and
+    if header[CATALOG_KEY] is a valid GOBModel catalog.
+
+    :param msg: a message from the broker containing the catalog and collections
+    :return:
+    """
+    _ = get_catalog_from_msg(msg, CATALOG_KEY)
+    header = msg['header']
+
+    for key in [COLLECTION_KEY, ATTRIBUTE_KEY]:
         try:
             header[key]
         except KeyError as exc:
@@ -56,25 +83,18 @@ def verify_process_msg_header(msg):
             raise GOBException(error_msg) from exc
 
 
-def get_collection_from_msg(msg):
+def get_collection_from_msg(msg: dict):
     """Return valid GOBModel catalog collection (name, dict) tuple.
 
     :param msg: a message from the broker containing the catalog and collections
     :return: tuple with valid collection name and collection dict
     """
-    verify_process_msg_header(msg)
+    verify_relate_message(msg)
 
     catalog_name = msg['header'][CATALOG_KEY]
-    try:
-        catalog = gob_model[catalog_name]
-    except KeyError as exc:
-        error_msg = f"Invalid catalog '{catalog_name}'"
-        _log_exception(error_msg, exc)
-        raise GOBException(error_msg) from exc
-
     collection_name = msg['header'][COLLECTION_KEY]
     try:
-        collection = catalog['collections'][collection_name]
+        collection = gob_model[catalog_name]['collections'][collection_name]
     except KeyError as exc:
         error_msg = f"Invalid collection '{collection_name}' for catalog {catalog_name}"
         _log_exception(error_msg, exc)
@@ -83,7 +103,7 @@ def get_collection_from_msg(msg):
     return collection_name, collection
 
 
-def check_relation(msg):
+def check_relation(msg: dict):
     """Check for any dangling relations.
 
     :param msg: a message from the broker containing the catalog and collections
@@ -114,39 +134,9 @@ def check_relation(msg):
     }
 
 
-def get_catalog_from_msg(msg: dict):        # noqa: C901
-    """Return valid GOBModel catalog (name, dict) tuple.
-
-    :param msg: split job message
-    :return: tuple with valid catalog name and catalog dict
-    """
-    try:
-        header = msg['header']
-    except KeyError as exc:
-        error_msg = "Invalid message: 'header' key is missing"
-        _log_exception(error_msg, exc)
-        raise GOBException(error_msg) from exc
-
-    try:
-        catalog_name = header['catalogue']
-    except KeyError as exc:
-        error_msg = "Missing required 'catalogue' attribute in message header"
-        _log_exception(error_msg, exc)
-        raise GOBException(error_msg) from exc
-
-    try:
-        catalog = gob_model[catalog_name]
-    except KeyError as exc:
-        error_msg = f"Invalid catalog '{catalog_name}'"
-        _log_exception(error_msg, exc)
-        raise GOBException(error_msg) from exc
-
-    return catalog_name, catalog
-
-
 def _split_job(msg: dict):      # noqa: C901
     """Split jobs in message."""
-    catalog_name, catalog = get_catalog_from_msg(msg)
+    catalog_name, catalog = get_catalog_from_msg(msg, 'catalogue')
 
     collection_name = msg['header'].get('collection')
     if collection_name is None:
@@ -288,25 +278,14 @@ def _get_materialized_view(catalog_name: str, collection_name: str, attribute_na
 def verify_process_message(msg: dict):
     """Verify message for the relate process.
 
-    Check message header and check if catalog and collection keys are valid.
-    Check if the relation specification in GOBSources are valid.
+    Check message header and check if catalog and collection are valid.
+    Check if the relation specification in GOBSources is valid.
 
     :param msg: a message from the broker containing the catalog and collections
     :return:
     """
-    verify_process_msg_header(msg)
+    _ = get_collection_from_msg(msg)
     header = msg['header']
-    try:
-        catalog = gob_model[header[CATALOG_KEY]]
-    except KeyError as exc:
-        raise GOBException(f"Invalid catalog name {header[CATALOG_KEY]}") from exc
-
-    try:
-        _ = catalog['collections'][header[COLLECTION_KEY]]
-    except KeyError as exc:
-        raise GOBException(
-                f"Invalid collection {header[COLLECTION_KEY]} for catalog {header[CATALOG_KEY]}"
-            ) from exc
 
     sources = GOBSources(gob_model)
     if not sources.get_field_relations(
