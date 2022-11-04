@@ -27,43 +27,54 @@ class TestMain(TestCase):
             self.assertTrue('handler' in definition)
             self.assertTrue(callable(definition['handler']))
 
-    @mock.patch("gobupload.__main__.standalone.run_as_standalone", mock.MagicMock(return_value=0))
+    @mock.patch("gobupload.__main__.standalone.run_as_standalone")
     @mock.patch('gobupload.__main__.GOBStorageHandler')
     @mock.patch('gobcore.message_broker.messagedriven_service.MessagedrivenService')
-    def test_main_calls_migrate(self, mock_service, mock_storage):
+    def test_main_calls_migrate(self, mock_service, mock_storage, mock_standalone):
         sys.argv = ['python -m gobupload', 'migrate']
 
         with self.assertRaisesRegex(SystemExit, "0"):
             main()
 
+        # standalone should not be called when forcing migrate
+        mock_standalone.assert_not_called()
         mock_service.return_value.start.assert_not_called()
-        mock_storage.return_value.init_storage.assert_called_with(True, False)
+        mock_storage.return_value.init_storage.assert_called_with(
+            force_migrate=True, recreate_materialized_views=False
+        )
 
-    @mock.patch("gobupload.__main__.standalone.run_as_standalone", mock.MagicMock(return_value=0))
+    @mock.patch("gobupload.__main__.standalone.run_as_standalone")
     @mock.patch('gobupload.__main__.GOBStorageHandler')
     @mock.patch('gobcore.message_broker.messagedriven_service.MessagedrivenService')
-    def test_main_calls_migrate_materialized_views(self, mock_service, mock_storage):
+    def test_main_calls_migrate_materialized_views(self, mock_service, mock_storage, mock_standalone):
         # With migrate command line arguments
         sys.argv = ['python -m gobupload', 'migrate', '--materialized-views']
 
         with self.assertRaisesRegex(SystemExit, "0"):
             main()
 
+        mock_standalone.assert_not_called()
         mock_service.return_value.start.assert_not_called()
-        mock_storage.return_value.init_storage.assert_called_with(True, True)
+        mock_storage.return_value.init_storage.assert_called_with(
+            force_migrate=True, recreate_materialized_views=True
+        )
 
-    @mock.patch("gobupload.__main__.standalone.run_as_standalone", mock.MagicMock(return_value=0))
+    @mock.patch("gobupload.__main__.standalone.run_as_standalone")
     @mock.patch('gobupload.__main__.GOBStorageHandler')
     @mock.patch('gobcore.message_broker.messagedriven_service.MessagedrivenService')
-    def test_main_calls_migrate_single_materialized_view(self, mock_service, mock_storage):
+    def test_main_calls_migrate_single_materialized_view(self, mock_service, mock_storage, mock_standalone):
         # With migrate command line arguments
         sys.argv = ['python -m gobupload', 'migrate', '--materialized-views', '--mv-name', 'some_mv_name']
 
         with self.assertRaisesRegex(SystemExit, "0"):
             main()
 
+        mock_standalone.assert_not_called()
         mock_service.return_value.start.assert_not_called()
-        mock_storage.return_value.init_storage.assert_called_with(True, ['some_mv_name'])
+        mock_storage.return_value.init_storage.assert_called_with(
+            force_migrate=True,
+            recreate_materialized_views=['some_mv_name']
+        )
 
     @mock.patch('gobupload.__main__.GOBStorageHandler', mock.MagicMock())
     @mock.patch('gobupload.__main__.standalone.run_as_standalone', return_value=0)
