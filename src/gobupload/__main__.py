@@ -6,6 +6,7 @@ It writes the storage to apply events to the storage
 
 """
 import argparse
+import os
 import sys
 
 from gobcore.message_broker.config import COMPARE_RESULT_KEY, FULLUPDATE_RESULT_KEY, \
@@ -200,15 +201,17 @@ def run_as_message_driven() -> None:
 
 
 def run_as_standalone(args: argparse.Namespace) -> int:
-    force_migrate = args.handler == "migrate"
+    storage = GOBStorageHandler()
 
-    if force_migrate:
-        recreate_materialized_views = \
-            [args.mv_name] if args.materialized_views and args.mv_name else args.materialized_views
-    else:
-        recreate_materialized_views = False
+    if args.handler == "migrate":
+        mviews = args.materialized_views
+        storage.init_storage(
+            force_migrate=True,
+            recreate_materialized_views=[args.mv_name] if mviews and args.mv_name else mviews
+        )
+        return os.EX_OK
 
-    GOBStorageHandler().init_storage(force_migrate, recreate_materialized_views)
+    storage.init_storage()
     return standalone.run_as_standalone(args, SERVICEDEFINITION)
 
 
