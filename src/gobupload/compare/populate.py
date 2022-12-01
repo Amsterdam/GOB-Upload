@@ -1,7 +1,6 @@
-"""
-Populate a message with a hash
+"""Populate a message with a hash."""
 
-"""
+
 import hashlib
 import json
 
@@ -10,10 +9,8 @@ from gobcore.model.metadata import FIELD
 
 
 class Populator:
-
     def __init__(self, entity_model, msg):
-        """
-        Register the message attributes required for calculating the hash
+        """Register the message attributes required for calculating the hash.
 
         :param entity_model:
         :param msg:
@@ -24,8 +21,7 @@ class Populator:
         self.application = msg['header']['application']
 
     def populate(self, entity):
-        """
-        Populate an entity with a hash
+        """Populate an entity with a hash.
 
         :param entity:
         :return:
@@ -35,4 +31,9 @@ class Populator:
         entity[FIELD.HASH] = hashlib.md5((json.dumps(entity, sort_keys=True, cls=GobTypeJSONEncoder) +
                                           self.application).encode('utf-8')
                                          ).hexdigest()
-        entity[FIELD.TID] = f"{entity[FIELD.ID]}.{entity[FIELD.SEQNR]}" if self.has_states else entity[FIELD.ID]
+        # Make sure entity[FIELD.TID] is a string.
+        entity[FIELD.TID] = (
+            f"{entity[FIELD.ID]}.{entity[FIELD.SEQNR]}"
+            if self.has_states
+            else f"{entity[FIELD.ID]}"
+        )
