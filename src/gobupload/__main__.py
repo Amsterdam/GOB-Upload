@@ -43,7 +43,10 @@ SERVICEDEFINITION: ServiceDefinition = {
         'report': {
             'exchange': WORKFLOW_EXCHANGE,
             'key': COMPARE_RESULT_KEY,
-        }
+        },
+        'pass_args_standalone': [
+            'mode',
+        ],
     },
     'full_update': {
         'queue': FULLUPDATE_QUEUE,
@@ -60,7 +63,10 @@ SERVICEDEFINITION: ServiceDefinition = {
         'report': {
             'exchange': WORKFLOW_EXCHANGE,
             'key': RELATE_PREPARE_RESULT_KEY,
-        }
+        },
+        'pass_args_standalone': [
+            'mode',
+        ],
     },
     'relate_process': {
         'queue': RELATE_PROCESS_QUEUE,
