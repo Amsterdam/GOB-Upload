@@ -16,7 +16,7 @@ from typing import Union
 
 from sqlalchemy import create_engine, Table, update, exc as sa_exc
 from sqlalchemy.engine.url import URL
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import OperationalError, MultipleResultsFound
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm.exc import MultipleResultsFound
@@ -38,6 +38,10 @@ from gobupload import gob_model
 from gobupload.config import GOB_DB
 from gobupload.storage import queries
 from gobupload.storage.materialized_views import MaterializedViews
+
+# not used but must be imported
+# https://geoalchemy-2.readthedocs.io/en/latest/core_tutorial.html#reflecting-tables
+from geoalchemy2 import Geometry
 
 
 def with_session(func):
@@ -61,7 +65,12 @@ def with_session(func):
 
 class GOBStorageHandler:
     """Metadata aware Storage handler."""
-    engine = create_engine(URL.create(**GOB_DB), connect_args={'sslmode': 'require'}, pool_pre_ping=True)
+    engine = create_engine(
+        URL.create(**GOB_DB),
+        connect_args={'sslmode': 'require'},
+        pool_pre_ping=True,
+        query_cache_size=250
+    )
     Session = sessionmaker(autocommit=True,
                            autoflush=False,
                            bind=engine)
@@ -604,14 +613,10 @@ WHERE
 
     @with_session
     def add_add_events(self, events):
-        rows = []
-        for event in events:
-            entity = event.get_attribute_dict()
-            # Set the the _last_event
-            entity['_last_event'] = event.id
-            rows.append(entity)
-        table = self.DbEntity.__table__
-        self.session.execute(table.insert(), rows)
+        self.session.execute(
+            self.DbEntity.__table__.insert(),
+            [event.get_attribute_dict() | {"_last_event": event.id} for event in events]
+        )
 
     @with_session
     def add_events(self, events):
