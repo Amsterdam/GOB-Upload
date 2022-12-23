@@ -19,7 +19,6 @@ from sqlalchemy.engine.url import URL
 from sqlalchemy.exc import OperationalError, MultipleResultsFound
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.orm.exc import MultipleResultsFound
 
 from gobcore.enum import ImportMode
 from gobcore.exceptions import GOBException
@@ -41,7 +40,7 @@ from gobupload.storage.materialized_views import MaterializedViews
 
 # not used but must be imported
 # https://geoalchemy-2.readthedocs.io/en/latest/core_tutorial.html#reflecting-tables
-from geoalchemy2 import Geometry
+from geoalchemy2 import Geometry  # noqa: F401
 
 
 def with_session(func):
