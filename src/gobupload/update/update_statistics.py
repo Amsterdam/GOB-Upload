@@ -6,7 +6,7 @@ Gathers statistices about the update process
 from gobcore.logging.logger import logger
 
 
-class UpdateStatistics():
+class UpdateStatistics:
 
     def __init__(self):
         self.stored = {}
@@ -31,7 +31,7 @@ class UpdateStatistics():
         else:
             return 1
 
-    def _action(selfself, event):
+    def _action(self, event):
         action = event["event"]
         if action == "BULKCONFIRM":
             action = "CONFIRM"
