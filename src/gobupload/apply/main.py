@@ -26,30 +26,31 @@ def apply_events(storage, last_events, start_after, stats):
     :param stats: update statitics for this action
     :return:
     """
-    with ActiveGarbageCollection("Apply events"), storage.get_session() as session:
-        logger.info("Apply events")
+    batch_size = 10_000
+    session = storage.get_session()
+    event_applicator = EventApplicator(storage)
 
-        PROCESS_PER = 10000
+    with ProgressTicker("Apply events", batch_size) as progress:
         add_event_tids = set()
-        with ProgressTicker("Apply events", PROCESS_PER) as progress:
-            unhandled_events = storage.get_events_starting_after(start_after, PROCESS_PER)
-            while unhandled_events:
-                with EventApplicator(storage) as event_applicator:
-                    for event in unhandled_events:
-                        progress.tick()
 
-                        gob_event, count, applied_events = event_applicator.apply(
-                            event, last_events, add_event_tids)
-                        action = gob_event.action
-                        stats.add_applied(action, count)
-                        start_after = event.eventid
+        while True:
+            # order is important here when closing context managers
+            # first close eventapplicator, then flush session and lastly garbage collect
+            with ActiveGarbageCollection("Apply events"), session, event_applicator:
+                unhandled_events = storage.get_events_starting_after(start_after, batch_size)
 
-                        # Remove event from session, to avoid trying to update event db object
-                        session.expunge(event)
+                for event in unhandled_events:
+                    progress.tick()
 
-                    event_applicator.apply_all()
+                    gob_event, count = event_applicator.apply(event, last_events, add_event_tids)
+                    stats.add_applied(gob_event.action, count)
 
-                unhandled_events = storage.get_events_starting_after(start_after, PROCESS_PER)
+                start_after = event.eventid
+                event_applicator.apply_all()
+
+                # always apply_all() first
+                if not unhandled_events:
+                    break
 
 
 def apply_confirm_events(storage, stats, msg):

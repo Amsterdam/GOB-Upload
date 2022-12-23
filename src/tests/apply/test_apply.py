@@ -40,7 +40,6 @@ class TestApply(TestCase):
         stats = MagicMock()
 
         apply_events(self.mock_storage, {}, 1, stats)
-        self.mock_storage.get_session.return_value.__enter__.return_value.expunge.assert_called_with(event)
 
         stats.add_applied.assert_called()
 
