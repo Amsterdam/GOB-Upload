@@ -1,10 +1,14 @@
 import unittest
-from unittest.mock import call, MagicMock, patch
+from unittest.mock import call, MagicMock, patch, PropertyMock
+
+from sqlalchemy import Integer, DateTime, String, JSON
+from sqlalchemy.orm import declarative_base
 
 from gobcore.events.import_message import ImportMessage
 from gobcore.exceptions import GOBException
 
 from sqlalchemy.exc import OperationalError
+import sqlalchemy as sa
 
 from gobupload.compare.populate import Populator
 from gobupload.storage import queries
@@ -28,6 +32,25 @@ class MockedEngine:
 
     def __exit__(self, *args):
         pass
+
+
+Base = declarative_base()
+
+
+class MockEvents(Base):
+    __tablename__ = "events"
+
+    eventid = sa.Column(Integer, primary_key=True)
+    timestamp = sa.Column(DateTime)
+    catalogue = sa.Column(String)
+    entity = sa.Column(String)
+    version = sa.Column(String)
+    action = sa.Column(String)
+    source = sa.Column(String)
+    source_id = sa.Column(String)
+    contents = sa.Column(JSON)
+    application = sa.Column(String)
+    tid = sa.Column(String)
 
 
 class TestStorageHandler(unittest.TestCase):
@@ -55,6 +78,8 @@ class TestStorageHandler(unittest.TestCase):
         GOBStorageHandler.engine.__enter__ = lambda self: None
         GOBStorageHandler.engine.__exit__ = lambda *args: None
         GOBStorageHandler.engine.begin = lambda: GOBStorageHandler.engine
+
+        GOBStorageHandler.base.classes.events = MockEvents
 
     @patch("gobupload.storage.handler.automap_base", MagicMock())
     def test_base(self):
@@ -358,14 +383,33 @@ WHERE
     def test_combinations_plain(self):
         mock_session = MagicMock()
         self.storage.get_session = mock_session
+
         result = self.storage.get_source_catalogue_entity_combinations()
-        mock_session.return_value.__enter__().execute.assert_called_with('SELECT DISTINCT source, catalogue, entity FROM events')
+        self.assertIsInstance(result, list)
+
+        query = mock_session.return_value.__enter__().stream_execute.call_args[0][0]
+        query = str(query.compile(compile_kwargs={"literal_binds": True}))
+        self.assertEqual(
+            "SELECT DISTINCT events.source, events.catalogue, events.entity \n"
+            "FROM events",
+            query
+        )
 
     def test_combinations_with_args(self):
         mock_session = MagicMock()
         self.storage.get_session = mock_session
-        result = self.storage.get_source_catalogue_entity_combinations(col="val")
-        mock_session.return_value.__enter__().execute.assert_called_with("SELECT DISTINCT source, catalogue, entity FROM events WHERE col = 'val'")
+
+        result = self.storage.get_source_catalogue_entity_combinations(source="val")
+        self.assertIsInstance(result, list)
+
+        query = mock_session.return_value.__enter__().stream_execute.call_args[0][0]
+        query = str(query.compile(compile_kwargs={"literal_binds": True}))
+        self.assertEqual(
+            "SELECT DISTINCT events.source, events.catalogue, events.entity \n"
+            "FROM events \n"
+            "WHERE events.source = 'val'",
+            query
+        )
 
     @patch('gobupload.storage.handler.gob_model.get_table_name')
     def test_get_tablename(self, mock_get_table_name):

@@ -416,14 +416,17 @@ WHERE
         :param execution_options: options passed to the connection bound to the session
         e.g. 'compile_cache' and 'yield_per'
         """
-        connection: Connection = self.engine.connect().execution_options(**execution_options)
+        connection = None
+        if execution_options:
+            connection = self.engine.connect().execution_options(**execution_options)
+
         self.session = self.Session(bind=connection)
 
         try:
             yield self.session
         except Exception as err:
             print(traceback.format_exc(limit=-5))
-            logger.error(str(err))
+            logger.error(repr(err))
             self.session.rollback()
         else:
             self.session.flush()
@@ -814,7 +817,7 @@ VALUES {values}"""
         ).distinct()
 
         for key, val in kwargs.items():
-            if val:
+            if hasattr(self.DbEvent, key) and val:
                 query = query.where(getattr(self.DbEvent, key) == val)
 
         with self.get_session() as session:
