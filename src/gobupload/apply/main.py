@@ -26,31 +26,27 @@ def apply_events(storage, last_events, start_after, stats):
     :param stats: update statitics for this action
     :return:
     """
-    batch_size = 10_000
-    session = storage.get_session()
-    event_applicator = EventApplicator(storage)
+    PROCESS_PER = 10_000
 
-    with ProgressTicker("Apply events", batch_size) as progress:
+    with (
+        ActiveGarbageCollection("Apply events"),
+        ProgressTicker("Apply events", PROCESS_PER) as progress,
+        storage.get_session()
+    ):
+        logger.info("Apply events")
         add_event_tids = set()
 
-        while True:
-            # order is important here when closing context managers
-            # first close eventapplicator, then flush session and lastly garbage collect
-            with ActiveGarbageCollection("Apply events"), session, event_applicator:
-                unhandled_events = storage.get_events_starting_after(start_after, batch_size)
-
+        while unhandled_events := list(storage.get_events_starting_after(start_after, PROCESS_PER)):
+            with EventApplicator(storage, last_events, add_event_tids) as event_applicator:
                 for event in unhandled_events:
                     progress.tick()
 
-                    gob_event, count = event_applicator.apply(event, last_events, add_event_tids)
-                    stats.add_applied(gob_event.action, count)
+                    gob_event, count = event_applicator.apply(event)
+                    action = gob_event.action
+                    stats.add_applied(action, count)
 
-                start_after = event.eventid
                 event_applicator.apply_all()
-
-                # always apply_all() first
-                if not unhandled_events:
-                    break
+                start_after = event.eventid
 
 
 def apply_confirm_events(storage, stats, msg):
@@ -130,8 +126,8 @@ def apply(msg):
             apply_confirm_events(storage, stats, msg)
         else:
             logger.info(f"Start application of unhandled {model} events")
-            with storage.get_session():
-                last_events = storage.get_last_events()  # { tid: last_event, ... }
+            with storage.get_session(compile_cache=None):
+                last_events = set(storage.get_current_ids(exclude_deleted=False))
 
             apply_events(storage, last_events, entity_max_eventid, stats)
             apply_confirm_events(storage, stats, msg)

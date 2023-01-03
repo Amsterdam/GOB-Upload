@@ -10,24 +10,22 @@ from gobcore.exceptions import GOBException
 from gobcore.events import GOB, database_to_gobevent
 from gobupload.storage.handler import GOBStorageHandler
 
-from gobupload.utils import ActiveGarbageCollection
-
 
 class EventApplicator:
     MAX_ADD_CHUNK = 10_000
     MAX_OTHER_CHUNK = 2_500
 
-    def __init__(self, storage: GOBStorageHandler):
+    def __init__(self, storage: GOBStorageHandler, last_events: set[int], add_event_tids: set[str]):
         self.storage = storage
 
         self.add_events = []
         self.other_events = defaultdict(list)
         self.other_events_sum = 0
 
+        self.last_events = last_events
+        self.add_event_tids = add_event_tids
+
     def __enter__(self):
-        self.add_events.clear()
-        self.other_events.clear()
-        self.other_events_sum = 0
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -55,9 +53,8 @@ class EventApplicator:
         :return:
         """
         if self.add_events:
-            with ActiveGarbageCollection("Apply add events"):
-                self.storage.add_add_events(self.add_events)
-                self.add_events.clear()
+            self.storage.add_add_events(self.add_events)
+            self.add_events.clear()
 
     def add_other_event(self, gob_event, tid):
         """
@@ -85,15 +82,13 @@ class EventApplicator:
         :return:
         """
         if self.other_events:
-            with ActiveGarbageCollection("Apply other events"):
+            entities = self.storage.get_entities(self.other_events.keys(), with_deleted=True)
 
-                entities = self.storage.get_entities(self.other_events.keys(), with_deleted=True)
+            for entity in entities:
+                self.apply_other_event(entity)
 
-                for entity in entities:
-                    self.apply_other_event(entity)
-
-                self.other_events.clear()
-                self.other_events_sum = 0
+            self.other_events.clear()
+            self.other_events_sum = 0
 
     def apply_other_event(self, entity):
         """
@@ -127,7 +122,7 @@ class EventApplicator:
         self.apply_add_events()
         self.apply_other_events()
 
-    def apply(self, event, last_events, add_event_tids):
+    def apply(self, event):
         # Reconstruct the gob event out of the database event
         gob_event = database_to_gobevent(event)
 
@@ -139,12 +134,12 @@ class EventApplicator:
             self.storage.bulk_update_confirms(gob_event, event.eventid)
             count = len(gob_event._data['confirms'])
 
-        elif isinstance(gob_event, GOB.ADD) and tid not in last_events and tid not in add_event_tids:
+        elif isinstance(gob_event, GOB.ADD) and tid not in self.last_events and tid not in self.add_event_tids:
             # Initial add (an ADD event can also be applied on a deleted entity, this is handled by the else case)
             self.add_add_event(gob_event)
 
             # Store the tid to make sure a second ADD events get's handled as an ADD on deleted entity
-            add_event_tids.add(tid)
+            self.add_event_tids.add(tid)
 
         else:
             # If ADD events are waiting to be applied to the database, flush those first to make sure they exist

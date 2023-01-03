@@ -7,21 +7,27 @@ Use it like this:
 
     storage = GOBStorageHandler(metadata)
 """
+from __future__ import annotations
+
 import functools
 import json
+import traceback
 import warnings
 import random
 import string
-from typing import Union
+from contextlib import contextmanager
+from typing import Union, Iterator, Iterable
 
-from sqlalchemy import create_engine, Table, update, exc as sa_exc
+from sqlalchemy import create_engine, Table, update, exc as sa_exc, select, column, String, values
+from sqlalchemy.engine import Connection, Row
 from sqlalchemy.engine.url import URL
 from sqlalchemy.exc import OperationalError, MultipleResultsFound
 from sqlalchemy.ext.automap import automap_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, Session as SessionORM
 
 from gobcore.enum import ImportMode
 from gobcore.exceptions import GOBException
+from gobcore.logging.logger import logger
 from gobcore.model.sa.gob import get_column
 from gobcore.model.sa.indexes import get_indexes
 from gobcore.typesystem import get_gob_type
@@ -62,17 +68,33 @@ def with_session(func):
     return wrapper_decorator
 
 
+class StreamSession(SessionORM):
+    """Extended session class with streaming functionality."""
+
+    YIELD_PER = 1_000
+
+    def _update_param(self, **kwargs) -> dict[str, dict]:
+        exec_opts = kwargs.pop("execution_options", {})
+        if "yield_per" not in exec_opts:
+            exec_opts["yield_per"] = self.YIELD_PER
+        return {"execution_options": exec_opts, **kwargs}
+
+    def stream_scalars(self, statement, **kwargs):
+        return super().scalars(statement, **self._update_param(**kwargs))
+
+    def stream_execute(self, statement, **kwargs):
+        return super().execute(statement, **self._update_param(**kwargs))
+
+
 class GOBStorageHandler:
     """Metadata aware Storage handler."""
-    engine = create_engine(
-        URL.create(**GOB_DB),
-        connect_args={'sslmode': 'require'},
-        pool_pre_ping=True,
-        query_cache_size=250
+    engine = create_engine(URL.create(**GOB_DB), connect_args={'sslmode': 'require'}, pool_pre_ping=True)
+    Session = sessionmaker(
+        autocommit=True,
+        autoflush=False,
+        bind=engine,
+        class_=StreamSession
     )
-    Session = sessionmaker(autocommit=True,
-                           autoflush=False,
-                           bind=engine)
     base = None
     added_session_entity_cnt = 0
 
@@ -84,8 +106,7 @@ class GOBStorageHandler:
                 warnings.simplefilter("ignore", category=sa_exc.SAWarning)
 
                 cls.base = automap_base()
-                cls.base.prepare(cls.engine, reflect=True)
-                cls.base.metadata.reflect(bind=cls.engine)
+                cls.base.prepare(autoload_with=cls.engine)
 
     EVENTS_TABLE = "events"
     ALL_TABLES = [EVENTS_TABLE] + gob_model.get_table_names()
@@ -112,7 +133,7 @@ class GOBStorageHandler:
         GOBStorageHandler._set_base()
 
         self.metadata = gob_metadata
-        self.session = None
+        self.session: StreamSession | None = None
 
     def init_storage(
             self,
@@ -386,23 +407,29 @@ WHERE
         # Update the reflected base
         self._set_base(update=True)
 
-    def get_session(self):
-        """ Exposes an underlying database session as managed context """
+    @contextmanager
+    def get_session(self, **execution_options) -> StreamSession:
+        """
+        Exposes an underlying database session as a managed, not transactional, context.
+        Isolation level for this context is 'autocommmit' through sessionmaker.
 
-        class session_context:
-            def __enter__(ctx):
-                self.session = self.Session()
-                return self.session
+        :param execution_options: options passed to the connection bound to the session
+        e.g. 'compile_cache' and 'yield_per'
+        """
+        connection: Connection = self.engine.connect().execution_options(**execution_options)
+        self.session = self.Session(bind=connection)
 
-            def __exit__(ctx, exc_type, exc_val, exc_tb):
-                if exc_type is not None:
-                    self.session.rollback()
-                else:
-                    self.session.flush()
-                self.session.close()
-                self.session = None
-
-        return session_context()
+        try:
+            yield self.session
+        except Exception as err:
+            print(traceback.format_exc(limit=-5))
+            logger.error(str(err))
+            self.session.rollback()
+        else:
+            self.session.flush()
+        finally:
+            self.session.close()  # expunge_all() is called
+            self.session = None
 
     def delete_confirms(self):
         """
@@ -420,41 +447,70 @@ WHERE
         self.execute(statement)
 
     @with_session
-    def get_entity_max_eventid(self):
+    def get_entity_max_eventid(self) -> int:
         """Get the highest last_event property of entity
 
         :return: The highest last_event
         """
-        result = self.session.query(self.DbEntity)\
-                     .filter_by(_source=self.metadata.source)\
-                     .order_by(self.DbEntity._last_event.desc())\
-                     .first()
-        return None if result is None else result._last_event
+        last_event = getattr(self.DbEntity, "_last_event")
+        query = (
+            select(last_event)
+            .where(self.DbEntity._source == self.metadata.source)
+            .order_by(last_event.desc())
+            .limit(1)
+        )
+        return self.session.execute(query).scalar() or 0
 
     @with_session
-    def get_last_eventid(self):
+    def get_last_eventid(self) -> int:
         """Get the highest last_event property of entity
 
         :return: The highest last_event
         """
-        result = self.session.query(self.DbEvent) \
-            .filter_by(source=self.metadata.source, catalogue=self.metadata.catalogue, entity=self.metadata.entity) \
-            .order_by(self.DbEvent.eventid.desc())\
-            .first()
-        return None if result is None else result.eventid
+        events = self.DbEvent
+        query = (
+            select(events.eventid)
+            .where(events.source == self.metadata.source)
+            .where(events.catalogue == self.metadata.catalogue)
+            .where(events.entity == self.metadata.entity)
+            .order_by(events.eventid.desc())
+            .limit(1)
+        )
+        return self.session.execute(query).scalar() or 0
 
     @with_session
-    def get_events_starting_after(self, eventid, count=10000):
-        """Return a list of events with eventid starting at eventid
-
-        :return: The list of events
+    def get_events_starting_after(self, eventid: int, count: int = 10_000) -> Iterator:
         """
-        return self.session.query(self.DbEvent) \
-            .filter_by(source=self.metadata.source, catalogue=self.metadata.catalogue, entity=self.metadata.entity) \
-            .filter(self.DbEvent.eventid > eventid if eventid else True) \
-            .order_by(self.DbEvent.eventid.asc()) \
-            .limit(count) \
-            .all()
+        Return an iterator of events with eventid starting at eventid.
+        Requires a session in transaction.
+
+        :param eventid: minimal eventid (0 for all)
+        :param count: number of events
+        :return: Iterator of event ORM entities
+        """
+        events = self.DbEvent
+        query = (
+            select(
+                events.eventid,
+                events.timestamp,
+                events.catalogue,
+                events.entity,
+                events.version,
+                events.action,
+                events.source,
+                # events.source_id,
+                events.contents,
+                events.application,
+                events.tid
+            )
+            .where(events.source == self.metadata.source)
+            .where(events.catalogue == self.metadata.catalogue)
+            .where(events.entity == self.metadata.entity)
+            .where(events.eventid > eventid)
+            .order_by(events.eventid.asc())
+            .limit(count)
+        )
+        return self.session.stream_execute(query)
 
     @with_session
     def has_any_event(self, filter):
@@ -486,25 +542,26 @@ WHERE
         return None
 
     @with_session
-    def get_current_ids(self, exclude_deleted=True):
+    def get_current_ids(self, exclude_deleted=True) -> Iterator[str]:
         """Overview of entities that are current
 
         Current id's are evaluated within an application
 
         :return: a list of ids for the entity that are currently not deleted.
         """
+        query = select(self.DbEntity._tid)
         if exclude_deleted:
-            filter["_date_deleted"]: None
-        return self.session.query(self.DbEntity._tid).all()
+            query = query.where(self.DbEntity._date_deleted.is_(None))
+        return self.session.stream_scalars(query)
 
     @with_session
-    def get_last_events(self):
+    def get_last_events(self) -> dict[str, int]:
         """Overview of all last applied events for the current collection
 
         :return: a dict of ids with last_event for the collection
         """
-        result = self.session.query(self.DbEntity._tid, self.DbEntity._last_event).all()
-        return {row._tid: row._last_event for row in result}
+        query = select(self.DbEntity._tid, self.DbEntity._last_event)
+        return {row[0]: row[1] for row in self.session.stream_execute(query)}
 
     @with_session
     def get_column_values_for_key_value(self, column, key, value):
@@ -577,7 +634,7 @@ WHERE
             raise GOBException(f"Found multiple rows with filter: {filter_str}")
 
     @with_session
-    def get_entities(self, tids, with_deleted=False):
+    def get_entities(self, tids: Iterable[str], with_deleted=False) -> Iterator:
         """
         Get entities with tid contained in the given list of tid's
 
@@ -585,12 +642,16 @@ WHERE
         :param with_deleted: boolean denoting if entities that are deleted should be considered (default: False)
         :return:
         """
-        entity_query = self.session.query(self.DbEntity)
-        if not with_deleted:
-            entity_query = entity_query.filter_by(_date_deleted=None)
+        values_tid = \
+            values(column("_tid", String), name="tids")\
+            .data([(tid, ) for tid in tids])
 
-        attr = getattr(self.DbEntity, "_tid")
-        return entity_query.filter(attr.in_(tids)).all()
+        query = select(self.DbEntity).join(values_tid, self.DbEntity._tid == values_tid.c._tid)
+
+        if not with_deleted:
+            query = query.where(self.DbEntity._date_deleted.is_(None))
+
+        return self.session.stream_scalars(query)
 
     def bulk_add_entities(self, events):
         """Adds all applied ADD events to the storage
@@ -614,7 +675,7 @@ WHERE
     def add_add_events(self, events):
         self.session.execute(
             self.DbEntity.__table__.insert(),
-            [event.get_attribute_dict() | {"_last_event": event.id} for event in events]
+            [event.get_attribute_dict() | {"_last_event": event.id} for event in events],
         )
 
     @with_session
@@ -738,13 +799,20 @@ VALUES {values}"""
         result.close()
         return value
 
-    def get_source_catalogue_entity_combinations(self, **kwargs):
-        stmt = "SELECT DISTINCT source, catalogue, entity FROM events"
-        where = {k: v for k, v in kwargs.items() if v}
-        if where:
-            stmt += " WHERE " + "AND ".join([f"{k} = '{v}'" for k, v in where.items()])
+    def get_source_catalogue_entity_combinations(self, **kwargs) -> list[Row]:
+        """Return all unique source / catalogue / entity combinations."""
+        query = select(
+            self.DbEvent.source,
+            self.DbEvent.catalogue,
+            self.DbEvent.entity
+        ).distinct()
+
+        for key, val in kwargs.items():
+            if val:
+                query = query.where(getattr(self.DbEvent, key) == val)
+
         with self.get_session() as session:
-            return [combination for combination in session.execute(stmt)]
+            return list(session.stream_execute(query))
 
     def analyze_table(self):
         """Runs VACUUM ANALYZE on table
