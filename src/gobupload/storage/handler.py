@@ -71,7 +71,10 @@ def with_session(func):
 class StreamSession(SessionORM):
     """Extended session class with streaming functionality."""
 
-    YIELD_PER = 1_000
+    # tweak this variable for batchsize
+    # higher value leads to more memory allocation per cycle
+    # 200 shows stable memory usage
+    YIELD_PER = 200
 
     def _update_param(self, **kwargs) -> dict[str, dict]:
         exec_opts = kwargs.pop("execution_options", {})
@@ -666,7 +669,6 @@ WHERE
             values(column("_tid", String), name="tids")\
             .data([(tid, ) for tid in tids])
 
-        # Use a join when selecting tids, tids can be of considerable size ( > 1_000_000)
         query = select(self.DbEntity).join(values_tid, self.DbEntity._tid == values_tid.c._tid)
 
         if not with_deleted:

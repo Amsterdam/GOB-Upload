@@ -13,7 +13,7 @@ from gobupload.storage.handler import GOBStorageHandler
 
 class EventApplicator:
     MAX_ADD_CHUNK = 10_000
-    MAX_OTHER_CHUNK = 2_500
+    MAX_OTHER_CHUNK = 10_000
 
     def __init__(self, storage: GOBStorageHandler, last_events: set[str], add_event_tids: set[str]):
         self.storage = storage
@@ -104,7 +104,7 @@ class EventApplicator:
         """
         for gob_event in self.other_events.pop(entity._tid):
             # Check action validity
-            if entity._date_deleted is not None and not isinstance(gob_event, GOB.ADD):
+            if not isinstance(gob_event, GOB.ADD) and entity._date_deleted is not None:
                 # a non-ADD event is trying to be applied on a deleted entity
                 # Only ADD event can be applied on a deleted entity
                 raise GOBException(f"Trying to '{gob_event.name}' a deleted entity (id: {gob_event.id}, "
