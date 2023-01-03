@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 from gobupload.compare.populate import Populator
 from gobupload.storage import queries
-from gobupload.storage.handler import GOBStorageHandler
+from gobupload.storage.handler import GOBStorageHandler, StreamSession
 from tests import fixtures
 
 
@@ -464,3 +464,19 @@ VALUES (
         args = self.storage.engine.execute.call_args[0][0]
         args = ' '.join(args.split())
         self.assertEqual(args, ' '.join(expected.split()))
+
+    @patch("gobupload.storage.handler.SessionORM.scalars")
+    @patch("gobupload.storage.handler.SessionORM.execute")
+    def test_stream_session(self, mock_execute, mock_scalars):
+        obj = StreamSession()
+        default_opts = {"execution_options": {"yield_per": obj.YIELD_PER}}
+
+        obj.stream_execute("query", extra=5)
+        mock_execute.assert_called_with("query", **default_opts, extra=5)
+
+        obj.stream_scalars("query", extra=5)
+        mock_scalars.assert_called_with("query", **default_opts, extra=5)
+
+        mock_execute.reset_mock()
+        obj.stream_execute("query", extra=5, execution_options={"yield_per": 2000})
+        mock_execute.assert_called_with("query", execution_options={"yield_per": 2000}, extra=5)

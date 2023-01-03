@@ -15,7 +15,7 @@ class EventApplicator:
     MAX_ADD_CHUNK = 10_000
     MAX_OTHER_CHUNK = 2_500
 
-    def __init__(self, storage: GOBStorageHandler, last_events: set[int], add_event_tids: set[str]):
+    def __init__(self, storage: GOBStorageHandler, last_events: set[str], add_event_tids: set[str]):
         self.storage = storage
 
         self.add_events = []

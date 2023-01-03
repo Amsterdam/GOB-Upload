@@ -188,8 +188,7 @@ def argument_parser():
 
 
 if DEBUG:
-    # pragma: no cover
-    print("WARNING: Debug mode is ON")
+    print("WARNING: Debug mode is ON")  # pragma: no cover
 
 
 def run_as_message_driven() -> None:

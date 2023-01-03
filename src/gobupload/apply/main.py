@@ -18,10 +18,11 @@ from gobupload.utils import ActiveGarbageCollection, get_event_ids, is_corrupted
 ANALYZE_THRESHOLD = 0.3
 
 
-def apply_events(storage, last_events, start_after, stats):
+def apply_events(storage: GOBStorageHandler, last_events: set[str], start_after: int, stats: UpdateStatistics):
     """Apply any unhandled events to the database
 
     :param storage: GOB (events + entities)
+    :param last_events: all entities with events applied
     :param start_after: the is of the last event that has been applied to the storage
     :param stats: update statitics for this action
     :return:
