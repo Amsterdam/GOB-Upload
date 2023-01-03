@@ -552,11 +552,10 @@ WHERE
         :param value: value to loop for, e.g. "DIVA"
         :return: True if any entity exists, else False
         """
-        key_col = getattr(self.DbEntity, key)
         query = select(self.DbEntity).limit(1)
 
         if key and value:
-            query = query.where(key_col == value)
+            query = query.where(getattr(self.DbEntity, key) == value)
         return self.session.execute(query).first() is not None
 
     def get_collection_model(self):
