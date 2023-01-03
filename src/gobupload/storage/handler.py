@@ -513,15 +513,17 @@ WHERE
         return self.session.stream_execute(query)
 
     @with_session
-    def has_any_event(self, filter):
+    def has_any_event(self, filter_: dict) -> bool:
         """True if any event matches the filter condition
 
         :return: true is any event has been found given the filter
         """
-        result = self.session.query(self.DbEvent) \
-            .filter_by(**filter) \
-            .first()
-        return result is not None
+        query = select(self.DbEvent.eventid).limit(1)
+
+        for key, val in filter_.items():
+            query = query.where(getattr(self.DbEvent, key) == val)
+
+        return self.session.execute(query).first() is not None
 
     @with_session
     def has_any_entity(self, key=None, value=None):
@@ -532,9 +534,12 @@ WHERE
         :param value: value to loop for, e.g. "DIVA"
         :return: True if any entity exists, else False
         """
-        if not (key and value):
-            return self.session.query(self.DbEntity).count() > 0
-        return self.session.query(self.DbEntity).filter_by(**{key: value}).count() > 0
+        key_col = getattr(self.DbEntity, key)
+        query = select(self.DbEntity).limit(1)
+
+        if key and value:
+            query = query.where(key_col == value)
+        return self.session.execute(query).first() is not None
 
     def get_collection_model(self):
         if self.metadata.catalogue in gob_model:
@@ -646,6 +651,7 @@ WHERE
             values(column("_tid", String), name="tids")\
             .data([(tid, ) for tid in tids])
 
+        # Use a join when selecting tids, tids can be of considerable size ( > 1_000_000)
         query = select(self.DbEntity).join(values_tid, self.DbEntity._tid == values_tid.c._tid)
 
         if not with_deleted:
