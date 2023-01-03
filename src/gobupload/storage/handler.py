@@ -19,7 +19,7 @@ from contextlib import contextmanager
 from typing import Union, Iterator, Iterable
 
 from sqlalchemy import create_engine, Table, update, exc as sa_exc, select, column, String, values
-from sqlalchemy.engine import Connection, Row
+from sqlalchemy.engine import Row
 from sqlalchemy.engine.url import URL
 from sqlalchemy.exc import OperationalError, MultipleResultsFound
 from sqlalchemy.ext.automap import automap_base
@@ -80,9 +80,21 @@ class StreamSession(SessionORM):
         return {"execution_options": exec_opts, **kwargs}
 
     def stream_scalars(self, statement, **kwargs):
+        """
+        Execute a statement and return the results as scalars.
+        Use a server-side cursor during statement execution to prevent high memory consumption.
+
+        Default batchsize: 1000 (can be adjusted by passing yield_per=<size> to execution_options)
+        """
         return super().scalars(statement, **self._update_param(**kwargs))
 
     def stream_execute(self, statement, **kwargs):
+        """
+        Execute a SQL expression construct.
+        Use a server-side cursor during statement execution to prevent high memory consumption.
+
+        Default batchsize: 1000 (can be adjusted by passing yield_per=<size> to execution_options)
+        """
         return super().execute(statement, **self._update_param(**kwargs))
 
 
