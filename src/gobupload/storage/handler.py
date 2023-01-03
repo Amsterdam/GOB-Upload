@@ -428,9 +428,9 @@ WHERE
         :param execution_options: options passed to the connection bound to the session
         e.g. 'compile_cache' and 'yield_per'
         """
-        connection = None
+        connection = self.engine.connect()
         if execution_options:
-            connection = self.engine.connect().execution_options(**execution_options)
+            connection = connection.execution_options(**execution_options)
 
         self.session = self.Session(bind=connection)
 

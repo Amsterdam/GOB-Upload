@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import call, MagicMock, patch, PropertyMock
+from unittest.mock import call, MagicMock, patch
 
 from sqlalchemy import Integer, DateTime, String, JSON
 from sqlalchemy.orm import declarative_base

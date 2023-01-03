@@ -57,9 +57,12 @@ class TestContextManager(unittest.TestCase):
         mock_session_instance = MagicMock()
         mock_session.return_value = mock_session_instance
 
+        mock_conn = MagicMock()
+        storage.engine.connect.return_value = mock_conn
+
         # test session creation in context
         with storage.get_session() as session:
-            mock_session.assert_called_with(bind=None)
+            mock_session.assert_called_with(bind=mock_conn)
             self.assertEqual(storage.session, mock_session_instance)
             self.assertEqual(session, mock_session_instance)
 
@@ -83,13 +86,14 @@ class TestContextManager(unittest.TestCase):
         storage = handler.GOBStorageHandler(fixtures.random_string())
 
         mock_conn = MagicMock()
-        storage.engine.connect.return_value.execution_options.return_value = mock_conn
+        storage.engine.connect.return_value = mock_conn
 
         mock_session_instance = MagicMock()
+        mock_session.return_value = mock_session_instance
 
         with storage.get_session(compile_cache=None) as session:
-            storage.engine.connect.return_value.execution_options.assert_called_with(compile_cache=None)
-
-            mock_session.assert_called_with(bind=mock_conn)
-            self.assertEqual(storage.session, mock_session_instance)
             self.assertEqual(session, mock_session_instance)
+            self.assertEqual(storage.session, mock_session_instance)
+
+        mock_conn.execution_options.assert_called_with(compile_cache=None)
+        mock_session.assert_called_with(bind=mock_conn.execution_options.return_value)
