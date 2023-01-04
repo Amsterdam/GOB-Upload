@@ -111,7 +111,6 @@ class GOBStorageHandler:
         class_=StreamSession
     )
     base = None
-    added_session_entity_cnt = 0
 
     @classmethod
     def _set_base(cls, update=False):
@@ -125,7 +124,6 @@ class GOBStorageHandler:
 
     EVENTS_TABLE = "events"
     ALL_TABLES = [EVENTS_TABLE] + gob_model.get_table_names()
-    FORCE_FLUSH_PER = 10000
 
     user_name = f"({GOB_DB['username']}@{GOB_DB['host']}:{GOB_DB['port']})"
 
@@ -795,14 +793,8 @@ VALUES {values}"""
         result.close()
 
     @with_session
-    def _flush_entities(self):
-        if self.added_session_entity_cnt >= self.FORCE_FLUSH_PER:
-            self.force_flush_entities()
-
-    @with_session
     def force_flush_entities(self):
         self.session.flush()
-        self.added_session_entity_cnt = 0
 
     def execute(self, statement):
         result = self.engine.execute(statement)

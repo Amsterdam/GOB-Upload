@@ -360,21 +360,6 @@ WHERE
         expect = f"DELETE FROM {events} WHERE catalogue = '{catalogue}' AND entity = '{entity}' AND action IN ('BULKCONFIRM', 'CONFIRM')"
         self.assertEqual(args, expect)
 
-    def test_flush_entities(self):
-        self.storage.session = MagicMock()
-
-        self.storage.FORCE_FLUSH_PER = 5
-        self.storage.added_session_entity_cnt = 4
-
-        self.storage._flush_entities()
-        self.storage.session.flush.assert_not_called()
-        self.assertEqual(4, self.storage.added_session_entity_cnt)
-
-        self.storage.added_session_entity_cnt = 5
-        self.storage._flush_entities()
-        self.storage.session.flush.assert_called_once()
-        self.assertEqual(0, self.storage.added_session_entity_cnt)
-
     def test_get_query_value(self):
         self.storage.get_query_value('SELECT * FROM test')
         # Assert the query is performed
