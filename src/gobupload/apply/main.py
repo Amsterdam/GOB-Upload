@@ -27,18 +27,11 @@ def apply_events(storage: GOBStorageHandler, last_events: set[str], start_after:
     :param stats: update statitics for this action
     :return:
     """
-    chunksize = 10_000
-    report_per = chunksize * 25
-
-    def log_progress(number: int):
-        if number % report_per == 0 or number % chunksize != 0:
-            logger.info(f"Applied events - {number:,}")
-
     with (
-        ProgressTicker("Apply events", chunksize) as progress,
+        ProgressTicker("Apply events", 10_000) as progress,
         EventApplicator(storage, last_events) as event_applicator,
     ):
-        for chunk in storage.get_events_starting_after(start_after, chunksize):
+        for chunk in storage.get_events_starting_after(start_after):
             for event in chunk:
                 progress.tick()
 
@@ -46,7 +39,6 @@ def apply_events(storage: GOBStorageHandler, last_events: set[str], start_after:
                 stats.add_applied(gob_event.action, count)
 
             event_applicator.apply_all()
-            log_progress(progress._count)
 
 
 def apply_confirm_events(storage, stats, msg):

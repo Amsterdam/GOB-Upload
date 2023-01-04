@@ -73,8 +73,7 @@ class StreamSession(SessionORM):
 
     # tweak this variable for batchsize
     # higher value leads to more memory allocation per cycle
-    # 200 shows stable memory usage
-    YIELD_PER = 200
+    YIELD_PER = 2_000
 
     def _update_param(self, **kwargs) -> dict[str, dict]:
         exec_opts = kwargs.pop("execution_options", {})
@@ -87,7 +86,7 @@ class StreamSession(SessionORM):
         Execute a statement and return the results as scalars.
         Use a server-side cursor during statement execution to prevent high memory consumption.
 
-        Default batchsize: 1000 (can be adjusted by passing yield_per=<size> to execution_options)
+        Batchsize can be adjusted by passing yield_per=<size> to execution_options
         """
         return super().scalars(statement, **self._update_param(**kwargs))
 
@@ -96,7 +95,7 @@ class StreamSession(SessionORM):
         Execute a SQL expression construct.
         Use a server-side cursor during statement execution to prevent high memory consumption.
 
-        Default batchsize: 1000 (can be adjusted by passing yield_per=<size> to execution_options)
+        Batchsize can be adjusted by passing yield_per=<size> to execution_options
         """
         return super().execute(statement, **self._update_param(**kwargs))
 
@@ -494,13 +493,12 @@ WHERE
         )
         return self.session.execute(query).scalar() or 0
 
-    def get_events_starting_after(self, eventid: int, size: int) -> Iterator[list[Row]]:
+    def get_events_starting_after(self, eventid: int) -> Iterator[list[Row]]:
         """
-        Return chunks of events with eventid starting at eventid.
+        Return chunks of events with eventid starting at `eventid`.
         Example with size=2: ([event1, event2], [event3, event4], [event5])
 
         :param eventid: minimal eventid (0 for all)
-        :param size: chunksize per partition
         :return: Iterator containing lists of events
         """
         events = self.DbEvent
@@ -513,7 +511,6 @@ WHERE
                 events.version,
                 events.action,
                 events.source,
-                # events.source_id,
                 events.contents,
                 events.application,
                 events.tid
@@ -527,8 +524,10 @@ WHERE
 
         # A new session is necessary, because this cursor must stay alive
         # and not be closed by other queries operating on self.session
+        # partition size is equal to StreamSession.YIELD_PER
+        # https://docs.sqlalchemy.org/en/14/core/connections.html#sqlalchemy.engine.Result.partitions
         with StreamSession(bind=self.engine.connect()) as session:
-            yield from session.stream_execute(query).partitions(size)
+            yield from session.stream_execute(query).partitions()
 
     @with_session
     def has_any_event(self, filter_: dict) -> bool:
