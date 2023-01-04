@@ -10,7 +10,7 @@ from gobupload.config import FULL_UPLOAD
 from gobupload.storage.handler import GOBStorageHandler
 from gobupload.update.event_applicator import EventApplicator
 from gobupload.update.update_statistics import UpdateStatistics
-from gobupload.utils import ActiveGarbageCollection, get_event_ids, is_corrupted
+from gobupload.utils import get_event_ids, is_corrupted
 
 # Trigger VACUUM ANALYZE on database if more than ANALYZE_THRESHOLD of entities are updated. When ANALYZE_THRESHOLD =
 # 0.3, this means that if more than 30% of the events update the data (MODIFY's, ADDs, DELETEs), a VACUUM ANALYZE is
@@ -27,27 +27,26 @@ def apply_events(storage: GOBStorageHandler, last_events: set[str], start_after:
     :param stats: update statitics for this action
     :return:
     """
-    PROCESS_PER = 10_000
+    chunksize = 10_000
+    report_per = chunksize * 25
+
+    def log_progress(number: int):
+        if number % report_per == 0 or number % chunksize != 0:
+            logger.info(f"Applied events - {number:,}")
 
     with (
-        ActiveGarbageCollection("Apply events"),
-        ProgressTicker("Apply events", PROCESS_PER) as progress,
-        storage.get_session()
+        ProgressTicker("Apply events", chunksize) as progress,
+        EventApplicator(storage, last_events) as event_applicator,
     ):
-        logger.info("Apply events")
-        add_event_tids = set()
+        for chunk in storage.get_events_starting_after(start_after, chunksize):
+            for event in chunk:
+                progress.tick()
 
-        while unhandled_events := list(storage.get_events_starting_after(start_after, PROCESS_PER)):
-            with EventApplicator(storage, last_events, add_event_tids) as event_applicator:
-                for event in unhandled_events:
-                    progress.tick()
+                gob_event, count = event_applicator.apply(event)
+                stats.add_applied(gob_event.action, count)
 
-                    gob_event, count = event_applicator.apply(event)
-                    action = gob_event.action
-                    stats.add_applied(action, count)
-
-                event_applicator.apply_all()
-                start_after = event.eventid
+            event_applicator.apply_all()
+            log_progress(progress._count)
 
 
 def apply_confirm_events(storage, stats, msg):

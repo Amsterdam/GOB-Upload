@@ -3,7 +3,7 @@ from unittest import TestCase
 import json
 from gobcore.events import GOB
 from gobcore.exceptions import GOBException
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from gobupload.storage.handler import GOBStorageHandler
 from gobupload.update.event_applicator import EventApplicator
@@ -34,15 +34,15 @@ class TestEventApplicator(TestCase):
         self.mock_event["contents"] = json.dumps(contents)
 
     def test_constructor(self):
-        applicator = EventApplicator(self.storage, set("1"), set("2"))
+        applicator = EventApplicator(self.storage, set("1"))
         self.assertEqual(applicator.add_events, [])
         self.assertDictEqual(applicator.other_events, {})
         self.assertEqual(applicator.other_events_sum, 0)
         self.assertEqual(applicator.last_events, set("1"))
-        self.assertEqual(applicator.add_event_tids, set("2"))
+        self.assertEqual(applicator.add_event_tids, set())
 
     def test_apply(self):
-        applicator = EventApplicator(self.storage, set(), set())
+        applicator = EventApplicator(self.storage, set())
         self.mock_event["action"] = 'CONFIRM'
         self.set_contents({
             '_tid': 'entity_source_id',
@@ -59,28 +59,10 @@ class TestEventApplicator(TestCase):
             '_hash': '123'
         })
         event = dict_to_object(self.mock_event)
-        with EventApplicator(self.storage, set(), set()) as applicator:
+        with EventApplicator(self.storage, set()) as applicator:
             applicator.apply(event)
             self.assertEqual(len(applicator.add_events), 1)
             applicator.apply_all()
-        self.assertEqual(len(applicator.add_events), 0)
-        self.storage.add_add_events.assert_called()
-
-    def test_apply_add_max_chunk(self):
-        self.set_contents({
-            '_tid': 'entity_source_id',
-            '_hash': '123'
-        })
-        event = dict_to_object(self.mock_event)
-
-        with (
-            EventApplicator(self.storage, set(), set()) as applicator,
-            patch.object(applicator, "MAX_ADD_CHUNK", 1)
-        ):
-            applicator.MAX_ADD_CHUNK = 1
-
-            applicator.apply(event)
-
         self.assertEqual(len(applicator.add_events), 0)
         self.storage.add_add_events.assert_called()
 
@@ -91,7 +73,7 @@ class TestEventApplicator(TestCase):
         })
         event = dict_to_object(self.mock_event)
         with self.assertRaises(GOBException):
-            with EventApplicator(self.storage, set(), set()) as applicator:
+            with EventApplicator(self.storage, set()) as applicator:
                 applicator.apply(event)
 
     def test_apply_existing_add(self):
@@ -102,7 +84,7 @@ class TestEventApplicator(TestCase):
         event = dict_to_object(self.mock_event)
         event.tid = 'existing_source_id'
 
-        applicator = EventApplicator(self.storage, {'existing_source_id'}, set())
+        applicator = EventApplicator(self.storage, {'existing_source_id'})
         applicator.add_add_event = MagicMock()
         applicator.apply_add_events = MagicMock()
         applicator.add_other_event = MagicMock()
@@ -113,7 +95,7 @@ class TestEventApplicator(TestCase):
         applicator.add_other_event.assert_called_once()
 
     def test_apply_bulk(self):
-        applicator = EventApplicator(self.storage, set(), set())
+        applicator = EventApplicator(self.storage, set())
         self.mock_event["action"] = 'BULKCONFIRM'
         self.set_contents({
             'confirms': [{
@@ -126,24 +108,23 @@ class TestEventApplicator(TestCase):
         self.storage.bulk_update_confirms.assert_called()
 
     def test_add_other_event(self):
-        applicator = EventApplicator(self.storage, set(), set())
+        applicator = EventApplicator(self.storage, set())
 
-        applicator.MAX_OTHER_CHUNK = 3
         applicator.apply_other_events = MagicMock()
 
         applicator.add_other_event('any gob event1',  'any entity source 1')
-        applicator.apply_other_events.assert_not_called()
         self.assertEqual(applicator.other_events['any entity source 1'], ['any gob event1'])
+        self.assertEqual(applicator.other_events_sum, 1)
 
         applicator.add_other_event('any gob event2', 'any entity source 2')
-        applicator.apply_other_events.assert_not_called()
         self.assertEqual(applicator.other_events['any entity source 2'], ['any gob event2'])
+        self.assertEqual(applicator.other_events_sum, 2)
 
         applicator.add_other_event('any gob event3', 'any entity source 3')
-        applicator.apply_other_events.assert_called()
+        self.assertEqual(applicator.other_events_sum, 3)
 
     def test_apply_other_events(self):
-        applicator = EventApplicator(self.storage, set(), set())
+        applicator = EventApplicator(self.storage, set())
         applicator.apply_other_event = MagicMock()
 
         self.assertEqual(applicator.other_events, {})
@@ -152,6 +133,7 @@ class TestEventApplicator(TestCase):
 
         self.assertEqual(applicator.other_events, {})
         self.assertEqual(applicator.other_events_sum, 0)
+        self.storage.get_session.assert_not_called()
         self.storage.get_entities.assert_not_called()
 
         applicator.add_other_event('any gob event', 'any entity source id')
@@ -160,11 +142,13 @@ class TestEventApplicator(TestCase):
         applicator.apply_other_events()
         self.assertEqual(applicator.other_events, {})
         self.assertEqual(applicator.other_events_sum, 0)
+        self.storage.get_session.return_value.__enter__.assert_called()
+        self.storage.get_session.return_value.__exit__.assert_called()
         self.storage.get_entities.assert_called()
         applicator.apply_other_event.assert_called_with('any entity')
 
     def test_apply_other_event(self):
-        applicator = EventApplicator(self.storage, set(), set())
+        applicator = EventApplicator(self.storage, set())
 
         entity = MagicMock()
         entity._date_deleted = None
@@ -205,7 +189,7 @@ class TestEventApplicator(TestCase):
         self.assertEqual(entity._last_event, None)
 
     def test_apply_all(self):
-        applicator = EventApplicator(self.storage, set(), set())
+        applicator = EventApplicator(self.storage, set())
         applicator.apply_add_events = MagicMock()
         applicator.apply_other_events = MagicMock()
         applicator.apply_all()
@@ -219,8 +203,7 @@ class TestEventApplicator(TestCase):
         We expect the second ADD event to be handled as an 'other' event, because it needs to revive the deleted
         entity.
         """
-        add_event_source_ids = set()
-        applicator = EventApplicator(self.storage, set(), add_event_source_ids)
+        applicator = EventApplicator(self.storage, set())
 
         test_events = [
             {'action': 'ADD', 'contents': {'_tid': 'any source id'}},
@@ -250,8 +233,7 @@ class TestEventApplicator(TestCase):
         Test if a batch of events multiple MODIFY events of the same entity is handled correctly.
         We expect the all modify events to be applied
         """
-        add_event_source_ids = set()
-        applicator = EventApplicator(self.storage, set(), add_event_source_ids)
+        applicator = EventApplicator(self.storage, set())
 
         test_events = [
             {'action': 'MODIFY', 'contents': {'_tid': 'any source id'}},

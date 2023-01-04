@@ -494,15 +494,14 @@ WHERE
         )
         return self.session.execute(query).scalar() or 0
 
-    @with_session
-    def get_events_starting_after(self, eventid: int, count: int = 10_000) -> Iterator:
+    def get_events_starting_after(self, eventid: int, size: int) -> Iterator[list[Row]]:
         """
-        Return an iterator of events with eventid starting at eventid.
-        Requires a session in transaction.
+        Return chunks of events with eventid starting at eventid.
+        Example with size=2: ([event1, event2], [event3, event4], [event5])
 
         :param eventid: minimal eventid (0 for all)
-        :param count: number of events
-        :return: Iterator of event ORM entities
+        :param size: chunksize per partition
+        :return: Iterator containing lists of events
         """
         events = self.DbEvent
         query = (
@@ -524,9 +523,12 @@ WHERE
             .where(events.entity == self.metadata.entity)
             .where(events.eventid > eventid)
             .order_by(events.eventid.asc())
-            .limit(count)
         )
-        return self.session.stream_execute(query)
+
+        # A new session is necessary, because this cursor must stay alive
+        # and not be closed by other queries operating on self.session
+        with StreamSession(bind=self.engine.connect()) as session:
+            yield from session.stream_execute(query).partitions(size)
 
     @with_session
     def has_any_event(self, filter_: dict) -> bool:
@@ -691,12 +693,12 @@ WHERE
         table = self.DbEntity.__table__
         self.bulk_insert(table, insert_data)
 
-    @with_session
     def add_add_events(self, events):
-        self.session.execute(
-            self.DbEntity.__table__.insert(),
-            [event.get_attribute_dict() | {"_last_event": event.id} for event in events],
-        )
+        table = self.DbEntity.__table__
+        rows = [event.get_attribute_dict() | {"_last_event": event.id} for event in events]
+
+        with self.engine.connect() as conn:
+            conn.execute(table.insert(), rows)
 
     @with_session
     def add_events(self, events):
