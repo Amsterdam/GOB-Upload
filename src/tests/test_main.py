@@ -76,9 +76,9 @@ class TestMain(TestCase):
             recreate_materialized_views=['some_mv_name']
         )
 
-    @mock.patch('gobupload.__main__.GOBStorageHandler', mock.MagicMock())
+    @mock.patch('gobupload.__main__.GOBStorageHandler')
     @mock.patch('gobupload.__main__.standalone.run_as_standalone', return_value=0)
-    def test_main_calls_run_as_standalone(self, mock_run_as_standalone):
+    def test_main_calls_run_as_standalone(self, mock_run_as_standalone, mock_storage):
         # No command line arguments
         sys.argv = [
             'python -m gobupload',
@@ -89,16 +89,14 @@ class TestMain(TestCase):
         with self.assertRaisesRegex(SystemExit, "0"):
             main()
 
+        mock_storage.assert_not_called()
         mock_run_as_standalone.assert_called()
 
     @mock.patch('gobupload.__main__.GOBStorageHandler')
     @mock.patch('gobupload.__main__.standalone.run_as_standalone')
     def test_standalone_migration_error(self, mock_run_as_standalone, mock_storage):
         sys.argv = [
-            'python -m gobupload',
-            'apply',
-            '--catalogue', 'test_catalogue',
-            '--collection', 'test_entity_autoid'
+            'python -m gobupload', 'migrate',
         ]
         mock_storage.side_effect = Exception("my error")
 
