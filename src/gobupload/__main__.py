@@ -218,17 +218,14 @@ def run_as_message_driven() -> None:
 
 
 def run_as_standalone(args: argparse.Namespace) -> int:
-    storage = GOBStorageHandler()
-
     if args.handler == "migrate":
         mviews = args.materialized_views
-        storage.init_storage(
+        GOBStorageHandler().init_storage(
             force_migrate=True,
             recreate_materialized_views=[args.mv_name] if mviews and args.mv_name else mviews
         )
         return os.EX_OK
 
-    storage.init_storage()
     return standalone.run_as_standalone(args, SERVICEDEFINITION)
 
 
