@@ -111,14 +111,14 @@ class GOBStorageHandler:
     base = None
 
     @classmethod
-    def _set_base(cls, update=False):
+    def _set_base(cls, update=False, **kwargs):
         if update or cls.base is None:
             with warnings.catch_warnings():
                 # Ignore warnings for unsupported reflection for expression-based indexes
                 warnings.simplefilter("ignore", category=sa_exc.SAWarning)
 
                 cls.base = automap_base()
-                cls.base.prepare(autoload_with=cls.engine)
+                cls.base.prepare(autoload_with=cls.engine, **kwargs)
 
     EVENTS_TABLE = "events"
 
@@ -134,16 +134,25 @@ class GOBStorageHandler:
         ('constraint_exclusion', lambda x: x == 'on', 'should be set to on', WARNING),
     ]
 
-    def __init__(self, gob_metadata=None):
-        """Initialize StorageHandler with gob metadata
-
-        This will create abstractions to entities and events, and initialize storage if necessary
-
+    def __init__(self, gob_metadata=None, update_base: bool = False, **reflection_options):
         """
-        GOBStorageHandler._set_base()
+        Initialize StorageHandler with gob metadata.
+        This will create abstractions to entities and events, and initialize storage if necessary.
+        When gob_metadata is passed, only the necessary tables will be reflected.
 
+        :param gob_metadata: A metadata object containing attributes: source, catalogue and entity
+        :param update_base: Force reflecting database
+        :param reflection_options: Reflect database with these options,
+            eg {"only": ["events"}} to only reflect the events table
+        """
         self.metadata = gob_metadata
         self.session: StreamSession | None = None
+
+        if gob_metadata:
+            tables = [self.EVENTS_TABLE, self._get_tablename()]
+            reflection_options["only"] = tables + reflection_options.get("only", [])
+
+        GOBStorageHandler._set_base(update=update_base, reflection_options=reflection_options)
 
     def init_storage(
             self,
