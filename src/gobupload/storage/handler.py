@@ -10,8 +10,6 @@ Use it like this:
 from __future__ import annotations
 
 import functools
-import json
-import traceback
 import warnings
 import random
 import string
@@ -662,50 +660,27 @@ WHERE
         :param events: the list of events to insert
         :return: None
         """
-        def escape(value):
-            return value.replace("'", "''").replace("%", "%%") if isinstance(value, str) else value
+        table = self.DbEvent.__table__
+        meta = self.metadata
 
-        def to_json(data):
-            """
-            Convert the data dictionary to a JSON string that can be inserted in the events table.
-
-            :param data: dictionary
-            :return: the JSON string suitably quoted to be used as a string literal in an SQL statement string
-            """
-            return json.dumps(data, cls=GobTypeJSONEncoder)
-
-        values = ",".join([f"""
-(
-    '{ self.metadata.timestamp }',
-    '{ self.metadata.catalogue }',
-    '{ self.metadata.entity }',
-    '{ event['version'] }',
-    '{ event['event'] }',
-    '{ self.metadata.source }',
-    '{ escape(event['data'].get('_source_id')) }',
-    '{ escape(to_json(event['data'])) }',
-    '{ self.metadata.application }',
-    '{ escape(event['data']['_tid']) }'
-)""" for event in events])
-
-        # INSERT INTO events (...) VALUES (...)[, (...), ...]
-        statement = f"""
-INSERT INTO
-    "{ self.EVENTS_TABLE }"
-(
-    "timestamp",
-    catalogue,
-    entity,
-    "version",
-    "action",
-    "source",
-    source_id,
-    contents,
-    application,
-    tid
-)
-VALUES {values}"""
-        self.execute(statement)
+        rows = [
+            {
+                "timestamp": meta.timestamp,
+                "source": meta.source,
+                "catalogue": meta.catalogue,
+                "entity": meta.entity,
+                "application": meta.application,
+                "version": event['version'],
+                "action": event['event'],
+                "source_id": event["data"].get("_source_id"),
+                "contents": event["data"],
+                "tid": event["data"]["_tid"]
+            }
+            for event in events
+        ]
+        # disable implicit returning
+        # https://docs.sqlalchemy.org/en/14/core/dml.html#sqlalchemy.sql.expression.Insert.inline
+        self.session.execute(table.insert().inline(), rows)
 
     def apply_confirms(self, confirms, timestamp):
         """
