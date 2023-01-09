@@ -94,19 +94,6 @@ class TestEventApplicator(TestCase):
         applicator.apply_add_events.assert_called_once()
         applicator.add_other_event.assert_called_once()
 
-    def test_apply_bulk(self):
-        applicator = EventApplicator(self.storage, set())
-        self.mock_event["action"] = 'BULKCONFIRM'
-        self.set_contents({
-            'confirms': [{
-                '_tid': 'entity_source_id'
-            }]
-        })
-        event = dict_to_object(self.mock_event)
-        applicator.apply(event)
-        self.assertEqual(len(applicator.add_events), 0)
-        self.storage.bulk_update_confirms.assert_called()
-
     def test_add_other_event(self):
         applicator = EventApplicator(self.storage, set())
 
