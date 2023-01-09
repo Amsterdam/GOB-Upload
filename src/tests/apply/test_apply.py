@@ -36,11 +36,10 @@ class TestApply(TestCase):
         event = fixtures.get_event_fixure()
         event.contents = '{"_entity_source_id": "{fixtures.random_string()}", "entity": {}}'
         mock.return_value = self.mock_storage
-        self.mock_storage.get_events_starting_after.side_effect = [[event], []]
+        self.mock_storage.get_events_starting_after.side_effect = [[[event]], []]
         stats = MagicMock()
 
-        apply_events(self.mock_storage, {}, 1, stats)
-        self.mock_storage.get_session.return_value.__enter__.return_value.expunge.assert_called_with(event)
+        apply_events(self.mock_storage, set(), 1, stats)
 
         stats.add_applied.assert_called()
 

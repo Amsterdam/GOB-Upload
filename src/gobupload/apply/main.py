@@ -10,7 +10,7 @@ from gobupload.config import FULL_UPLOAD
 from gobupload.storage.handler import GOBStorageHandler
 from gobupload.update.event_applicator import EventApplicator
 from gobupload.update.update_statistics import UpdateStatistics
-from gobupload.utils import ActiveGarbageCollection, get_event_ids, is_corrupted
+from gobupload.utils import get_event_ids, is_corrupted
 
 # Trigger VACUUM ANALYZE on database if more than ANALYZE_THRESHOLD of entities are updated. When ANALYZE_THRESHOLD =
 # 0.3, this means that if more than 30% of the events update the data (MODIFY's, ADDs, DELETEs), a VACUUM ANALYZE is
@@ -18,38 +18,27 @@ from gobupload.utils import ActiveGarbageCollection, get_event_ids, is_corrupted
 ANALYZE_THRESHOLD = 0.3
 
 
-def apply_events(storage, last_events, start_after, stats):
+def apply_events(storage: GOBStorageHandler, last_events: set[str], start_after: int, stats: UpdateStatistics):
     """Apply any unhandled events to the database
 
     :param storage: GOB (events + entities)
+    :param last_events: all entities with events applied
     :param start_after: the is of the last event that has been applied to the storage
     :param stats: update statitics for this action
     :return:
     """
-    with ActiveGarbageCollection("Apply events"), storage.get_session() as session:
-        logger.info("Apply events")
+    with (
+        ProgressTicker("Apply events", 10_000) as progress,
+        EventApplicator(storage, last_events) as event_applicator,
+    ):
+        for chunk in storage.get_events_starting_after(start_after):
+            for event in chunk:
+                progress.tick()
 
-        PROCESS_PER = 10000
-        add_event_tids = set()
-        with ProgressTicker("Apply events", PROCESS_PER) as progress:
-            unhandled_events = storage.get_events_starting_after(start_after, PROCESS_PER)
-            while unhandled_events:
-                with EventApplicator(storage) as event_applicator:
-                    for event in unhandled_events:
-                        progress.tick()
+                gob_event, count = event_applicator.apply(event)
+                stats.add_applied(gob_event.action, count)
 
-                        gob_event, count, applied_events = event_applicator.apply(
-                            event, last_events, add_event_tids)
-                        action = gob_event.action
-                        stats.add_applied(action, count)
-                        start_after = event.eventid
-
-                        # Remove event from session, to avoid trying to update event db object
-                        session.expunge(event)
-
-                    event_applicator.apply_all()
-
-                unhandled_events = storage.get_events_starting_after(start_after, PROCESS_PER)
+            event_applicator.apply_all()
 
 
 def apply_confirm_events(storage, stats, msg):
@@ -129,8 +118,8 @@ def apply(msg):
             apply_confirm_events(storage, stats, msg)
         else:
             logger.info(f"Start application of unhandled {model} events")
-            with storage.get_session():
-                last_events = storage.get_last_events()  # { tid: last_event, ... }
+            with storage.get_session(compile_cache=None):
+                last_events = set(storage.get_current_ids(exclude_deleted=False))
 
             apply_events(storage, last_events, entity_max_eventid, stats)
             apply_confirm_events(storage, stats, msg)

@@ -1,10 +1,10 @@
 import importlib
 import unittest
-from unittest import mock
+from unittest.mock import MagicMock, patch
 
 from gobcore.exceptions import GOBException
 
-from gobupload.storage.handler import with_session, GOBStorageHandler
+from gobupload.storage.handler import with_session
 from gobupload.storage import handler
 from tests import fixtures
 
@@ -38,7 +38,7 @@ class TestContextManager(unittest.TestCase):
         # patch __init__, we don't test that here, but we need session and engine to be present
         def side_effect(self, param):
             self.session = None
-            self.engine = None
+            self.engine = MagicMock()
         handler.GOBStorageHandler.__init__ = side_effect
 
     def tearDown(self):
@@ -46,7 +46,7 @@ class TestContextManager(unittest.TestCase):
         importlib.reload(handler)
 
     def test_session_context(self):
-        mock_session = mock.MagicMock()
+        mock_session = MagicMock()
         handler.GOBStorageHandler.Session = mock_session
         storage = handler.GOBStorageHandler(fixtures.random_string())
 
@@ -54,15 +54,46 @@ class TestContextManager(unittest.TestCase):
         self.assertIsNone(storage.session)
 
         # prepare mock
-        mock_session_instance = mock.MagicMock()
+        mock_session_instance = MagicMock()
         mock_session.return_value = mock_session_instance
 
+        mock_conn = MagicMock()
+        storage.engine.connect.return_value = mock_conn
+
         # test session creation in context
-        with storage.get_session():
-            mock_session.assert_called_with()
+        with storage.get_session() as session:
+            mock_session.assert_called_with(bind=mock_conn)
             self.assertEqual(storage.session, mock_session_instance)
+            self.assertEqual(session, mock_session_instance)
 
         # test session creation after leaving context:
+        mock_session_instance.flush.assert_called()
         mock_session_instance.close.assert_called()
         self.assertIsNone(storage.session)
 
+        # test exception handling
+        with patch("gobupload.storage.handler.logger") as mock_logger:
+            with storage.get_session():
+                raise ConnectionError("any")
+
+        mock_session_instance.rollback.assert_called()
+        mock_session_instance.close.assert_called()
+        mock_logger.error.assert_called_with("ConnectionError('any')")
+
+    def test_session_context_execution_options(self):
+        mock_session = MagicMock()
+        handler.GOBStorageHandler.Session = mock_session
+        storage = handler.GOBStorageHandler(fixtures.random_string())
+
+        mock_conn = MagicMock()
+        storage.engine.connect.return_value = mock_conn
+
+        mock_session_instance = MagicMock()
+        mock_session.return_value = mock_session_instance
+
+        with storage.get_session(compile_cache=None) as session:
+            self.assertEqual(session, mock_session_instance)
+            self.assertEqual(storage.session, mock_session_instance)
+
+        mock_conn.execution_options.assert_called_with(compile_cache=None)
+        mock_session.assert_called_with(bind=mock_conn.execution_options.return_value)
