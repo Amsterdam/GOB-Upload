@@ -32,7 +32,6 @@ from gobcore.model.sa.gob import get_column
 from gobcore.model.sa.indexes import get_indexes
 from gobcore.typesystem import get_gob_type
 from gobcore.typesystem.json import GobTypeJSONEncoder
-from gobcore.utils import ProgressTicker
 from gobcore.events.import_events import CONFIRM
 
 from alembic.runtime import migration
@@ -122,7 +121,6 @@ class GOBStorageHandler:
                 cls.base.prepare(autoload_with=cls.engine)
 
     EVENTS_TABLE = "events"
-    ALL_TABLES = [EVENTS_TABLE] + gob_model.get_table_names()
 
     user_name = f"({GOB_DB['username']}@{GOB_DB['host']}:{GOB_DB['port']})"
 
@@ -409,16 +407,6 @@ WHERE
     def _get_tablename(self):
         return gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
 
-    def _drop_table(self, table):
-        statement = f"DROP TABLE IF EXISTS {table} CASCADE"
-        self.execute(statement)
-
-    def drop_tables(self):
-        for table in self.ALL_TABLES:
-            self._drop_table(table)
-        # Update the reflected base
-        self._set_base(update=True)
-
     @contextmanager
     def get_session(self, **execution_options) -> StreamSession:
         """
@@ -445,21 +433,6 @@ WHERE
         finally:
             self.session.close()  # expunge_all() is called
             self.session = None
-
-    def delete_confirms(self):
-        """
-        Once (BULK)CONFIRM events have been applied they are deleted
-
-        :return:
-        """
-        statement = f"""
-        DELETE
-        FROM {self.EVENTS_TABLE}
-        WHERE catalogue = '{self.metadata.catalogue}' AND
-              entity = '{self.metadata.entity}' AND
-              action IN ('BULKCONFIRM', 'CONFIRM')
-        """
-        self.execute(statement)
 
     @with_session
     def get_entity_max_eventid(self) -> int:
@@ -674,24 +647,6 @@ WHERE
 
         return self.session.stream_scalars(query)
 
-    def bulk_add_entities(self, events):
-        """Adds all applied ADD events to the storage
-
-        :param events: list of gob events
-        """
-        insert_data = []
-        progress = ProgressTicker("Bulk add entities", 10000)
-        while events:
-            progress.tick()
-
-            event = events.pop(0)
-            entity = event.get_attribute_dict()
-            # Set the the _last_event
-            entity['_last_event'] = event.id
-            insert_data.append(entity)
-        table = self.DbEntity.__table__
-        self.bulk_insert(table, insert_data)
-
     def add_add_events(self, events):
         table = self.DbEntity.__table__
         rows = [event.get_attribute_dict() | {"_last_event": event.id} for event in events]
@@ -752,19 +707,6 @@ INSERT INTO
 VALUES {values}"""
         self.execute(statement)
 
-    def bulk_update_confirms(self, event, eventid):
-        """ Confirm entities in bulk
-
-        Takes a BULKCONFIRM event and updates all tids with the bulkconfirm timestamp
-
-        The _last_event is not updated for (BULK)CONFIRM events
-
-        :param event: the BULKCONFIRM event
-        :param eventid: the id of the event to store as _last_event
-        :return:
-        """
-        self.apply_confirms(event._data['confirms'], event._metadata.timestamp)
-
     def apply_confirms(self, confirms, timestamp):
         """
         Apply a (BULK)CONFIRM event
@@ -777,25 +719,6 @@ VALUES {values}"""
         stmt = update(self.DbEntity).where(self.DbEntity._tid.in_(tids)).\
             values({CONFIRM.timestamp_field: timestamp})
         self.execute(stmt)
-
-    def bulk_insert(self, table, insert_data):
-        """ A generic bulk insert function
-
-        Takes a list of dictionaries and the database table to insert into
-
-        :param table: the table to insert into
-        :param insert_data: the data to insert
-        :return:
-        """
-        result = self.engine.execute(
-            table.insert(),
-            insert_data
-        )
-        result.close()
-
-    @with_session
-    def force_flush_entities(self):
-        self.session.flush()
 
     def execute(self, statement):
         result = self.engine.execute(statement)

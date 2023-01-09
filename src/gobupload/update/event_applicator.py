@@ -99,11 +99,7 @@ class EventApplicator:
         count = 1
         tid = gob_event.tid
 
-        if isinstance(gob_event, GOB.BULKCONFIRM):
-            self.storage.bulk_update_confirms(gob_event, event.eventid)
-            count = len(gob_event._data['confirms'])
-
-        elif isinstance(gob_event, GOB.ADD) and tid not in self.last_events and tid not in self.add_event_tids:
+        if isinstance(gob_event, GOB.ADD) and tid not in self.last_events and tid not in self.add_event_tids:
             # Initial add (an ADD event can also be applied on a deleted entity, this is handled by the else case)
             self.add_add_event(gob_event)
 
