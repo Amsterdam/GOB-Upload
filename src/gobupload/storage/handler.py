@@ -7,22 +7,27 @@ Use it like this:
 
     storage = GOBStorageHandler(metadata)
 """
+from __future__ import annotations
+
 import functools
 import json
+import traceback
 import warnings
 import random
 import string
-from typing import Union
+from contextlib import contextmanager
+from typing import Union, Iterator, Iterable
 
-from sqlalchemy import create_engine, Table, update, exc as sa_exc
+from sqlalchemy import create_engine, Table, update, exc as sa_exc, select, column, String, values
+from sqlalchemy.engine import Row
 from sqlalchemy.engine.url import URL
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import OperationalError, MultipleResultsFound
 from sqlalchemy.ext.automap import automap_base
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.orm.exc import MultipleResultsFound
+from sqlalchemy.orm import sessionmaker, Session as SessionORM
 
 from gobcore.enum import ImportMode
 from gobcore.exceptions import GOBException
+from gobcore.logging.logger import logger
 from gobcore.model.sa.gob import get_column
 from gobcore.model.sa.indexes import get_indexes
 from gobcore.typesystem import get_gob_type
@@ -38,6 +43,10 @@ from gobupload import gob_model
 from gobupload.config import GOB_DB
 from gobupload.storage import queries
 from gobupload.storage.materialized_views import MaterializedViews
+
+# not used but must be imported
+# https://geoalchemy-2.readthedocs.io/en/latest/core_tutorial.html#reflecting-tables
+from geoalchemy2 import Geometry  # noqa: F401
 
 
 def with_session(func):
@@ -59,14 +68,48 @@ def with_session(func):
     return wrapper_decorator
 
 
+class StreamSession(SessionORM):
+    """Extended session class with streaming functionality."""
+
+    # tweak this variable for batchsize
+    # higher value leads to more memory allocation per cycle
+    YIELD_PER = 2_000
+
+    def _update_param(self, **kwargs) -> dict[str, dict]:
+        exec_opts = kwargs.pop("execution_options", {})
+        if "yield_per" not in exec_opts:
+            exec_opts["yield_per"] = self.YIELD_PER
+        return {"execution_options": exec_opts, **kwargs}
+
+    def stream_scalars(self, statement, **kwargs):
+        """
+        Execute a statement and return the results as scalars.
+        Use a server-side cursor during statement execution to prevent high memory consumption.
+
+        Batchsize can be adjusted by passing yield_per=<size> to execution_options
+        """
+        return super().scalars(statement, **self._update_param(**kwargs))
+
+    def stream_execute(self, statement, **kwargs):
+        """
+        Execute a SQL expression construct.
+        Use a server-side cursor during statement execution to prevent high memory consumption.
+
+        Batchsize can be adjusted by passing yield_per=<size> to execution_options
+        """
+        return super().execute(statement, **self._update_param(**kwargs))
+
+
 class GOBStorageHandler:
     """Metadata aware Storage handler."""
     engine = create_engine(URL.create(**GOB_DB), connect_args={'sslmode': 'require'}, pool_pre_ping=True)
-    Session = sessionmaker(autocommit=True,
-                           autoflush=False,
-                           bind=engine)
+    Session = sessionmaker(
+        autocommit=True,
+        autoflush=False,
+        bind=engine,
+        class_=StreamSession
+    )
     base = None
-    added_session_entity_cnt = 0
 
     @classmethod
     def _set_base(cls, update=False):
@@ -76,12 +119,10 @@ class GOBStorageHandler:
                 warnings.simplefilter("ignore", category=sa_exc.SAWarning)
 
                 cls.base = automap_base()
-                cls.base.prepare(cls.engine, reflect=True)
-                cls.base.metadata.reflect(bind=cls.engine)
+                cls.base.prepare(autoload_with=cls.engine)
 
     EVENTS_TABLE = "events"
     ALL_TABLES = [EVENTS_TABLE] + gob_model.get_table_names()
-    FORCE_FLUSH_PER = 10000
 
     user_name = f"({GOB_DB['username']}@{GOB_DB['host']}:{GOB_DB['port']})"
 
@@ -104,7 +145,7 @@ class GOBStorageHandler:
         GOBStorageHandler._set_base()
 
         self.metadata = gob_metadata
-        self.session = None
+        self.session: StreamSession | None = None
 
     def init_storage(
             self,
@@ -378,23 +419,32 @@ WHERE
         # Update the reflected base
         self._set_base(update=True)
 
-    def get_session(self):
-        """ Exposes an underlying database session as managed context """
+    @contextmanager
+    def get_session(self, **execution_options) -> StreamSession:
+        """
+        Exposes an underlying database session as a managed, not transactional, context.
+        Isolation level for this context is 'autocommmit' through sessionmaker.
 
-        class session_context:
-            def __enter__(ctx):
-                self.session = self.Session()
-                return self.session
+        :param execution_options: options passed to the connection bound to the session
+        e.g. 'compile_cache' and 'yield_per'
+        """
+        connection = self.engine.connect()
+        if execution_options:
+            connection = connection.execution_options(**execution_options)
 
-            def __exit__(ctx, exc_type, exc_val, exc_tb):
-                if exc_type is not None:
-                    self.session.rollback()
-                else:
-                    self.session.flush()
-                self.session.close()
-                self.session = None
+        self.session = self.Session(bind=connection)
 
-        return session_context()
+        try:
+            yield self.session
+        except Exception as err:
+            print(traceback.format_exc(limit=-5))
+            logger.error(repr(err))
+            self.session.rollback()
+        else:
+            self.session.flush()
+        finally:
+            self.session.close()  # expunge_all() is called
+            self.session = None
 
     def delete_confirms(self):
         """
@@ -412,52 +462,85 @@ WHERE
         self.execute(statement)
 
     @with_session
-    def get_entity_max_eventid(self):
+    def get_entity_max_eventid(self) -> int:
         """Get the highest last_event property of entity
 
         :return: The highest last_event
         """
-        result = self.session.query(self.DbEntity)\
-                     .filter_by(_source=self.metadata.source)\
-                     .order_by(self.DbEntity._last_event.desc())\
-                     .first()
-        return None if result is None else result._last_event
+        last_event = getattr(self.DbEntity, "_last_event")
+        query = (
+            select(last_event)
+            .where(self.DbEntity._source == self.metadata.source)
+            .order_by(last_event.desc())
+            .limit(1)
+        )
+        return self.session.execute(query).scalar() or 0
 
     @with_session
-    def get_last_eventid(self):
+    def get_last_eventid(self) -> int:
         """Get the highest last_event property of entity
 
         :return: The highest last_event
         """
-        result = self.session.query(self.DbEvent) \
-            .filter_by(source=self.metadata.source, catalogue=self.metadata.catalogue, entity=self.metadata.entity) \
-            .order_by(self.DbEvent.eventid.desc())\
-            .first()
-        return None if result is None else result.eventid
+        events = self.DbEvent
+        query = (
+            select(events.eventid)
+            .where(events.source == self.metadata.source)
+            .where(events.catalogue == self.metadata.catalogue)
+            .where(events.entity == self.metadata.entity)
+            .order_by(events.eventid.desc())
+            .limit(1)
+        )
+        return self.session.execute(query).scalar() or 0
 
-    @with_session
-    def get_events_starting_after(self, eventid, count=10000):
-        """Return a list of events with eventid starting at eventid
-
-        :return: The list of events
+    def get_events_starting_after(self, eventid: int) -> Iterator[list[Row]]:
         """
-        return self.session.query(self.DbEvent) \
-            .filter_by(source=self.metadata.source, catalogue=self.metadata.catalogue, entity=self.metadata.entity) \
-            .filter(self.DbEvent.eventid > eventid if eventid else True) \
-            .order_by(self.DbEvent.eventid.asc()) \
-            .limit(count) \
-            .all()
+        Return chunks of events with eventid starting at `eventid`.
+        Example with size=2: ([event1, event2], [event3, event4], [event5])
+
+        :param eventid: minimal eventid (0 for all)
+        :return: Iterator containing lists of events
+        """
+        events = self.DbEvent
+        query = (
+            select(
+                events.eventid,
+                events.timestamp,
+                events.catalogue,
+                events.entity,
+                events.version,
+                events.action,
+                events.source,
+                events.contents,
+                events.application,
+                events.tid
+            )
+            .where(events.source == self.metadata.source)
+            .where(events.catalogue == self.metadata.catalogue)
+            .where(events.entity == self.metadata.entity)
+            .where(events.eventid > eventid)
+            .order_by(events.eventid.asc())
+        )
+
+        # A new session is necessary, because this cursor must stay alive
+        # and not be closed by other queries operating on self.session
+        # partition size is equal to StreamSession.YIELD_PER
+        # https://docs.sqlalchemy.org/en/14/core/connections.html#sqlalchemy.engine.Result.partitions
+        with StreamSession(bind=self.engine.connect()) as session:
+            yield from session.stream_execute(query).partitions()
 
     @with_session
-    def has_any_event(self, filter):
+    def has_any_event(self, filter_: dict) -> bool:
         """True if any event matches the filter condition
 
         :return: true is any event has been found given the filter
         """
-        result = self.session.query(self.DbEvent) \
-            .filter_by(**filter) \
-            .first()
-        return result is not None
+        query = select(self.DbEvent.eventid).limit(1)
+
+        for key, val in filter_.items():
+            query = query.where(getattr(self.DbEvent, key) == val)
+
+        return self.session.execute(query).first() is not None
 
     @with_session
     def has_any_entity(self, key=None, value=None):
@@ -468,9 +551,11 @@ WHERE
         :param value: value to loop for, e.g. "DIVA"
         :return: True if any entity exists, else False
         """
-        if not (key and value):
-            return self.session.query(self.DbEntity).count() > 0
-        return self.session.query(self.DbEntity).filter_by(**{key: value}).count() > 0
+        query = select(self.DbEntity).limit(1)
+
+        if key and value:
+            query = query.where(getattr(self.DbEntity, key) == value)
+        return self.session.execute(query).first() is not None
 
     def get_collection_model(self):
         if self.metadata.catalogue in gob_model:
@@ -478,25 +563,26 @@ WHERE
         return None
 
     @with_session
-    def get_current_ids(self, exclude_deleted=True):
+    def get_current_ids(self, exclude_deleted=True) -> Iterator[str]:
         """Overview of entities that are current
 
         Current id's are evaluated within an application
 
         :return: a list of ids for the entity that are currently not deleted.
         """
+        query = select(self.DbEntity._tid)
         if exclude_deleted:
-            filter["_date_deleted"]: None
-        return self.session.query(self.DbEntity._tid).all()
+            query = query.where(self.DbEntity._date_deleted.is_(None))
+        return self.session.stream_scalars(query)
 
     @with_session
-    def get_last_events(self):
+    def get_last_events(self) -> dict[str, int]:
         """Overview of all last applied events for the current collection
 
         :return: a dict of ids with last_event for the collection
         """
-        result = self.session.query(self.DbEntity._tid, self.DbEntity._last_event).all()
-        return {row._tid: row._last_event for row in result}
+        query = select(self.DbEntity._tid, self.DbEntity._last_event)
+        return {row[0]: row[1] for row in self.session.stream_execute(query)}
 
     @with_session
     def get_column_values_for_key_value(self, column, key, value):
@@ -569,7 +655,7 @@ WHERE
             raise GOBException(f"Found multiple rows with filter: {filter_str}")
 
     @with_session
-    def get_entities(self, tids, with_deleted=False):
+    def get_entities(self, tids: Iterable[str], with_deleted=False) -> Iterator:
         """
         Get entities with tid contained in the given list of tid's
 
@@ -577,12 +663,16 @@ WHERE
         :param with_deleted: boolean denoting if entities that are deleted should be considered (default: False)
         :return:
         """
-        entity_query = self.session.query(self.DbEntity)
-        if not with_deleted:
-            entity_query = entity_query.filter_by(_date_deleted=None)
+        values_tid = \
+            values(column("_tid", String), name="tids")\
+            .data([(tid, ) for tid in tids])
 
-        attr = getattr(self.DbEntity, "_tid")
-        return entity_query.filter(attr.in_(tids)).all()
+        query = select(self.DbEntity).join(values_tid, self.DbEntity._tid == values_tid.c._tid)
+
+        if not with_deleted:
+            query = query.where(self.DbEntity._date_deleted.is_(None))
+
+        return self.session.stream_scalars(query)
 
     def bulk_add_entities(self, events):
         """Adds all applied ADD events to the storage
@@ -602,16 +692,12 @@ WHERE
         table = self.DbEntity.__table__
         self.bulk_insert(table, insert_data)
 
-    @with_session
     def add_add_events(self, events):
-        rows = []
-        for event in events:
-            entity = event.get_attribute_dict()
-            # Set the the _last_event
-            entity['_last_event'] = event.id
-            rows.append(entity)
         table = self.DbEntity.__table__
-        self.session.execute(table.insert(), rows)
+        rows = [event.get_attribute_dict() | {"_last_event": event.id} for event in events]
+
+        with self.engine.connect() as conn:
+            conn.execute(table.insert(), rows)
 
     @with_session
     def add_events(self, events):
@@ -708,14 +794,8 @@ VALUES {values}"""
         result.close()
 
     @with_session
-    def _flush_entities(self):
-        if self.added_session_entity_cnt >= self.FORCE_FLUSH_PER:
-            self.force_flush_entities()
-
-    @with_session
     def force_flush_entities(self):
         self.session.flush()
-        self.added_session_entity_cnt = 0
 
     def execute(self, statement):
         result = self.engine.execute(statement)
@@ -734,13 +814,20 @@ VALUES {values}"""
         result.close()
         return value
 
-    def get_source_catalogue_entity_combinations(self, **kwargs):
-        stmt = "SELECT DISTINCT source, catalogue, entity FROM events"
-        where = {k: v for k, v in kwargs.items() if v}
-        if where:
-            stmt += " WHERE " + "AND ".join([f"{k} = '{v}'" for k, v in where.items()])
+    def get_source_catalogue_entity_combinations(self, **kwargs) -> list[Row]:
+        """Return all unique source / catalogue / entity combinations."""
+        query = select(
+            self.DbEvent.source,
+            self.DbEvent.catalogue,
+            self.DbEvent.entity
+        ).distinct()
+
+        for key, val in kwargs.items():
+            if hasattr(self.DbEvent, key) and val:
+                query = query.where(getattr(self.DbEvent, key) == val)
+
         with self.get_session() as session:
-            return [combination for combination in session.execute(stmt)]
+            return list(session.stream_execute(query))
 
     def analyze_table(self):
         """Runs VACUUM ANALYZE on table

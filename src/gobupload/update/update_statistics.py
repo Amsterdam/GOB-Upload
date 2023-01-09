@@ -3,15 +3,17 @@ Update statistics
 
 Gathers statistices about the update process
 """
+from collections import defaultdict
+
 from gobcore.logging.logger import logger
 
 
-class UpdateStatistics():
+class UpdateStatistics:
 
     def __init__(self):
-        self.stored = {}
-        self.skipped = {}
-        self.applied = {}
+        self.stored = defaultdict(int)
+        self.skipped = defaultdict(int)
+        self.applied = defaultdict(int)
         self.num_events = 0
         self.num_single_events = 0
         self.num_bulk_events = 0
@@ -31,7 +33,7 @@ class UpdateStatistics():
         else:
             return 1
 
-    def _action(selfself, event):
+    def _action(self, event):
         action = event["event"]
         if action == "BULKCONFIRM":
             action = "CONFIRM"
@@ -39,16 +41,16 @@ class UpdateStatistics():
 
     def store_event(self, event):
         action = self._action(event)
-        self.stored[action] = self.stored.get(action, 0) + self._count(event)
+        self.stored[action] += self._count(event)
         self._update_counts(event)
 
     def skip_event(self, event):
         action = self._action(event)
-        self.skipped[action] = self.skipped.get(action, 0) + self._count(event)
+        self.skipped[action] += self._count(event)
         self._update_counts(event)
 
     def add_applied(self, action, count):
-        self.applied[action] = self.applied.get(action, 0) + count
+        self.applied[action] += count
 
     def results(self):
         """Get statistics in a dictionary
