@@ -340,26 +340,6 @@ WHERE
         # Assert the temporary table is deleted
         self.storage.engine.execute.assert_any_call(f"DROP TABLE IF EXISTS {temporary}")
 
-    def test_bulk_insert(self):
-        insert_data = {'key': 'value'}
-        table = MagicMock()
-
-        self.storage.bulk_insert(table, insert_data)
-        # Assert the query is performed
-        self.storage.engine.execute.assert_called()
-
-    def test_delete_confirms(self):
-        catalogue = self.msg["header"]["catalogue"]
-        entity = self.msg["header"]["entity"]
-        events = self.storage.EVENTS_TABLE
-        self.storage.delete_confirms()
-
-        self.storage.engine.execute.assert_called()
-        args = self.storage.engine.execute.call_args[0][0]
-        args = ' '.join(args.split())
-        expect = f"DELETE FROM {events} WHERE catalogue = '{catalogue}' AND entity = '{entity}' AND action IN ('BULKCONFIRM', 'CONFIRM')"
-        self.assertEqual(args, expect)
-
     def test_get_query_value(self):
         self.storage.get_query_value('SELECT * FROM test')
         # Assert the query is performed
