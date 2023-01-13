@@ -13,6 +13,7 @@ import functools
 import warnings
 import random
 import string
+import traceback
 from contextlib import contextmanager
 from typing import Union, Iterator, Iterable
 
@@ -29,7 +30,6 @@ from gobcore.logging.logger import logger
 from gobcore.model.sa.gob import get_column
 from gobcore.model.sa.indexes import get_indexes
 from gobcore.typesystem import get_gob_type
-from gobcore.typesystem.json import GobTypeJSONEncoder
 from gobcore.events.import_events import CONFIRM
 
 from alembic.runtime import migration
@@ -661,15 +661,19 @@ WHERE
         :return: None
         """
         table = self.DbEvent.__table__
-        meta = self.metadata
+        timestamp = self.metadata.timestamp
+        source = self.metadata.source
+        catalogue = self.metadata.catalogue
+        entity = self.metadata.entity
+        application = self.metadata.application
 
         rows = [
             {
-                "timestamp": meta.timestamp,
-                "source": meta.source,
-                "catalogue": meta.catalogue,
-                "entity": meta.entity,
-                "application": meta.application,
+                "timestamp": timestamp,
+                "source": source,
+                "catalogue": catalogue,
+                "entity": entity,
+                "application": application,
                 "version": event['version'],
                 "action": event['event'],
                 "source_id": event["data"].get("_source_id"),
@@ -690,9 +694,15 @@ WHERE
         :param timestamp: Time to set as last_confirmed
         :return:
         """
-        tids = [record['_tid'] for record in confirms]
-        stmt = update(self.DbEntity).where(self.DbEntity._tid.in_(tids)).\
-            values({CONFIRM.timestamp_field: timestamp})
+        values_tid = \
+            values(column("_tid", String), name="tids")\
+            .data([(record['_tid'], ) for record in confirms])
+
+        stmt = (
+            update(self.DbEntity)
+            .where(self.DbEntity._tid == values_tid._tid)
+            .values({CONFIRM.timestamp_field: timestamp})
+        )
         self.execute(stmt)
 
     def execute(self, statement):

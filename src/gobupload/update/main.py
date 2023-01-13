@@ -17,16 +17,18 @@ from gobupload.utils import get_event_ids, is_corrupted
 
 def _store_events(
         storage: GOBStorageHandler,
-        last_events: dict[str, str],
+        last_events: dict[str, int],
         events: Iterator,
         stats: UpdateStatistics
 ):
-    """Store events in GOB
+    """
+    Store events in GOB.
 
     Only valid events are stored, other events are skipped (with an associated warning)
     The events are added in bulk in the database
 
     :param storage: GOB (events + entities)
+    :param last_events:
     :param events: the events to process
     :param stats: update statitics for this action
     :return:
@@ -36,20 +38,22 @@ def _store_events(
 
     with (
         ProgressTicker("Store events", chunksize) as progress,
-        EventCollector(storage, last_events) as event_collector,
         storage.get_session()
     ):
         for chunk in ichunked(events, chunksize):
-            for event in chunk:
-                progress.tick()
 
-                if event_collector.is_valid(event):
-                    event_collector.collect(event)
-                    stats.store_event(event)
-                else:
-                    stats.skip_event(event)
+            with EventCollector(storage, last_events) as event_collector:
+                for event in chunk:
+                    progress.tick()
 
-            event_collector.store_events()
+                    if event_collector.is_valid(event):
+                        event_collector.collect(event)
+                        stats.store_event(event)
+                    else:
+                        logger.warning(f"Invalid event: {event}")
+                        stats.skip_event(event)
+
+                event_collector.store_events()
 
 
 def _process_events(storage, events, stats):

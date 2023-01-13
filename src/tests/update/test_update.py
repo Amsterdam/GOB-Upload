@@ -39,7 +39,11 @@ class TestUpdate(TestCase):
         mock_ids.return_value = 0, 0
 
         message = fixtures.get_event_message_fixture('ADD')
-        full_update(message)
+
+        with patch.multiple("gobupload.update.main.EventCollector", _clear=MagicMock()):
+            # by mocking _clear we keep the add_events call, but raise a GOBException
+            with self.assertRaises(GOBException):
+                full_update(message)
 
         self.mock_storage.add_events.assert_called_with(message['contents'])
 
@@ -156,13 +160,33 @@ class TestUpdate(TestCase):
             # Assert that Exception is thrown when events have invalid actions
             self.assertRaises(GOBException, database_to_gobevent, dummy_event)
 
-    def test_store_events(self, mock):
+    @patch("gobupload.update.main.logger")
+    def test_store_events(self, mock_logger, mock_storage):
         metadata = fixtures.get_metadata_fixture()
         event = fixtures.get_event_fixture(metadata)
         event['data']['_last_event'] = fixtures.random_string()
 
         last_events = {event['data']['_tid']: event['data']['_last_event']}
-        mock.return_value = self.mock_storage
+        mock_storage.return_value = self.mock_storage
         stats = UpdateStatistics()
 
         _store_events(self.mock_storage, last_events, [event], stats)
+
+        assert stats.num_events == 1
+        assert stats.num_single_events == 1
+        assert len(stats.stored) == 1
+
+        # invalid event
+        event['data']['_last_event'] = {"_tid": 1, "_last_event": 100}
+        _store_events(self.mock_storage, last_events, [event], stats)
+
+        mock_logger.warning.assert_called_with(f"Invalid event: {event}")
+
+    @patch("gobupload.update.main.get_event_ids", MagicMock(return_value=(0, 0)))
+    @patch("gobupload.update.main.is_corrupted", lambda x, y: True)
+    @patch("gobupload.update.main.logger")
+    def test_fullupdate_model_inconsistent(self, mock_logger, _):
+        message = fixtures.get_event_message_fixture()
+
+        full_update(message)
+        mock_logger.error.assert_called_with("Model is inconsistent! data is more recent than events")
