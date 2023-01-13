@@ -1,6 +1,7 @@
 from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
+from gobcore.exceptions import GOBException
 from gobupload.storage.handler import GOBStorageHandler
 from gobupload.update.event_collector import EventCollector
 
@@ -10,82 +11,48 @@ class TestEventCollector(TestCase):
     def setUp(self):
         self.storage = MagicMock(spec=GOBStorageHandler)
 
-    def tearDown(self):
-        pass
-
     def test_constructor(self):
         collector = EventCollector(self.storage, {})
-        self.assertEqual(collector.events, [])
+        assert collector.events == []
+        assert collector.last_events == {}
+        assert collector.storage == self.storage
 
-    def test_add_regular_event(self):
+    def test_collect(self):
         collector = EventCollector(self.storage, {})
-        collector.add_event({'event': 'any event'})
-        self.assertEqual(collector.events, [{'event': 'any event'}])
+        collector.collect({'event': 'any event'})
+        assert collector.events == [{'event': 'any event'}]
 
-    def test_add_bulk_event(self):
-        collector = EventCollector(self.storage, {})
-        collector.add_event({'event': 'BULKCONFIRM'})
-        self.assertEqual(collector.events, [])
-        print(self.storage.mock_calls)
-        self.storage.add_events.assert_called_with([{'event': 'BULKCONFIRM'}])
-
-    def test_validate(self):
-        last_events = {
-            1: 100
-        }
+    def test_is_valid(self):
+        last_events = {"any tid": 100}
         collector = EventCollector(self.storage, last_events)
 
         event = {
-            'event': 'event',
-            'data': {
-                '_tid': 1,
-                '_last_event': 100
+            "event": "event",
+            "data": {
+                "_tid": "any tid",
+                "_last_event": 100
             }
         }
-        result = collector._validate(event)
-        self.assertEqual(result, True)
+        assert collector.is_valid(event)
 
-        event['data']['_last_event'] = 50
-        result = collector._validate(event)
-        self.assertEqual(result, False)
+        event["data"]["_last_event"] = 50
+        assert collector.is_valid(event) is False
 
-        event['data']['_tid'] = 2
-        result = collector._validate(event)
-        self.assertEqual(result, False)
-
-    def test_validate_bulk(self):
-        last_events = {
-            1: 100
-        }
-        collector = EventCollector(self.storage, last_events)
-
-        event = {
-            'event': 'BULKCONFIRM',
-            'data': {
-                'confirms': [{
-                    '_tid': 1,
-                    '_last_event': 100
-                }]
-            }
-        }
-        result = collector._validate(event)
-        self.assertEqual(result, True)
-
-        event['data']['confirms'][0]['_last_event'] = 50
-        result = collector._validate(event)
-        self.assertEqual(result, False)
-
-        event['data']['confirms'][0]['_tid'] = 2
-        result = collector._validate(event)
-        self.assertEqual(result, False)
+        event["data"]["_tid"] = 2
+        assert collector.is_valid(event) is False
 
     def test_exit(self):
-        EventCollector.MAX_CHUNK = 2
-        collector = EventCollector(self.storage, {})
-        collector.add_event({'event': 'any event'})
-        self.assertEqual(collector.events, [{'event': 'any event'}])
-        collector.add_event({'event': 'any event'})
-        self.assertEqual(collector.events, [])
-        self.storage.add_events.assert_called_with([{'event': 'any event'}, {'event': 'any event'}])
+        event = {"event": "event", "data": {"_tid": 1, "_last_event": 100}}
 
+        # store_events not called, raise GOBException
+        with self.assertRaises(GOBException):
+            with EventCollector(self.storage, {}) as collector:
+                collector.collect(event)
+
+        # store_events called, assert events cleared
+        with EventCollector(self.storage, {}) as collector:
+            collector.collect(event)
+            collector.store_events()
+
+        assert len(collector.events) == 0
 

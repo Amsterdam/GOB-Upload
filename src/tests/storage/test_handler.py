@@ -392,43 +392,42 @@ WHERE
 
     def test_add_events(self):
         self.storage.session = MagicMock()
-
         metadata = fixtures.get_metadata_fixture()
-        event = fixtures.get_event_fixture(metadata, 'ADD')
-        event['data'] = {'_source_id': "source_id + escape '% ", '_tid': "abcd.1 + escape '% "}
+        event = fixtures.get_event_fixture(metadata, "ADD")
+        event["data"] = {"_source_id": "any source_id", "_tid": "abcd.1"}
 
-        expected = f"""
-INSERT INTO
-    "{self.storage.EVENTS_TABLE}"
-(
-    "timestamp",
-    catalogue,
-    entity,
-    "version",
-    "action",
-    "source",
-    source_id,
-    contents,
-    application,
-    tid
-)
-VALUES (
-    '{ self.storage.metadata.timestamp }',
-    'meetbouten',
-    'meetbouten',
-    '0.9',
-    'ADD',
-    '{ self.storage.metadata.source }',
-    'source_id + escape \'\'%% ',
-    '{{"_source_id": "source_id + escape \'\'%% ", "_tid": "abcd.1 + escape \'\'%% "}}',
-    '{ self.storage.metadata.application }',
-    'abcd.1 + escape \'\'%% '
-)"""
         self.storage.add_events([event])
-        self.storage.engine.execute.assert_called()
-        args = self.storage.engine.execute.call_args[0][0]
-        args = ' '.join(args.split())
-        self.assertEqual(args, ' '.join(expected.split()))
+
+        query, params = self.storage.session.execute.call_args[0]
+
+        assert str(query) == \
+               "INSERT INTO events (eventid, timestamp, catalogue, entity, version, action, source, source_id, contents, application, tid) " \
+                "VALUES (:eventid, :timestamp, :catalogue, :entity, :version, :action, :source, :source_id, :contents, :application, :tid)"
+
+        assert params == [
+            {
+                "timestamp": self.storage.metadata.timestamp,
+                "source": self.storage.metadata.source,
+                "catalogue": self.storage.metadata.catalogue,
+                "entity": self.storage.metadata.entity,
+                "application": self.storage.metadata.application,
+                "version": "0.9",
+                "action": "ADD",
+                "source_id": "any source_id",
+                "contents": {
+                    "_source_id": "any source_id",
+                    "_tid": "abcd.1"
+                },
+                "tid": "abcd.1"
+            }
+        ]
+
+        # no source id in data
+        self.storage.session.reset_mock()
+        event["data"] = {"_tid": "abcd.1"}
+        self.storage.add_events([event])
+        _, params = self.storage.session.execute.call_args[0]
+        assert params[0]["source_id"] is None
 
     @patch("gobupload.storage.handler.SessionORM.scalars")
     @patch("gobupload.storage.handler.SessionORM.execute")
