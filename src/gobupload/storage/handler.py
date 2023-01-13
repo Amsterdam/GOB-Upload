@@ -700,7 +700,7 @@ WHERE
 
         stmt = (
             update(self.DbEntity)
-            .where(self.DbEntity._tid == values_tid._tid)
+            .where(self.DbEntity._tid == values_tid.c._tid)
             .values({CONFIRM.timestamp_field: timestamp})
         )
         self.execute(stmt)
