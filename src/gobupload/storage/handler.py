@@ -694,15 +694,9 @@ WHERE
         :param timestamp: Time to set as last_confirmed
         :return:
         """
-        values_tid = \
-            values(column("_tid", String), name="tids")\
-            .data([(record['_tid'], ) for record in confirms])
-
-        stmt = (
-            update(self.DbEntity)
-            .where(self.DbEntity._tid == values_tid.c._tid)
-            .values({CONFIRM.timestamp_field: timestamp})
-        )
+        tids = [record['_tid'] for record in confirms]
+        stmt = update(self.DbEntity).where(self.DbEntity._tid.in_(tids)).\
+            values({CONFIRM.timestamp_field: timestamp})
         self.execute(stmt)
 
     def execute(self, statement):
