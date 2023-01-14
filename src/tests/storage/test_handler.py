@@ -1,4 +1,6 @@
+import datetime
 import unittest
+from decimal import Decimal
 from unittest.mock import call, MagicMock, patch
 
 from sqlalchemy import Integer, DateTime, String, JSON
@@ -394,7 +396,14 @@ WHERE
         self.storage.session = MagicMock()
         metadata = fixtures.get_metadata_fixture()
         event = fixtures.get_event_fixture(metadata, "ADD")
-        event["data"] = {"_source_id": "any source_id", "_tid": "abcd.1"}
+        event["data"] = {
+            "_source_id": "any source_id",
+            "_tid": "abcd.1",
+            "decimal": Decimal("1.0"),
+            "datetime": datetime.datetime(2023, 1, 1, 13, 00),
+            "date": datetime.date(2023, 1, 1),
+            "int": 10
+        }
 
         self.storage.add_events([event])
 
@@ -414,10 +423,9 @@ WHERE
                 "version": "0.9",
                 "action": "ADD",
                 "source_id": "any source_id",
-                "contents": {
-                    "_source_id": "any source_id",
-                    "_tid": "abcd.1"
-                },
+                "contents": '{"_source_id": "any source_id", "_tid": "abcd.1", "decimal": 1.0,'
+                            ' "datetime": "2023-01-01T13:00:00.000000", "date": "2023-01-01",'
+                            ' "int": 10}',
                 "tid": "abcd.1"
             }
         ]

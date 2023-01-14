@@ -20,7 +20,10 @@ class EventCollector:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.events:
-            raise GOBException("Have not stored events. Call store_events() before leaving context")
+            raise GOBException(
+                "Have not stored events. Call store_events() before leaving context. "
+                f"({exc_val})"
+            )
 
     def store_events(self):
         if self.events:
