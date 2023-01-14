@@ -10,6 +10,7 @@ Use it like this:
 from __future__ import annotations
 
 import functools
+import json
 import warnings
 import random
 import string
@@ -36,6 +37,7 @@ from alembic.runtime import migration
 import alembic.config
 import alembic.script
 
+from gobcore.typesystem.json import GobTypeJSONEncoder
 from gobupload import gob_model
 from gobupload.config import GOB_DB
 from gobupload.storage import queries
@@ -677,7 +679,7 @@ WHERE
                 "version": event['version'],
                 "action": event['event'],
                 "source_id": event["data"].get("_source_id"),
-                "contents": event["data"],
+                "contents": json.dumps(event["data"], cls=GobTypeJSONEncoder),
                 "tid": event["data"]["_tid"]
             }
             for event in events
