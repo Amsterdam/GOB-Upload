@@ -38,22 +38,21 @@ def _store_events(
 
     with (
         ProgressTicker("Store events", chunksize) as progress,
-        storage.get_session()
+        storage.get_session(),
+        EventCollector(storage, last_events) as event_collector
     ):
         for chunk in ichunked(events, chunksize):
+            for event in chunk:
+                progress.tick()
 
-            with EventCollector(storage, last_events) as event_collector:
-                for event in chunk:
-                    progress.tick()
+                if event_collector.is_valid(event):
+                    event_collector.collect(event)
+                    stats.store_event(event)
+                else:
+                    logger.warning(f"Invalid event: {event}")
+                    stats.skip_event(event)
 
-                    if event_collector.is_valid(event):
-                        event_collector.collect(event)
-                        stats.store_event(event)
-                    else:
-                        logger.warning(f"Invalid event: {event}")
-                        stats.skip_event(event)
-
-                event_collector.store_events()
+            event_collector.store_events()
 
 
 def _process_events(storage, events, stats):
