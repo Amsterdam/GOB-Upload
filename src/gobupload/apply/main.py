@@ -1,6 +1,8 @@
-import os
 import sys
+from pathlib import Path
 
+from gobcore.events.import_events import CONFIRM, BULKCONFIRM
+from gobcore.exceptions import GOBException
 from gobcore.logging.logger import logger
 from gobcore.message_broker.notifications import EventNotification, add_notification
 from gobcore.message_broker.offline_contents import ContentsReader
@@ -44,7 +46,23 @@ def apply_events(storage: GOBStorageHandler, last_events: set[str], start_after:
                     break  # skips 'else' and executes 'finally' => session rollback + closed
 
 
-def apply_confirm_events(storage, stats, msg):
+def _apply_confirms(storage: GOBStorageHandler, confirms: Path, timestamp: str, stats: UpdateStatistics):
+    with ProgressTicker("Apply CONFIRM events", 50_000) as progress:
+        for event in ContentsReader(confirms).items():
+            if event["event"] not in (CONFIRM.name, BULKCONFIRM.name):
+                raise GOBException(f"Expected 'CONFIRM' or 'BULKCONFIRM' got: {event['event']}")
+
+            # get confirm data: BULKCONFIRM => data.confirms, CONFIRM => [data]
+            confirm_data = event["data"].get("confirms", [event["data"]])
+            confirm_len = len(confirm_data)
+
+            progress.ticks(confirm_len)
+
+            storage.apply_confirms(confirm_data, timestamp=timestamp)
+            stats.add_applied(CONFIRM.name, confirm_len)
+
+
+def apply_confirm_events(storage: GOBStorageHandler, stats: UpdateStatistics, msg: dict):
     """
     Apply confirm events (if present)
 
@@ -56,25 +74,19 @@ def apply_confirm_events(storage, stats, msg):
     :param msg:
     :return:
     """
-    confirms = msg.get('confirms')
-    # SKIP confirms for relations
-    catalogue = msg['header'].get('catalogue', "")
-    if confirms and catalogue != 'rel':
-        reader = ContentsReader(confirms)
-        with ProgressTicker("Apply CONFIRM events", 10000) as progress:
-            for event in reader.items():
-                progress.tick()
-                action = event['event']
-                assert action in ['CONFIRM', 'BULKCONFIRM']
-                # get confirm data: BULKCONFIRM => data.confirms, CONFIRM => [data]
-                confirm_data = event['data'].get('confirms', [event['data']])
-                storage.apply_confirms(confirm_data, msg['header']['timestamp'])
-                stats.add_applied('CONFIRM', len(confirm_data))
-        reader.close()
-    if confirms:
-        # Remove file after it has been handled (or skipped)
-        os.remove(confirms)
-        del msg['confirms']
+    if "confirms" not in msg:
+        return
+
+    confirms = Path(msg["confirms"])
+    catalogue = msg['header'].get("catalogue", "")
+    timestamp = msg["header"]["timestamp"]
+
+    try:
+        if catalogue != "rel":
+            _apply_confirms(storage, confirms, timestamp=timestamp, stats=stats)
+    finally:
+        confirms.unlink(missing_ok=True)
+        del msg["confirms"]
 
 
 def _should_analyze(stats):

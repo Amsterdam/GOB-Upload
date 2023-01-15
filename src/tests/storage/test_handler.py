@@ -56,6 +56,17 @@ class MockEvents(Base):
     tid = sa.Column(String)
 
 
+class MockMeetbouten(Base):
+    __tablename__ = "meetbouten_meetbouten"
+
+    eventid = sa.Column(Integer, primary_key=True)
+    timestamp = sa.Column(DateTime)
+    catalogue = sa.Column(String)
+    entity = sa.Column(String)
+    _tid = sa.Column(String)
+    _date_confirmed = sa.Column(DateTime)
+
+
 class MockMeta:
     source = "AMSBI"
     catalogue = "meetbouten"
@@ -90,6 +101,7 @@ class TestStorageHandler(unittest.TestCase):
         GOBStorageHandler.engine.begin = lambda: GOBStorageHandler.engine
 
         GOBStorageHandler.base.classes.events = MockEvents
+        GOBStorageHandler.base.classes.meetbouten_meetbouten = MockMeetbouten
 
     @patch("gobupload.storage.handler.automap_base")
     def test_base(self, mock_base):
@@ -518,3 +530,21 @@ WHERE
         mock_execute.reset_mock()
         obj.stream_execute("query", extra=5, execution_options={"yield_per": 2000})
         mock_execute.assert_called_with("query", execution_options={"yield_per": 2000}, extra=5)
+
+    @patch("gobupload.storage.handler.GOBStorageHandler.execute")
+    def test_apply_confirms(self, mock_execute):
+        confirms = [{"_tid": "confirm1"}, {"_tid": "confirm2"}]
+        timestamp = "any ts"
+
+        self.storage.apply_confirms(confirms, timestamp)
+
+        query = mock_execute.call_args[0][0]
+        query = str(query.compile(compile_kwargs={"literal_binds": True}))
+
+        expected = (
+            "UPDATE meetbouten_meetbouten "
+            "SET _date_confirmed='any ts' "
+            "FROM (VALUES ('confirm1'), ('confirm2')) AS tids (_tid) "
+            "WHERE meetbouten_meetbouten._tid = tids._tid"
+        )
+        assert query == expected
