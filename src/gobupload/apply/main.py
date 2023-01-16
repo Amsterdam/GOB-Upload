@@ -74,7 +74,7 @@ def apply_confirm_events(storage: GOBStorageHandler, stats: UpdateStatistics, ms
     :param msg:
     :return:
     """
-    if "confirms" not in msg:
+    if not msg.get("confirms"):
         return
 
     confirms = Path(msg["confirms"])
