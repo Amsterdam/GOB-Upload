@@ -82,7 +82,6 @@ class EventApplicator:
                 return
 
             # a non-ADD event is trying to be applied on a deleted entity
-            # Only ADD event can be applied on a deleted entity
             raise GOBException(
                 f"Trying to '{gob_event.name}' a deleted entity "
                 f"(id: {gob_event.id}, last_event: {gob_event.last_event}) tid: {gob_event.tid})"

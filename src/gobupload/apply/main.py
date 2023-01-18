@@ -8,7 +8,7 @@ from gobcore.utils import ProgressTicker
 
 from gobupload.config import FULL_UPLOAD
 from gobupload.storage.handler import GOBStorageHandler
-from gobupload.update.event_applicator import EventApplicator
+from gobupload.apply.event_applicator import EventApplicator
 from gobupload.update.update_statistics import UpdateStatistics
 from gobupload.utils import get_event_ids, is_corrupted
 
@@ -41,8 +41,7 @@ def apply_events(storage: GOBStorageHandler, last_events: set[str], start_after:
                     event_applicator.apply_all()
                 except Exception as err:
                     logger.error(f"Exception during applying events: {repr(err)}")
-                    # stop applying and rollback + close current session/chunk
-                    break
+                    break  # skips 'else' and executes 'finally' => session rollback + closed
 
 
 def apply_confirm_events(storage, stats, msg):
