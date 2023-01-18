@@ -7,7 +7,7 @@ from gobcore.exceptions import GOBException
 from gobcore.logging.logger import logger
 
 from gobupload.storage.handler import GOBStorageHandler
-from gobupload.update.event_applicator import database_to_gobevent
+from gobupload.apply.event_applicator import database_to_gobevent
 from gobupload.update.main import UpdateStatistics, _store_events, full_update, get_event_ids
 from tests import fixtures
 

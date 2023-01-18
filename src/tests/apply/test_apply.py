@@ -3,15 +3,18 @@ from unittest import TestCase
 import logging
 from unittest.mock import ANY, MagicMock, patch
 
+from gobcore.exceptions import GOBException
 from gobcore.logging.logger import logger
+from gobupload.apply.event_applicator import EventApplicator
 
 from gobupload.apply.main import _should_analyze, apply, apply_confirm_events, \
     apply_events
 from gobupload.storage.handler import GOBStorageHandler
+from gobupload.update.update_statistics import UpdateStatistics
 from tests import fixtures
 
 
-class MockCombination():
+class MockCombination:
 
     def __init__(self, source, catalogue, entity):
         self.source = source
@@ -27,6 +30,7 @@ class TestApply(TestCase):
         logger.configure({}, "TEST_APPLY")
 
         self.mock_storage = MagicMock(spec=GOBStorageHandler)
+        self.stats = MagicMock(spec=UpdateStatistics)
 
     def tearDown(self):
         logging.disable(logging.NOTSET)
@@ -42,6 +46,23 @@ class TestApply(TestCase):
         apply_events(self.mock_storage, set(), 1, stats)
 
         stats.add_applied.assert_called()
+
+    @patch("gobupload.apply.main.EventApplicator", spec_set=EventApplicator)
+    @patch("gobupload.apply.main.logger")
+    def test_apply_exception(self, mock_logger, mock_applicator, mock_storage):
+        mock_applicator.return_value.__enter__.return_value.apply_all.side_effect = GOBException
+        mock_storage.get_events_starting_after.return_value = [["event1"], ["event2"]]
+        mock_storage.session = MagicMock()
+
+        apply_events(mock_storage, set(), 1, self.stats)
+
+        mock_logger.error.assert_called_with("Exception during applying events: GOBException()")
+        mock_applicator.return_value.__enter__.return_value.apply.assert_called_with("event1")
+        mock_applicator.return_value.__enter__.return_value.apply.assert_called_once()
+        mock_applicator.return_value.__enter__.return_value.apply_all.assert_called_once()
+
+        # Session exits normally through finally.
+        mock_storage.get_session.return_value.__exit__.assert_called_with(None, None, None)
 
     @patch('gobupload.apply.main.add_notification')
     @patch('gobupload.apply.main.EventNotification')
@@ -62,7 +83,6 @@ class TestApply(TestCase):
 
     @patch('gobupload.apply.main.add_notification')
     @patch('gobupload.apply.main.EventNotification')
-    @patch('gobupload.apply.main.ContentsReader', MagicMock())
     @patch('gobupload.apply.main.logger', MagicMock())
     @patch('gobupload.apply.main.get_event_ids', lambda s: (1, 2))
     @patch('gobupload.apply.main.apply_events')
