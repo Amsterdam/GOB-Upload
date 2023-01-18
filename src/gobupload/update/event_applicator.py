@@ -5,19 +5,22 @@ Applies events to the respective entity in the current model
 
 """
 from collections import defaultdict
+from typing import Union
 
 from gobcore.exceptions import GOBException
-from gobcore.events import GOB, database_to_gobevent
+from gobcore.events import GOB, database_to_gobevent, ImportEvent
 from gobupload.storage.handler import GOBStorageHandler
+from gobupload.update.update_statistics import UpdateStatistics
 
 
 class EventApplicator:
 
-    def __init__(self, storage: GOBStorageHandler, last_events: set[str]):
+    def __init__(self, storage: GOBStorageHandler, last_events: set[str], stats: UpdateStatistics):
         self.storage = storage
+        self.stats = stats
 
-        self.add_events = []
-        self.other_events = defaultdict(list)
+        self.add_events: list[GOB.ADD] = []
+        self.other_events: dict[str, list[Union[GOB.ADD, GOB.MODIFY, GOB.DELETE]]] = defaultdict(list)
         self.other_events_sum = 0
 
         self.last_events = last_events
@@ -38,6 +41,8 @@ class EventApplicator:
         """Applies ADD events in buffer and clears afterwards."""
         if self.add_events:
             self.storage.add_add_events(self.add_events)
+
+            self.stats.add_applied(GOB.ADD.name, len(self.add_events))
             self.add_events.clear()
 
     def add_other_event(self, gob_event, tid):
@@ -51,14 +56,37 @@ class EventApplicator:
         Initialise a session when applying and close to flush
         """
         if self.other_events:
-            with self.storage.get_session():
-                entities = self.storage.get_entities(self.other_events.keys(), with_deleted=True)
+            entities = self.storage.get_entities(self.other_events.keys(), with_deleted=True)
 
-                for entity in entities:
-                    self.apply_other_event(entity)
+            for entity in entities:
+                self.apply_other_event(entity)
 
             self.other_events.clear()
             self.other_events_sum = 0
+
+    def _validate_other_event(self, gob_event: ImportEvent, entity) -> None:
+        if isinstance(gob_event, GOB.ADD):
+            # only apply ADD on deleted entity
+            if entity._date_deleted is not None:
+                return
+
+            # a ADD event is trying to be applied to a non-deleted (current) entity
+            raise GOBException(
+                f"Trying to 'ADD' an existing (non-deleted) entity. "
+                f"(id: {gob_event.id}, last_event: {gob_event.last_event}, tid: {gob_event.tid})"
+            )
+
+        else:
+            # only apply GOB.MODIFY, GOB.DELETE on non-deleted entity
+            if entity._date_deleted is None:
+                return
+
+            # a non-ADD event is trying to be applied on a deleted entity
+            # Only ADD event can be applied on a deleted entity
+            raise GOBException(
+                f"Trying to '{gob_event.name}' a deleted entity "
+                f"(id: {gob_event.id}, last_event: {gob_event.last_event}) tid: {gob_event.tid})"
+            )
 
     def apply_other_event(self, entity):
         """
@@ -67,25 +95,21 @@ class EventApplicator:
         The event can be an:
         - ADD event (reanimation of a DELETED entity)
         - DELETE or MODIFY event
-        - CONFIRM event (these event only set the last modified date, not the last event id)
 
         :param entity:
         """
         for gob_event in self.other_events.pop(entity._tid):
-            # Check action validity
-            if not isinstance(gob_event, GOB.ADD) and entity._date_deleted is not None:
-                # a non-ADD event is trying to be applied on a deleted entity
-                # Only ADD event can be applied on a deleted entity
-                raise GOBException(f"Trying to '{gob_event.name}' a deleted entity (id: {gob_event.id}, "
-                                   f"last_event: {gob_event.last_event})")
+            # validate event and entity, raises if not valid
+            self._validate_other_event(gob_event, entity)
 
             # apply the event on the entity
             gob_event.apply_to(entity)
 
-            # and register the last event that has updated this entity
-            # except for CONFIRM events. These events are deleted once they have been applied
-            if not isinstance(gob_event, GOB.CONFIRM):
-                entity._last_event = gob_event.id
+            # register the last event that has updated this entity
+            entity._last_event = gob_event.id
+
+            # update stats
+            self.stats.add_applied(gob_event.action, 1)
 
     def apply_all(self):
         self.apply_add_events()
@@ -110,7 +134,5 @@ class EventApplicator:
             # If ADD events are waiting to be applied to the database, flush those first to make sure they exist
             self.apply_add_events()
 
-            # Add other event (MODIFY, CONFIRM, DELETE, ADD on deleted entity)
+            # Add other event (MODIFY, DELETE, ADD on deleted entity)
             self.add_other_event(gob_event, tid)
-
-        return gob_event, count

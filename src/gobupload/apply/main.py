@@ -29,16 +29,20 @@ def apply_events(storage: GOBStorageHandler, last_events: set[str], start_after:
     """
     with (
         ProgressTicker("Apply events", 10_000) as progress,
-        EventApplicator(storage, last_events) as event_applicator,
+        EventApplicator(storage, last_events, stats) as event_applicator,
     ):
         for chunk in storage.get_events_starting_after(start_after):
-            for event in chunk:
-                progress.tick()
+            with storage.get_session():
+                for event in chunk:
+                    progress.tick()
+                    event_applicator.apply(event)
 
-                gob_event, count = event_applicator.apply(event)
-                stats.add_applied(gob_event.action, count)
-
-            event_applicator.apply_all()
+                try:
+                    event_applicator.apply_all()
+                except Exception as err:
+                    logger.error(f"Exception during applying events: {repr(err)}")
+                    # stop applying and rollback + close current session/chunk
+                    break
 
 
 def apply_confirm_events(storage, stats, msg):
