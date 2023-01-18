@@ -647,12 +647,11 @@ WHERE
 
         return self.session.stream_scalars(query)
 
+    @with_session
     def add_add_events(self, events):
         table = self.DbEntity.__table__
         rows = [event.get_attribute_dict() | {"_last_event": event.id} for event in events]
-
-        with self.engine.connect() as conn:
-            conn.execute(table.insert(), rows)
+        self.session.execute(table.insert(), rows)
 
     @with_session
     def add_events(self, events):
