@@ -117,9 +117,6 @@ class EventApplicator:
     def apply(self, event):
         # Reconstruct the gob event out of the database event
         gob_event = database_to_gobevent(event)
-
-        # Return the action and number of applied entities
-        count = 1
         tid = gob_event.tid
 
         if isinstance(gob_event, GOB.ADD) and tid not in self.last_events and tid not in self.add_event_tids:
