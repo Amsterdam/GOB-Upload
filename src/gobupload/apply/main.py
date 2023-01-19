@@ -35,10 +35,10 @@ def apply_events(storage: GOBStorageHandler, last_events: set[str], start_after:
             with storage.get_session():
                 for event in chunk:
                     progress.tick()
-                    event_applicator.apply(event)
+                    event_applicator.load(event)
 
                 try:
-                    event_applicator.apply_all()
+                    event_applicator.flush()
                 except Exception as err:
                     logger.error(f"Exception during applying events: {repr(err)}")
                     break  # skips 'else' and executes 'finally' => session rollback + closed

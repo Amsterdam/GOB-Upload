@@ -50,16 +50,16 @@ class TestApply(TestCase):
     @patch("gobupload.apply.main.EventApplicator", spec_set=EventApplicator)
     @patch("gobupload.apply.main.logger")
     def test_apply_exception(self, mock_logger, mock_applicator, mock_storage):
-        mock_applicator.return_value.__enter__.return_value.apply_all.side_effect = GOBException
+        mock_applicator.return_value.__enter__.return_value.flush.side_effect = GOBException
         mock_storage.get_events_starting_after.return_value = [["event1"], ["event2"]]
         mock_storage.session = MagicMock()
 
         apply_events(mock_storage, set(), 1, self.stats)
 
         mock_logger.error.assert_called_with("Exception during applying events: GOBException()")
-        mock_applicator.return_value.__enter__.return_value.apply.assert_called_with("event1")
-        mock_applicator.return_value.__enter__.return_value.apply.assert_called_once()
-        mock_applicator.return_value.__enter__.return_value.apply_all.assert_called_once()
+        mock_applicator.return_value.__enter__.return_value.load.assert_called_with("event1")
+        mock_applicator.return_value.__enter__.return_value.load.assert_called_once()
+        mock_applicator.return_value.__enter__.return_value.flush.assert_called_once()
 
         # Session exits normally through finally.
         mock_storage.get_session.return_value.__exit__.assert_called_with(None, None, None)
