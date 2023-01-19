@@ -11,10 +11,10 @@ from __future__ import annotations
 
 import functools
 import json
-import traceback
 import warnings
 import random
 import string
+import traceback
 from contextlib import contextmanager
 from typing import Union, Iterator, Iterable
 
@@ -31,13 +31,13 @@ from gobcore.logging.logger import logger
 from gobcore.model.sa.gob import get_column
 from gobcore.model.sa.indexes import get_indexes
 from gobcore.typesystem import get_gob_type
-from gobcore.typesystem.json import GobTypeJSONEncoder
 from gobcore.events.import_events import CONFIRM
 
 from alembic.runtime import migration
 import alembic.config
 import alembic.script
 
+from gobcore.typesystem.json import GobTypeJSONEncoder
 from gobupload import gob_model
 from gobupload.config import GOB_DB
 from gobupload.storage import queries
@@ -647,12 +647,11 @@ WHERE
 
         return self.session.stream_scalars(query)
 
+    @with_session
     def add_add_events(self, events):
         table = self.DbEntity.__table__
         rows = [event.get_attribute_dict() | {"_last_event": event.id} for event in events]
-
-        with self.engine.connect() as conn:
-            conn.execute(table.insert(), rows)
+        self.session.execute(table.insert(), rows)
 
     @with_session
     def add_events(self, events):
@@ -662,50 +661,31 @@ WHERE
         :param events: the list of events to insert
         :return: None
         """
-        def escape(value):
-            return value.replace("'", "''").replace("%", "%%") if isinstance(value, str) else value
+        table = self.DbEvent.__table__
+        timestamp = self.metadata.timestamp
+        source = self.metadata.source
+        catalogue = self.metadata.catalogue
+        entity = self.metadata.entity
+        application = self.metadata.application
 
-        def to_json(data):
-            """
-            Convert the data dictionary to a JSON string that can be inserted in the events table.
-
-            :param data: dictionary
-            :return: the JSON string suitably quoted to be used as a string literal in an SQL statement string
-            """
-            return json.dumps(data, cls=GobTypeJSONEncoder)
-
-        values = ",".join([f"""
-(
-    '{ self.metadata.timestamp }',
-    '{ self.metadata.catalogue }',
-    '{ self.metadata.entity }',
-    '{ event['version'] }',
-    '{ event['event'] }',
-    '{ self.metadata.source }',
-    '{ escape(event['data'].get('_source_id')) }',
-    '{ escape(to_json(event['data'])) }',
-    '{ self.metadata.application }',
-    '{ escape(event['data']['_tid']) }'
-)""" for event in events])
-
-        # INSERT INTO events (...) VALUES (...)[, (...), ...]
-        statement = f"""
-INSERT INTO
-    "{ self.EVENTS_TABLE }"
-(
-    "timestamp",
-    catalogue,
-    entity,
-    "version",
-    "action",
-    "source",
-    source_id,
-    contents,
-    application,
-    tid
-)
-VALUES {values}"""
-        self.execute(statement)
+        rows = [
+            {
+                "timestamp": timestamp,
+                "source": source,
+                "catalogue": catalogue,
+                "entity": entity,
+                "application": application,
+                "version": event['version'],
+                "action": event['event'],
+                "source_id": event["data"].get("_source_id"),
+                "contents": json.dumps(event["data"], cls=GobTypeJSONEncoder),
+                "tid": event["data"]["_tid"]
+            }
+            for event in events
+        ]
+        # disable implicit returning
+        # https://docs.sqlalchemy.org/en/14/core/dml.html#sqlalchemy.sql.expression.Insert.inline
+        self.session.execute(table.insert().inline(), rows)
 
     def apply_confirms(self, confirms, timestamp):
         """

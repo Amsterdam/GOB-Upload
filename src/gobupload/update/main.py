@@ -2,41 +2,57 @@
 
 Process events and apply the event on the current state of the entity
 """
+from typing import Iterator
+
+from more_itertools import ichunked
+
 from gobcore.events.import_message import ImportMessage
 from gobcore.logging.logger import logger
 from gobcore.utils import ProgressTicker
-
 from gobupload.storage.handler import GOBStorageHandler
 from gobupload.update.event_collector import EventCollector
 from gobupload.update.update_statistics import UpdateStatistics
-from gobupload.utils import ActiveGarbageCollection, get_event_ids, is_corrupted
+from gobupload.utils import get_event_ids, is_corrupted
 
 
-def _store_events(storage, last_events, events, stats):
-    """Store events in GOB
+def _store_events(
+        storage: GOBStorageHandler,
+        last_events: dict[str, int],
+        events: Iterator,
+        stats: UpdateStatistics
+):
+    """
+    Store events in GOB.
 
     Only valid events are stored, other events are skipped (with an associated warning)
     The events are added in bulk in the database
 
     :param storage: GOB (events + entities)
+    :param last_events:
     :param events: the events to process
     :param stats: update statitics for this action
     :return:
     """
-    with ActiveGarbageCollection("Store events"), storage.get_session():
-        # Use a session to commit all or rollback on any error
-        logger.info("Store events")
+    logger.info("Store events")
+    chunksize = 10_000
 
-        with ProgressTicker("Store events", 10000) as progress, \
-                EventCollector(storage, last_events) as event_collector:
-
-            for event in events:
+    with (
+        ProgressTicker("Store events", chunksize) as progress,
+        storage.get_session(),
+        EventCollector(storage, last_events) as event_collector
+    ):
+        for chunk in ichunked(events, chunksize):
+            for event in chunk:
                 progress.tick()
 
-                if event_collector.collect(event):
+                if event_collector.is_valid(event):
+                    event_collector.collect(event)
                     stats.store_event(event)
                 else:
+                    logger.warning(f"Invalid event: {event}")
                     stats.skip_event(event)
+
+            event_collector.store_events()
 
 
 def _process_events(storage, events, stats):
