@@ -39,13 +39,13 @@ class TestEventApplicator(TestCase):
     def test_constructor(self):
         applicator = EventApplicator(self.storage, set("1"), self.stats)
 
-        assert applicator.add_events == []
-        assert applicator.other_events == {}
-        assert applicator.other_events_sum == 0
+        assert applicator.inserts == []
+        assert applicator.updates == {}
+        assert applicator.updates_total == 0
         assert applicator.last_events == set("1")
         assert applicator.add_event_tids == set()
 
-    def test_apply(self):
+    def test_load(self):
         applicator = EventApplicator(self.storage, set(), self.stats)
         self.mock_event["action"] = "CONFIRM"
         self.set_contents({
@@ -54,23 +54,23 @@ class TestEventApplicator(TestCase):
         })
         event = dict_to_object(self.mock_event)
 
-        applicator.apply(event)
+        applicator.load(event)
 
-        assert len(applicator.add_events) == 0
-        assert len(applicator.other_events) == 1
-        assert applicator.other_events_sum == 1
+        assert len(applicator.inserts) == 0
+        assert len(applicator.updates) == 1
+        assert applicator.updates_total == 1
 
     def test_apply_new_add(self):
         self.set_contents({"_tid": "entity_source_id", "_hash": "123"})
         event = dict_to_object(self.mock_event)
 
         with EventApplicator(self.storage, set(), self.stats) as applicator:
-            applicator.apply(event)
+            applicator.load(event)
 
-            assert len(applicator.add_events) == 1
-            applicator.apply_all()
+            assert len(applicator.inserts) == 1
+            applicator.flush()
 
-        assert len(applicator.add_events) == 0
+        assert len(applicator.inserts) == 0
         self.storage.add_add_events.assert_called()
         self.stats.add_applied.assert_called_with("ADD", 1)
 
@@ -80,62 +80,75 @@ class TestEventApplicator(TestCase):
 
         with self.assertRaises(GOBException):
             with EventApplicator(self.storage, set(), self.stats) as applicator:
-                applicator.apply(event)
+                applicator.load(event)
 
-    def test_apply_existing_add(self):
+    def test_existing_add(self):
         # Expect add event for existing deleted entity leads to add other event
         self.set_contents({"_hash": "123"})
         event = dict_to_object(self.mock_event)
         event.tid = "existing_source_id"
 
         applicator = EventApplicator(self.storage, {"existing_source_id"}, self.stats)
-        applicator.add_add_event = Mock()
-        applicator.apply_add_events = Mock()
-        applicator.add_other_event = Mock()
+        applicator._add_insert = Mock()
+        applicator._flush_inserts = Mock()
+        applicator._add_update = Mock()
 
-        applicator.apply(event)
+        applicator.load(event)
 
-        applicator.add_add_event.assert_not_called()
-        applicator.apply_add_events.assert_called_once()
-        applicator.add_other_event.assert_called_once()
+        applicator._add_insert.assert_not_called()
+        applicator._flush_inserts.assert_called_once()
+        applicator._add_update.assert_called_once()
 
-    def test_add_other_event(self):
+    def test_add_update(self):
+        event = dict_to_object(self.mock_event.copy())
+        event.tid = "any tid"
+
+        event2 = dict_to_object(self.mock_event.copy())
+        event2.tid = "any tid2"
+
+        event3 = dict_to_object(self.mock_event.copy())
+        event3.tid = "any tid3"
+
         applicator = EventApplicator(self.storage, set(), self.stats)
-        applicator.apply_other_events = Mock()
-        applicator.add_other_event("any gob event1",  "any entity source 1")
+        applicator._flush_updates = Mock()
 
-        assert applicator.other_events["any entity source 1"] == ["any gob event1"]
-        assert applicator.other_events_sum == 1
+        applicator._add_update(event)
+        assert applicator.updates["any tid"] == [event]
+        assert applicator.updates_total == 1
 
-        applicator.add_other_event("any gob event2", "any entity source 2")
-        assert applicator.other_events["any entity source 2"] == ["any gob event2"]
-        assert applicator.other_events_sum == 2
+        applicator._add_update(event2)
+        assert applicator.updates["any tid2"] == [event2]
+        assert applicator.updates_total == 2
 
-        applicator.add_other_event("any gob event3", "any entity source 3")
-        assert applicator.other_events_sum == 3
+        applicator._add_update(event3)
+        assert applicator.updates["any tid3"] == [event3]
+        assert applicator.updates_total == 3
 
-    def test_apply_other_events(self):
+    def test_flush_updates(self):
+        event = dict_to_object(self.mock_event.copy())
+        event.tid = "any tid"
+
         applicator = EventApplicator(self.storage, set(), self.stats)
-        applicator.apply_other_event = Mock()
-        assert applicator.other_events == {}
+        applicator._update_entity = Mock()
+        assert applicator.updates == {}
 
-        applicator.apply_other_events()
-        assert applicator.other_events == {}
-        assert applicator.other_events_sum == 0
+        applicator._flush_updates()
+        assert applicator.updates == {}
+        assert applicator.updates_total == 0
         self.storage.get_session.assert_not_called()
         self.storage.get_entities.assert_not_called()
 
-        applicator.add_other_event('any gob event', 'any entity source id')
-        self.storage.get_entities.return_value = ['any entity']
+        applicator._add_update(event)
+        self.storage.get_entities.return_value = ["any entity"]
 
-        applicator.apply_other_events()
-        assert applicator.other_events == {}
-        assert applicator.other_events_sum == 0
+        applicator._flush_updates()
+        assert applicator.updates == {}
+        assert applicator.updates_total == 0
 
         self.storage.get_entities.assert_called()
-        applicator.apply_other_event.assert_called_with('any entity')
+        applicator._update_entity.assert_called_with("any entity")
 
-    def test_apply_other_event(self):
+    def test_apply_update(self):
         applicator = EventApplicator(self.storage, set(), self.stats)
 
         entity = Mock()
@@ -146,44 +159,44 @@ class TestEventApplicator(TestCase):
         gob_event = Mock()
         gob_event.id = "any event id"
         gob_event.tid = "any tid"
-        applicator.other_events["any source id"] = [gob_event]
+        applicator.updates["any source id"] = [gob_event]
 
         # Normal action, apply event and set last event id
-        applicator.apply_other_event(entity)
+        applicator._update_entity(entity)
         gob_event.apply_to.assert_called_with(entity)
         assert entity._last_event == gob_event.id
 
         # Apply NON-ADD event on a deleted entity
-        applicator.other_events["any source id"] = [gob_event]
+        applicator.updates["any source id"] = [gob_event]
         entity._date_deleted = "any date deleted"
         with self.assertRaises(GOBException):
-            applicator.apply_other_event(entity)
+            applicator._update_entity(entity)
 
         # Apply ADD event on a deleted entity is OK
         gob_event = MagicMock(spec=GOB.ADD)
         gob_event.id = "any event id"
         entity._last_event = None
-        applicator.other_events["any source id"] = [gob_event]
-        applicator.apply_other_event(entity)
+        applicator.updates["any source id"] = [gob_event]
+        applicator._update_entity(entity)
         self.assertEqual(entity._last_event, gob_event.id)
 
         # Apply ADD event on a non-deleted entity raises
         gob_event = MagicMock(spec=GOB.ADD)
         gob_event.id = "any event id"
         gob_event.tid = "any_tid"
-        applicator.other_events["any source id"] = [gob_event]
+        applicator.updates["any source id"] = [gob_event]
         entity._date_deleted = None
         with self.assertRaises(GOBException):
-            applicator.apply_other_event(entity)
+            applicator._update_entity(entity)
 
-    def test_apply_all(self):
+    def test_flush(self):
         applicator = EventApplicator(self.storage, set(), self.stats)
-        applicator.apply_add_events = Mock()
-        applicator.apply_other_events = Mock()
-        applicator.apply_all()
+        applicator._flush_inserts = Mock()
+        applicator._flush_updates = Mock()
+        applicator.flush()
 
-        applicator.apply_add_events.assert_called_once()
-        applicator.apply_other_events.assert_called_once()
+        applicator._flush_inserts.assert_called_once()
+        applicator._flush_updates.assert_called_once()
 
     def test_apply_event_batch_add_delete(self):
         """
@@ -203,15 +216,15 @@ class TestEventApplicator(TestCase):
             self.mock_event['action'] = event['action']
             self.set_contents(event['contents'])
             event_object = dict_to_object(self.mock_event)
-            applicator.apply(event_object)
+            applicator.load(event_object)
 
         # Expect the first add event to be applied, and a DELETE and ADD event in other events
         # we can't check the parameter, which is removed by self.add_events.clear()
         self.storage.add_add_events.assert_called_once()
-        assert len(applicator.add_events) == 0
-        assert applicator.other_events["tid"][0].action == "DELETE"
-        assert applicator.other_events["tid"][1].action == "ADD"
-        assert applicator.other_events_sum == 2
+        assert len(applicator.inserts) == 0
+        assert applicator.updates["tid"][0].action == "DELETE"
+        assert applicator.updates["tid"][1].action == "ADD"
+        assert applicator.updates_total == 2
 
     def test_apply_event_batch_modifies(self):
         """
@@ -230,9 +243,9 @@ class TestEventApplicator(TestCase):
             self.mock_event["action"] = event["action"]
             self.set_contents(event["contents"])
             event_object = dict_to_object(self.mock_event)
-            applicator.apply(event_object)
+            applicator.load(event_object)
 
         # Expect all 3 modify events to be added to other events
-        assert len(applicator.add_events) == 0
-        assert applicator.other_events_sum == 3
-        assert all(obj.action == "MODIFY" for obj in applicator.other_events["any source id"])
+        assert len(applicator.inserts) == 0
+        assert applicator.updates_total == 3
+        assert all(obj.action == "MODIFY" for obj in applicator.updates["any source id"])
