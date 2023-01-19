@@ -18,7 +18,7 @@ class Populator:
         self.id_column = entity_model["entity_id"]
         self.version = entity_model["version"]
         self.has_states = entity_model.get("has_states", False)
-        self.application = msg['header']['application']
+        self.application = msg["header"]["application"]
 
     def populate(self, entity):
         """Populate an entity with a hash.
@@ -28,12 +28,8 @@ class Populator:
         """
         entity[FIELD.ID] = entity[self.id_column]
         entity[FIELD.VERSION] = self.version
-        entity[FIELD.HASH] = hashlib.md5((json.dumps(entity, sort_keys=True, cls=GobTypeJSONEncoder) +
-                                          self.application).encode('utf-8')
-                                         ).hexdigest()
+        entity[FIELD.HASH] = hashlib.md5(
+            (json.dumps(entity, sort_keys=True, cls=GobTypeJSONEncoder) + self.application).encode("utf-8")
+        ).hexdigest()
         # Make sure entity[FIELD.TID] is a string.
-        entity[FIELD.TID] = (
-            f"{entity[FIELD.ID]}.{entity[FIELD.SEQNR]}"
-            if self.has_states
-            else f"{entity[FIELD.ID]}"
-        )
+        entity[FIELD.TID] = f"{entity[FIELD.ID]}.{entity[FIELD.SEQNR]}" if self.has_states else f"{entity[FIELD.ID]}"

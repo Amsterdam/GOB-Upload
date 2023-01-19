@@ -1,22 +1,34 @@
-"""Compare and Upload component
+"""Compare and Upload component.
 
 This component reads and writes to the Storage.
 It reads the storage to derive events from new uploads
 It writes the storage to apply events to the storage
-
 """
+
 import argparse
 import os
 import sys
 
-from gobcore.message_broker.config import COMPARE_RESULT_KEY, FULLUPDATE_RESULT_KEY, \
-    APPLY_RESULT_KEY, \
-    RELATE_PREPARE_RESULT_KEY, RELATE_PROCESS_RESULT_KEY, RELATE_CHECK_RESULT_KEY, \
-    RELATE_UPDATE_VIEW_RESULT_KEY, RELATE
-from gobcore.message_broker.config import WORKFLOW_EXCHANGE, FULLUPDATE_QUEUE, \
- COMPARE_QUEUE, APPLY_QUEUE, \
- RELATE_PREPARE_QUEUE, RELATE_PROCESS_QUEUE, RELATE_CHECK_QUEUE, \
- RELATE_UPDATE_VIEW_QUEUE
+from gobcore.message_broker.config import (
+    COMPARE_RESULT_KEY,
+    FULLUPDATE_RESULT_KEY,
+    APPLY_RESULT_KEY,
+    RELATE_PREPARE_RESULT_KEY,
+    RELATE_PROCESS_RESULT_KEY,
+    RELATE_CHECK_RESULT_KEY,
+    RELATE_UPDATE_VIEW_RESULT_KEY,
+    RELATE,
+)
+from gobcore.message_broker.config import (
+    WORKFLOW_EXCHANGE,
+    FULLUPDATE_QUEUE,
+    COMPARE_QUEUE,
+    APPLY_QUEUE,
+    RELATE_PREPARE_QUEUE,
+    RELATE_PROCESS_QUEUE,
+    RELATE_CHECK_QUEUE,
+    RELATE_UPDATE_VIEW_QUEUE,
+)
 from gobcore.message_broker.messagedriven_service import messagedriven_service
 from gobcore.message_broker.typing import ServiceDefinition
 from gobcore import standalone
