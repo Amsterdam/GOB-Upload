@@ -291,8 +291,8 @@ def verify_process_message(msg: dict):
     if not sources.get_field_relations(
             header[CATALOG_KEY], header[COLLECTION_KEY], header[ATTRIBUTE_KEY]):
         raise GOBException(
-                f"Missing relation specification for {header[CATALOG_KEY]} {header[COLLECTION_KEY]}"
-                f" {header[ATTRIBUTE_KEY]}")
+            f"Missing relation specification for {header[CATALOG_KEY]} {header[COLLECTION_KEY]}"
+            f" {header[ATTRIBUTE_KEY]}")
 
 
 def process_relate(msg: dict):
@@ -375,9 +375,7 @@ def update_materialized_view(msg):
     logger.info(f"Update materialized view {view.name}")
 
     timestamp = datetime.datetime.utcnow().isoformat()
-    msg['header'].update({
-        "timestamp": timestamp
-    })
+    msg["header"].update({"timestamp": timestamp})
 
     return msg
 

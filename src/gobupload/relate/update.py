@@ -163,14 +163,14 @@ class EventCreator:
         if row['rel_id'] is None or row['rel_deleted'] is not None:
             # No relation yet, or previously deleted relation. Create ADD
             ignore_fields = [
-                                'src_deleted',
-                                'rel_deleted',
-                                'src_last_event',
-                                'rel_id',
-                                f'rel_{FIELD.HASH}',
-                                'rel_dst_volgnummer',
-                                'rowid',
-                            ] + [f"rel_{field}" for field in compare_fields]
+                'src_deleted',
+                'rel_deleted',
+                'src_last_event',
+                'rel_id',
+                f'rel_{FIELD.HASH}',
+                'rel_dst_volgnummer',
+                'rowid',
+            ] + [f"rel_{field}" for field in compare_fields]
 
             data = {k: v for k, v in row.items() if k not in ignore_fields}
             return ADD.create_event(row[FIELD.ID], data, _RELATE_VERSION)
@@ -272,9 +272,10 @@ class Relater:
         } for spec in self.sources.get_field_relations(src_catalog_name, src_collection_name, src_field_name)]
 
         if not relation_specs:
-            raise RelateException("Missing relation specification for " +
-                                  f"{src_catalog_name} {src_collection_name} {src_field_name} " +
-                                  "(sources.get_field_relations)")
+            raise RelateException(
+                "Missing relation specification for "
+                f"{src_catalog_name} {src_collection_name} {src_field_name} "
+                "(sources.get_field_relations)")
         src_applications = self._get_applications_in_src()
 
         # Only include specs that are present in the src table. If no specs are left this implies that the src table is
@@ -336,8 +337,8 @@ class Relater:
 
     def _select_aliases(self, is_conflicts_query: bool = False):
         return self.select_aliases + (self.select_relation_aliases if not is_conflicts_query else []) \
-               + (['src_volgnummer'] if self.src_has_states else []) \
-               + (['dst_volgnummer'] if self.dst_has_states else [])
+            + (['src_volgnummer'] if self.src_has_states else []) \
+            + (['dst_volgnummer'] if self.dst_has_states else [])
 
     def _build_select_expressions(self, mapping: dict, is_conflicts_query: bool = False):
         aliases = self._select_aliases(is_conflicts_query)
@@ -542,8 +543,9 @@ class Relater:
         if len(self.relation_specs) == 1:
             clause = [self._relate_match(self.relation_specs[0], source_value_ref)]
         else:
-            clause = [f"(src.{FIELD.APPLICATION} = '{spec['source']}' AND " +
-                      f"{self._relate_match(spec, source_value_ref)})" for spec in self.relation_specs]
+            clause = [
+                f"(src.{FIELD.APPLICATION} = '{spec['source']}' AND {self._relate_match(spec, source_value_ref)})"
+                for spec in self.relation_specs]
 
         # If more matches have been defined that catch any of the matches
         if len(clause) > 1:
