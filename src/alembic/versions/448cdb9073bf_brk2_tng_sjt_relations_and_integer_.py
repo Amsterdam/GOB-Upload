@@ -155,35 +155,34 @@ def upgrade():
     sa.UniqueConstraint('_source_id', name='rel_brk2_tng_brk2_sjt_van_brk_kadastraalsubject_uniq'),
     sa.UniqueConstraint('_tid', name='rel_brk2_tng_brk2_sjt_van_brk_kadastraalsubject__tid_key')
     )
+
+    # neuron_id in this view depends on neuron_id in brk2_tenaamstellingen, recreated by gob-api
+    op.execute(f'DROP VIEW IF EXISTS legacy."brk2_tenaamstellingen"')
+
     op.alter_column('brk2_tenaamstellingen', 'neuron_id',
                existing_type=sa.NUMERIC(),
                type_=sa.Integer(),
-               existing_nullable=True,
-               autoincrement=False)
+               existing_nullable=True)
     op.alter_column('brk2_tenaamstellingen', 'van_brk_kadastraalsubject',
                existing_type=sa.VARCHAR(),
                type_=postgresql.JSONB(astext_type=sa.Text()),
                existing_nullable=True,
-               autoincrement=False,
-               postgresql_using='van_brk_kadastraalsubject::jsonb')
+               postgresql_using='to_jsonb(van_brk_kadastraalsubject)')
     op.alter_column('brk2_tenaamstellingen', 'betrokken_partner_brk_subject',
                existing_type=sa.VARCHAR(),
                type_=postgresql.JSONB(astext_type=sa.Text()),
                existing_nullable=True,
-               autoincrement=False,
-               postgresql_using='betrokken_partner_brk_subject::jsonb')
+               postgresql_using='to_jsonb(betrokken_partner_brk_subject)')
     op.alter_column('brk2_tenaamstellingen', 'betrokken_samenwerkingsverband_brk_subject',
                existing_type=sa.VARCHAR(),
                type_=postgresql.JSONB(astext_type=sa.Text()),
                existing_nullable=True,
-               autoincrement=False,
-               postgresql_using='betrokken_samenwerkingsverband_brk_subject::jsonb')
+               postgresql_using='to_jsonb(betrokken_samenwerkingsverband_brk_subject)')
     op.alter_column('brk2_tenaamstellingen', 'betrokken_gorzen_en_aanwassen_brk_subject',
                existing_type=sa.VARCHAR(),
                type_=postgresql.JSONB(astext_type=sa.Text()),
                existing_nullable=True,
-               autoincrement=False,
-               postgresql_using='betrokken_gorzen_en_aanwassen_brk_subject::jsonb')
+               postgresql_using='to_jsonb(betrokken_gorzen_en_aanwassen_brk_subject)')
     # ### end Alembic commands ###
 
 
