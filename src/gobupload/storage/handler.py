@@ -12,13 +12,11 @@ from __future__ import annotations
 import functools
 import json
 import warnings
-import random
-import string
 import traceback
 from contextlib import contextmanager
 from typing import Union, Iterator, Iterable
 
-from sqlalchemy import create_engine, Table, update, exc as sa_exc, select, column, String, values
+from sqlalchemy import create_engine, Table, update, exc as sa_exc, select, column, String, values, Column
 from sqlalchemy.engine import Row
 from sqlalchemy.engine.url import URL
 from sqlalchemy.exc import OperationalError, MultipleResultsFound
@@ -28,6 +26,7 @@ from sqlalchemy.orm import sessionmaker, Session as SessionORM
 from gobcore.enum import ImportMode
 from gobcore.exceptions import GOBException
 from gobcore.logging.logger import logger
+from gobcore.model import FIELD
 from gobcore.model.sa.gob import get_column
 from gobcore.model.sa.indexes import get_indexes
 from gobcore.typesystem import get_gob_type
@@ -37,11 +36,13 @@ from alembic.runtime import migration
 import alembic.config
 import alembic.script
 
+from gobcore.typesystem.gob_types import JSON
 from gobcore.typesystem.json import GobTypeJSONEncoder
 from gobupload import gob_model
 from gobupload.config import GOB_DB
 from gobupload.storage import queries
 from gobupload.storage.materialized_views import MaterializedViews
+from gobupload import utils
 
 # not used but must be imported
 # https://geoalchemy-2.readthedocs.io/en/latest/core_tutorial.html#reflecting-tables
@@ -163,6 +164,11 @@ class GOBStorageHandler:
         self.session: StreamSession | None = None
 
         if gob_metadata:
+            self.collection: dict = self.get_collection_model()
+            self.fields: dict = self.collection["all_fields"]
+            self.field_types: dict = {field: get_gob_type(self.fields[field]["type"]) for field in self.fields}
+            self.temp_table_name: str = f"{self._get_tablename()}_{utils.random_string(3)}"
+
             tables = [self.EVENTS_TABLE, self._get_tablename()]
             reflection_options["only"] = tables + reflection_options.get("only", [])
 
@@ -313,10 +319,7 @@ WHERE
             except OperationalError as e:
                 print(f"ERROR: Index {name} failed: {e}")
 
-    def _get_tmp_table_name(self, table_name):
-        # Add a random 3 character string to the table name
-        return table_name + "_" + ''.join(random.choice(string.ascii_lowercase) for i in range(3))
-
+    @with_session
     def create_temporary_table(self):
         """ Create a new temporary table based on the current table for a collection
 
@@ -325,99 +328,68 @@ WHERE
         :param data: the imported data
         :return:
         """
-        self.collection = self.get_collection_model()
-        table_name = gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
-        tmp_table_name = self._get_tmp_table_name(table_name)
+        columns: list[Column] = [
+            get_column(FIELD.TID, self.fields[FIELD.TID]),
+            get_column(FIELD.SOURCE, self.fields[FIELD.SOURCE]),
+            get_column(FIELD.HASH, self.fields[FIELD.HASH]),
+            JSON.get_column_definition("_original_value")
+        ]
 
-        self.fields = ['_tid', '_source', '_hash']
+        # Define temporary table, dropped at the end of current session
+        table = Table(
+            self.temp_table_name,
+            self.base.metadata,
+            *columns,
+            implicit_returning=False,  # no returning on insert
+            prefixes=["TEMPORARY"],  # CREATE TEMPORARY TABLE <table>
+            postgresql_on_commit="PRESERVE ROWS",  # default
+            quote=True
+            # extend_existing=True
+        )
 
-        # Drop any existing temporary table
-        self.drop_temporary_table(tmp_table_name)
+        # temp table is only visible for this session
+        table.create(bind=self.session.bind)
 
-        columns = [get_column(c, self.collection['all_fields'][c]) for c in self.fields]
-        columns.append(get_gob_type("GOB.JSON").get_column_definition("_original_value"))
-        self.tmp_table = Table(tmp_table_name, self.base.metadata, *columns, extend_existing=True)
-        self.tmp_table.create(self.engine)
-
-        self.temporary_rows = []
-        return tmp_table_name
-
-    def write_temporary_entity(self, entity):
-        """
-        Writes an entity to the temporary table
-        :param entity:
-        :return:
-        """
-        row = {}
-        for field in self.fields:
-            gob_type = get_gob_type(self.collection['all_fields'][field]['type'])
-            if field == '_source':
-                row[field] = gob_type.from_value(self.metadata.source).to_db
-            else:
-                row[field] = gob_type.from_value(entity[field]).to_db
-        row["_original_value"] = entity
-        self.temporary_rows.append(row)
-        self._write_temporary_entities(write_per=10000)
-
-    def _write_temporary_entities(self, write_per=1):
+    @with_session
+    def write_temporary_entities(self, entities):
         """
         Writes the temporary entities to the temporary table
 
         If no arguments are given the write will always take place
         If the write_per argument is specified writes will take place in chunks
-        :param write_per:
         :return:
         """
-        if len(self.temporary_rows) >= write_per:
-            result = self.engine.execute(
-                self.tmp_table.insert(),
-                self.temporary_rows
-            )
-            result.close()
-            self.temporary_rows = []
+        table = self.DbTmpTable
+        rows = [
+            {
+                FIELD.TID: self.field_types[FIELD.TID].from_value(entity[FIELD.TID]).to_db,
+                FIELD.SOURCE: self.field_types[FIELD.SOURCE].from_value(self.metadata.source).to_db,
+                FIELD.HASH: self.field_types[FIELD.HASH].from_value(entity[FIELD.HASH]).to_db,
+                "_original_value": entity
+            }
+            for entity in entities
+        ]
+        self.session.execute(table.insert(), rows)
 
-    def close_temporary_table(self):
-        """
-        Writes any left temporary entities to the temporary table
-        :return:
-        """
-        self._write_temporary_entities()
-
-    def compare_temporary_data(self, tmp_table_name, mode=ImportMode.FULL):
+    @with_session
+    def compare_temporary_data(self, mode: ImportMode = ImportMode.FULL) -> Iterator[dict]:
         """ Compare the data in the temporay table to the current state
 
         The created query compares each model field and returns the tid, last_event
         _hash and if the record should be a ADD, DELETE or MODIFY. CONFIRM records are not
         included in the result, but can be derived from the message
 
-        :return: a list of dicts with tid, hash, last_event and type
+        :return: a iterator of dicts with tid, hash, last_event and type
         """
-        current = gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
-
-        fields = ["_tid"]
-        source = self.metadata.source
-
-        result = None
-        try:
-            # Get the result of comparison where data is equal to the current state
-            result = self.engine.execution_options(stream_results=True)\
-                .execute(queries.get_comparison_query(source, current, tmp_table_name, fields, mode))
-
-            for row in result:
-                yield dict(row)
-
-        except Exception as e:
-            raise e
-        finally:
-            # Always cleanup
-            if result:
-                result.close()
-            # Drop the temporary table
-            self.drop_temporary_table(tmp_table_name)
-
-    def drop_temporary_table(self, tmp_table_name):
-        # Drop the temporary table
-        self.execute(f"DROP TABLE IF EXISTS {tmp_table_name}")
+        query = queries.get_comparison_query(
+            source=self.metadata.source,
+            current=gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity),
+            temporary=self.temp_table_name,
+            fields=[FIELD.TID],
+            mode=mode
+        )
+        for row in self.session.stream_execute(query):
+            yield dict(row)
 
     @property
     def DbEvent(self):
@@ -426,6 +398,10 @@ WHERE
     @property
     def DbEntity(self):
         return getattr(self.base.classes, self._get_tablename())
+
+    @property
+    def DbTmpTable(self):
+        return self.base.metadata.tables[self.temp_table_name]
 
     def _get_tablename(self):
         return gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)

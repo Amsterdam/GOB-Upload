@@ -13,10 +13,8 @@ class EntityCollector:
         :param storage:
         """
         self.storage = storage
-        self.tmp_table_name = self.storage.create_temporary_table()
-
-    def close(self):
-        self.storage.close_temporary_table()
+        self._entities = []
+        self.storage.create_temporary_table()
 
     def collect(self, entity):
         """
@@ -24,4 +22,12 @@ class EntityCollector:
         :param entity:
         :return:
         """
-        self.storage.write_temporary_entity(entity)
+        self._entities.append(entity)
+
+        if len(self._entities) >= 10_000:
+            self.storage.write_temporary_entities(self._entities)
+            self._entities.clear()
+
+    def close(self):
+        if self._entities:
+            self.storage.write_temporary_entities(self._entities)
