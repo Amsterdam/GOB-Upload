@@ -35,7 +35,8 @@ def upgrade():
             and viewowner NOT IN ('postgres', 'azure_superuser')
             and viewname NOT IN (
             'geography_columns', 'geometry_columns', 'raster_columns', 'raster_overviews'
-            );
+            )
+            and viewname NOT LIKE 'citus_%';
     BEGIN
         FOR v in c_views LOOP
             EXECUTE 'DROP VIEW IF EXISTS ' || v.viewname || ' CASCADE';
