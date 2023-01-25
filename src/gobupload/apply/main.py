@@ -108,7 +108,7 @@ def apply(msg):
     for result in combinations:
         model = f"{result.source} {result.catalogue} {result.entity}"
         logger.info(f"Apply events {model}")
-        storage = GOBStorageHandler(result, update_base=True)
+        storage = GOBStorageHandler(result)
 
         # Track eventId before event application
         entity_max_eventid, last_eventid = get_event_ids(storage)
