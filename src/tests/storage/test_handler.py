@@ -55,8 +55,15 @@ class MockEvents(Base):
     tid = sa.Column(String)
 
 
+class MockMeta:
+    source = "AMSBI"
+    catalogue = "meetbouten"
+    entity = "meetbouten"
+
+
 class TestStorageHandler(unittest.TestCase):
 
+    @patch("gobupload.storage.handler.automap_base", MagicMock())
     @patch('gobupload.storage.handler.create_engine', MagicMock())
     def setUp(self):
         self.msg = fixtures.get_message_fixture()
@@ -83,11 +90,73 @@ class TestStorageHandler(unittest.TestCase):
 
         GOBStorageHandler.base.classes.events = MockEvents
 
-    @patch("gobupload.storage.handler.automap_base", MagicMock())
-    def test_base(self):
+    @patch("gobupload.storage.handler.automap_base")
+    def test_base(self, mock_base):
+        # automap called
+        GOBStorageHandler.base = None
+        GOBStorageHandler._set_base()
+        assert GOBStorageHandler.base is not None
+        mock_base.return_value.prepare.assert_called_with(autoload_with=GOBStorageHandler.engine)
+
+        # automap is not called, base unchanged
+        mock_base.reset_mock()
+        GOBStorageHandler.base = "i_am_base"
+        GOBStorageHandler._set_base()
+        assert GOBStorageHandler.base == "i_am_base"
+        mock_base.return_value.prepare.assert_not_called()
+
+        # automap is called, update = True
+        mock_base.reset_mock()
         GOBStorageHandler.base = None
         GOBStorageHandler._set_base(update=True)
-        self.assertIsNotNone(GOBStorageHandler.base)
+        assert GOBStorageHandler.base is not None
+        mock_base.return_value.prepare.assert_called_with(autoload_with=GOBStorageHandler.engine)
+
+        # automap is called, base is None
+        mock_base.reset_mock()
+        GOBStorageHandler.base = None
+        GOBStorageHandler._set_base(update=False)
+        assert GOBStorageHandler.base is not None
+        mock_base.return_value.prepare.assert_called_with(autoload_with=GOBStorageHandler.engine)
+
+        # reflection options, base is None
+        mock_base.reset_mock()
+        GOBStorageHandler.base = None
+        GOBStorageHandler._set_base(reflection_options={"opt1": "val1"})
+        mock_base.return_value.prepare.assert_called_with(
+            autoload_with=GOBStorageHandler.engine,
+            reflection_options={"opt1": "val1"}
+        )
+
+        # reflection options, base exists
+        mock_base.reset_mock()
+        GOBStorageHandler.base = "i_am_base"
+        GOBStorageHandler._set_base(reflection_options={"opt1": "val1"})
+        mock_base.return_value.prepare.assert_called_with(
+            autoload_with=GOBStorageHandler.engine,
+            reflection_options={"opt1": "val1"}
+        )
+
+    @patch("gobupload.storage.handler.GOBStorageHandler._set_base")
+    def test_init(self, mock_set_base):
+        storage = GOBStorageHandler()
+        assert storage.metadata is None
+        mock_set_base.assert_called_with(reflection_options={})
+
+        # only param
+        storage = GOBStorageHandler(only=["table2"])
+        assert storage.metadata is None
+        mock_set_base.assert_called_with(reflection_options={"only": ["table2"]})
+
+        # metadata
+        storage = GOBStorageHandler(gob_metadata=MockMeta)
+        assert storage.metadata == MockMeta
+        mock_set_base.assert_called_with(reflection_options={"only": ["events", "meetbouten_meetbouten"]})
+
+        # metadata + only
+        storage = GOBStorageHandler(gob_metadata=MockMeta, only=["table2"])
+        assert storage.metadata == MockMeta
+        mock_set_base.assert_called_with(reflection_options={"only": ["events", "meetbouten_meetbouten", "table2"]})
 
     @patch("gobupload.storage.handler.alembic.config")
     @patch('gobupload.storage.handler.alembic.script')

@@ -98,7 +98,7 @@ def apply(msg):
 
     logger.info("Apply events")
 
-    storage = GOBStorageHandler()
+    storage = GOBStorageHandler(only=[GOBStorageHandler.EVENTS_TABLE])
     combinations = _get_source_catalog_entity_combinations(storage, msg)
 
     # Gather statistics of update process
