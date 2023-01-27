@@ -112,15 +112,30 @@ class GOBStorageHandler:
 
     @classmethod
     def _set_base(cls, update=False, reflection_options: dict = None):
-        if update or cls.base is None or reflection_options:
-            kwargs = {"reflection_options": reflection_options} if reflection_options else {}
+        reflection_options = reflection_options or {}
+        only = reflection_options.get("only")
+        reflections_exist = only and all(hasattr(cls.base.classes, table) for table in only)
 
-            with warnings.catch_warnings():
-                # Ignore warnings for unsupported reflection for expression-based indexes
-                warnings.simplefilter("ignore", category=sa_exc.SAWarning)
+        # base initialisation
+        if cls.base is None:
+            cls.base = automap_base(bind=cls.engine)
 
-                cls.base = automap_base()
-                cls.base.prepare(autoload_with=cls.engine, **kwargs)
+        # no reflection necessary
+        if not (update or reflection_options) or reflections_exist:
+            return
+
+        # reflection required, clear first
+        cls.base.metadata.clear()
+
+        print(f"Reflecting {only}" if only else "Reflecting database")
+
+        with warnings.catch_warnings():
+            # Ignore warnings for unsupported reflection for expression-based indexes
+            warnings.simplefilter("ignore", category=sa_exc.SAWarning)
+
+            # Reflect database in metadata, prepare generates mapped classes
+            cls.base.metadata.reflect(**reflection_options)
+            cls.base.prepare()
 
     EVENTS_TABLE = "events"
 
