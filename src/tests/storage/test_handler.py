@@ -92,50 +92,31 @@ class TestStorageHandler(unittest.TestCase):
 
     @patch("gobupload.storage.handler.automap_base")
     def test_base(self, mock_base):
-        # automap called
-        GOBStorageHandler.base = None
+        # no reflection
+        GOBStorageHandler.base = mock_base
         GOBStorageHandler._set_base()
-        assert GOBStorageHandler.base is not None
-        mock_base.return_value.prepare.assert_called_with(autoload_with=GOBStorageHandler.engine)
-
-        # automap is not called, base unchanged
-        mock_base.reset_mock()
-        GOBStorageHandler.base = "i_am_base"
-        GOBStorageHandler._set_base()
-        assert GOBStorageHandler.base == "i_am_base"
-        mock_base.return_value.prepare.assert_not_called()
+        mock_base.prepare.assert_not_called()
 
         # automap is called, update = True
         mock_base.reset_mock()
-        GOBStorageHandler.base = None
         GOBStorageHandler._set_base(update=True)
-        assert GOBStorageHandler.base is not None
-        mock_base.return_value.prepare.assert_called_with(autoload_with=GOBStorageHandler.engine)
+        mock_base.prepare.assert_called_once()
 
-        # automap is called, base is None
+        # no reflection, update = False
         mock_base.reset_mock()
-        GOBStorageHandler.base = None
         GOBStorageHandler._set_base(update=False)
-        assert GOBStorageHandler.base is not None
-        mock_base.return_value.prepare.assert_called_with(autoload_with=GOBStorageHandler.engine)
+        mock_base.prepare.assert_not_called()
 
-        # reflection options, base is None
+        # reflection options
         mock_base.reset_mock()
-        GOBStorageHandler.base = None
         GOBStorageHandler._set_base(reflection_options={"opt1": "val1"})
-        mock_base.return_value.prepare.assert_called_with(
-            autoload_with=GOBStorageHandler.engine,
-            reflection_options={"opt1": "val1"}
-        )
+        mock_base.metadata.reflect.assert_called_with(opt1="val1")
 
-        # reflection options, base exists
+        # reflection options, only kwarg, table exists
         mock_base.reset_mock()
-        GOBStorageHandler.base = "i_am_base"
-        GOBStorageHandler._set_base(reflection_options={"opt1": "val1"})
-        mock_base.return_value.prepare.assert_called_with(
-            autoload_with=GOBStorageHandler.engine,
-            reflection_options={"opt1": "val1"}
-        )
+        GOBStorageHandler.base.classes.table1 = "table1_properties"
+        GOBStorageHandler._set_base(reflection_options={"only": ["table1"]})
+        mock_base.metadata.reflect.assert_not_called()
 
     @patch("gobupload.storage.handler.GOBStorageHandler._set_base")
     def test_init(self, mock_set_base):
