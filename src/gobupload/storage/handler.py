@@ -22,7 +22,7 @@ from sqlalchemy import create_engine, Table, update, exc as sa_exc, select, colu
 from sqlalchemy.engine import Row
 from sqlalchemy.engine.url import URL
 from sqlalchemy.exc import OperationalError, MultipleResultsFound
-from sqlalchemy.ext.automap import automap_base, AutomapBase
+from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import sessionmaker, Session as SessionORM
 
 from gobcore.enum import ImportMode
@@ -108,17 +108,13 @@ class GOBStorageHandler:
         bind=engine,
         class_=StreamSession
     )
-    base: AutomapBase = None
+    base = automap_base(bind=engine)
 
     @classmethod
     def _set_base(cls, update=False, reflection_options: dict = None):
         reflection_options = reflection_options or {}
         only = reflection_options.get("only")
         reflections_exist = only and all(hasattr(cls.base.classes, table) for table in only)
-
-        # base initialisation
-        if cls.base is None:
-            cls.base = automap_base(bind=cls.engine)
 
         # no reflection necessary
         if not (update or reflection_options) or reflections_exist:
@@ -160,7 +156,6 @@ class GOBStorageHandler:
 
         :param gob_metadata: A metadata object containing attributes: source, catalogue and entity
             This parameter always triggers a reflect operation
-        :param update_base: Force reflecting database
         :param reflection_options: Reflect database with these options,
             eg {"only": ["events"}} to only reflect the events table
         """
