@@ -16,8 +16,10 @@ import traceback
 from contextlib import contextmanager
 from typing import Union, Iterator, Iterable
 
-from sqlalchemy import create_engine, Table, update, exc as sa_exc, select, column, String, values, Column
-from sqlalchemy.engine import Row
+from sqlalchemy import (
+    create_engine, Table, update, exc as sa_exc, select, column, String, values, Column, text
+)
+from sqlalchemy.engine import Row, Connection
 from sqlalchemy.engine.url import URL
 from sqlalchemy.exc import OperationalError, MultipleResultsFound
 from sqlalchemy.ext.automap import automap_base
@@ -102,7 +104,11 @@ class StreamSession(SessionORM):
 
 class GOBStorageHandler:
     """Metadata aware Storage handler."""
-    engine = create_engine(URL.create(**GOB_DB), connect_args={'sslmode': 'require'}, pool_pre_ping=True)
+    engine = create_engine(
+        URL.create(**GOB_DB),
+        connect_args={'sslmode': 'require'},
+        pool_pre_ping=True,
+    )
     Session = sessionmaker(
         autocommit=True,
         autoflush=False,
@@ -164,10 +170,10 @@ class GOBStorageHandler:
         self.session: StreamSession | None = None
 
         if gob_metadata:
-            self.collection: dict = self.get_collection_model()
-            self.fields: dict = self.collection["all_fields"]
-            self.field_types: dict = {field: get_gob_type(self.fields[field]["type"]) for field in self.fields}
-            self.temp_table_name: str = f"{self._get_tablename()}_{utils.random_string(3)}"
+            self.collection = self.get_collection_model()
+            self.fields = self.collection["all_fields"]
+            self.field_types = {field: get_gob_type(self.fields[field]["type"]) for field in self.fields}
+            self.temp_table_name = f"{self._get_tablename()}_{utils.random_string(3)}"
 
             tables = [self.EVENTS_TABLE, self._get_tablename()]
             reflection_options["only"] = tables + reflection_options.get("only", [])
@@ -321,12 +327,10 @@ WHERE
 
     @with_session
     def create_temporary_table(self):
-        """ Create a new temporary table based on the current table for a collection
+        """
+        Create a new temporary table based on the current table for a collection.
 
         Message data is inserted to be compared with the current state
-
-        :param data: the imported data
-        :return:
         """
         columns: list[Column] = [
             get_column(FIELD.TID, self.fields[FIELD.TID]),
@@ -335,19 +339,13 @@ WHERE
             JSON.get_column_definition("_original_value")
         ]
 
-        # Define temporary table, dropped at the end of current session
         table = Table(
             self.temp_table_name,
             self.base.metadata,
             *columns,
             implicit_returning=False,  # no returning on insert
             prefixes=["TEMPORARY"],  # CREATE TEMPORARY TABLE <table>
-            postgresql_on_commit="PRESERVE ROWS",  # default
-            quote=True
-            # extend_existing=True
         )
-
-        # temp table is only visible for this session
         table.create(bind=self.session.bind)
 
     @with_session
@@ -359,12 +357,16 @@ WHERE
         If the write_per argument is specified writes will take place in chunks
         :return:
         """
-        table = self.DbTmpTable
+        table = self.base.metadata.tables[self.temp_table_name]
+        tid_type = self.field_types[FIELD.TID]
+        hash_type = self.field_types[FIELD.HASH]
+        source_value = self.field_types[FIELD.SOURCE].from_value(self.metadata.source).to_db
+
         rows = [
             {
-                FIELD.TID: self.field_types[FIELD.TID].from_value(entity[FIELD.TID]).to_db,
-                FIELD.SOURCE: self.field_types[FIELD.SOURCE].from_value(self.metadata.source).to_db,
-                FIELD.HASH: self.field_types[FIELD.HASH].from_value(entity[FIELD.HASH]).to_db,
+                FIELD.TID: tid_type.from_value(entity[FIELD.TID]).to_db,
+                FIELD.SOURCE: source_value,
+                FIELD.HASH: hash_type.from_value(entity[FIELD.HASH]).to_db,
                 "_original_value": entity
             }
             for entity in entities
@@ -391,6 +393,16 @@ WHERE
         for row in self.session.stream_execute(query):
             yield dict(row)
 
+    @with_session
+    def analyze_temporary_table(self):
+        """Runs VACUUM ANALYZE on temporary table."""
+        conn = self.session.bind
+
+        # Temporary switch to database AUTOCOMMIT, reset after VACUUM
+        conn.execution_options(isolation_level="AUTOCOMMIT")
+        conn.execute(text(f"VACUUM ANALYZE {self.temp_table_name}"))
+        conn.execution_options(isolation_level=conn.default_isolation_level)
+
     @property
     def DbEvent(self):
         return getattr(self.base.classes, self.EVENTS_TABLE)
@@ -399,25 +411,23 @@ WHERE
     def DbEntity(self):
         return getattr(self.base.classes, self._get_tablename())
 
-    @property
-    def DbTmpTable(self):
-        return self.base.metadata.tables[self.temp_table_name]
-
     def _get_tablename(self):
         return gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
 
     @contextmanager
-    def get_session(self, **execution_options) -> StreamSession:
+    def get_session(self, invalidate: bool = False, **execution_options) -> StreamSession:
         """
         Exposes an underlying database session as a managed, not transactional, context.
         Isolation level for this context is 'autocommmit' through sessionmaker.
 
+        :param invalidate: Invalidate and release connection on exiting context.
+            Useful in case you want to discard the database session, i.e. to drop temp table
         :param execution_options: options passed to the connection bound to the session
-        e.g. 'compile_cache' and 'yield_per'
+            e.g. 'compile_cache' and 'yield_per'
         """
         connection = self.engine.connect()
         if execution_options:
-            connection = connection.execution_options(**execution_options)
+            connection.execution_options(**execution_options)
 
         self.session = self.Session(bind=connection)
 
@@ -430,7 +440,10 @@ WHERE
         else:
             self.session.flush()
         finally:
-            self.session.close()  # expunge_all() is called
+            if invalidate:
+                self.session.invalidate()  # release connection to database
+            else:
+                self.session.close()  # release connection to pool
             self.session = None
 
     @with_session

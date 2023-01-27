@@ -42,15 +42,13 @@ def compare(msg):
 
     # Initialize a storage handler for the collection
     storage = GOBStorageHandler(metadata)
+
     model = f"{metadata.source} {metadata.catalogue} {metadata.entity}"
     logger.info(f"Compare {model}")
 
     stats = CompareStatistics()
 
-    with (
-        storage.get_session(yield_per=10_000),
-        ProgressTicker("Collect compare events", 10_000) as progress
-    ):
+    with storage.get_session(invalidate=True, yield_per=10_000):
         # Check any dependencies
         if not meets_dependencies(storage, msg):
             return {
@@ -77,14 +75,15 @@ def compare(msg):
             collector = EntityCollector(storage)
             collect = collector.collect
 
-        for entity in msg["contents"]:
-            progress.tick()
-            stats.collect(entity)
-            enricher.enrich(entity)
-            populator.populate(entity)
-            collect(entity)
+        with ProgressTicker("Collect compare events", 10_000) as progress:
+            for entity in msg["contents"]:
+                progress.tick()
+                stats.collect(entity)
+                enricher.enrich(entity)
+                populator.populate(entity)
+                collect(entity)
 
-        collector.close()
+            collector.close()
 
         if initial_add:
             filename = contents_writer.filename
@@ -93,8 +92,6 @@ def compare(msg):
         else:
             diff = storage.compare_temporary_data(mode)
             filename, confirms = _process_compare_results(storage, entity_model, diff, stats)
-
-        # closing session here, removing temporary table
 
     # Build result message
     results = stats.results()
