@@ -441,9 +441,11 @@ WHERE
             self.session.flush()
         finally:
             if invalidate:
-                self.session.invalidate()  # release connection to database
-            else:
-                self.session.close()  # release connection to pool
+                # release connection to database
+                # session.invalidate() does not drop temp tables, bind.invalidate() does
+                self.session.bind.invalidate()
+
+            self.session.close()
             self.session = None
 
     @with_session
