@@ -19,7 +19,7 @@ from typing import Union, Iterator, Iterable
 from sqlalchemy import (
     create_engine, Table, update, exc as sa_exc, select, column, String, values, Column, text
 )
-from sqlalchemy.engine import Row, Connection
+from sqlalchemy.engine import Row
 from sqlalchemy.engine.url import URL
 from sqlalchemy.exc import OperationalError, MultipleResultsFound
 from sqlalchemy.ext.automap import automap_base
@@ -329,8 +329,8 @@ WHERE
     def create_temporary_table(self):
         """
         Create a new temporary table based on the current table for a collection.
-
-        Message data is inserted to be compared with the current state
+        Add table to current metadata stored in `base`.
+        The table will be dropped when the connection is released.
         """
         columns: list[Column] = [
             get_column(FIELD.TID, self.fields[FIELD.TID]),
