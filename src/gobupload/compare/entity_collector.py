@@ -7,6 +7,8 @@ Stores each new entity in a temporary table
 
 class EntityCollector:
 
+    CHUNKSIZE = 10_000
+
     def __init__(self, storage):
         """
         A storage is required to create the temporary table and write the entities to it
@@ -16,10 +18,13 @@ class EntityCollector:
         self._entities = []
         storage.create_temporary_table()
 
+    def _clear(self):
+        self._entities.clear()
+
     def _write_entities(self):
         if self._entities:
             self.storage.write_temporary_entities(self._entities)
-            self._entities.clear()
+            self._clear()
 
     def collect(self, entity):
         """
@@ -29,7 +34,7 @@ class EntityCollector:
         """
         self._entities.append(entity)
 
-        if len(self._entities) >= 10_000:
+        if len(self._entities) >= self.CHUNKSIZE:
             self._write_entities()
 
     def close(self):
