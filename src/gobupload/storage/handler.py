@@ -44,7 +44,6 @@ from gobupload import gob_model
 from gobupload.config import GOB_DB
 from gobupload.storage import queries
 from gobupload.storage.materialized_views import MaterializedViews
-from gobupload import utils
 
 # not used but must be imported
 # https://geoalchemy-2.readthedocs.io/en/latest/core_tutorial.html#reflecting-tables
@@ -170,13 +169,10 @@ class GOBStorageHandler:
         self.session: StreamSession | None = None
 
         if gob_metadata:
-            self.collection = self.get_collection_model()
-            self.fields = self.collection["all_fields"]
-            self.field_types = {field: get_gob_type(self.fields[field]["type"]) for field in self.fields}
-            self.temp_table_name = f"{self._get_tablename()}_{utils.random_string(3)}"
+            self._fields = self.get_collection_model()["all_fields"]
+            self._field_types = {field: get_gob_type(self._fields[field]["type"]) for field in self._fields}
 
-            tables = [self.EVENTS_TABLE, self._get_tablename()]
-            reflection_options["only"] = tables + reflection_options.get("only", [])
+            reflection_options["only"] = [self.EVENTS_TABLE, self.tablename] + reflection_options.get("only", [])
 
         GOBStorageHandler._set_base(reflection_options=reflection_options)
 
@@ -332,19 +328,22 @@ WHERE
         Add table to current metadata stored in `base`.
         The table will be dropped when the connection is released.
         """
+        if self.tablename_temp in self.base.metadata.tables:
+            raise ValueError(f"Temporary table exists in metadata: {self.tablename_temp}")
+
         columns: list[Column] = [
-            get_column(FIELD.TID, self.fields[FIELD.TID]),
-            get_column(FIELD.SOURCE, self.fields[FIELD.SOURCE]),
-            get_column(FIELD.HASH, self.fields[FIELD.HASH]),
+            get_column(FIELD.TID, self._fields[FIELD.TID]),
+            get_column(FIELD.SOURCE, self._fields[FIELD.SOURCE]),
+            get_column(FIELD.HASH, self._fields[FIELD.HASH]),
             JSON.get_column_definition("_original_value")
         ]
 
         table = Table(
-            self.temp_table_name,
+            self.tablename_temp,
             self.base.metadata,
             *columns,
             implicit_returning=False,  # no returning on insert
-            prefixes=["TEMPORARY"],  # CREATE TEMPORARY TABLE <table>
+            prefixes=["TEMPORARY"]     # CREATE TEMPORARY TABLE <table>
         )
         table.create(bind=self.session.bind)
 
@@ -357,10 +356,10 @@ WHERE
         If the write_per argument is specified writes will take place in chunks
         :return:
         """
-        table = self.base.metadata.tables[self.temp_table_name]
-        tid_type = self.field_types[FIELD.TID]
-        hash_type = self.field_types[FIELD.HASH]
-        source_value = self.field_types[FIELD.SOURCE].from_value(self.metadata.source).to_db
+        table = self.base.metadata.tables[self.tablename_temp]
+        tid_type = self._field_types[FIELD.TID]
+        hash_type = self._field_types[FIELD.HASH]
+        source_value = self._field_types[FIELD.SOURCE].from_value(self.metadata.source).to_db
 
         rows = [
             {
@@ -385,8 +384,8 @@ WHERE
         """
         query = queries.get_comparison_query(
             source=self.metadata.source,
-            current=gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity),
-            temporary=self.temp_table_name,
+            current=self.tablename,
+            temporary=self.tablename_temp,
             fields=[FIELD.TID],
             mode=mode
         )
@@ -400,7 +399,7 @@ WHERE
 
         # Temporary switch to database AUTOCOMMIT, reset after VACUUM
         conn.execution_options(isolation_level="AUTOCOMMIT")
-        conn.execute(text(f"VACUUM ANALYZE {self.temp_table_name}"))
+        conn.execute(text(f"VACUUM ANALYZE {self.tablename_temp}"))
         conn.execution_options(isolation_level=conn.default_isolation_level)
 
     @property
@@ -409,10 +408,17 @@ WHERE
 
     @property
     def DbEntity(self):
-        return getattr(self.base.classes, self._get_tablename())
+        return getattr(self.base.classes, self.tablename)
 
-    def _get_tablename(self):
-        return gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
+    @property
+    def tablename(self) -> str | None:
+        if self.metadata:
+            return gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
+
+    @property
+    def tablename_temp(self) -> str | None:
+        if self.metadata:
+            return self.tablename + "_tmp"
 
     @contextmanager
     def get_session(self, invalidate: bool = False, **execution_options) -> StreamSession:
@@ -441,9 +447,12 @@ WHERE
             self.session.flush()
         finally:
             if invalidate:
-                # release connection to database
-                # session.invalidate() does not drop temp tables, bind.invalidate() does
-                self.session.bind.invalidate()
+                # release connection to database -> dropping temp tables
+                connection.invalidate()
+
+                # make sure temp table is removed from the (base) metadata class var
+                if (tmp_table := self.base.metadata.tables.get(self.tablename_temp)) is not None:
+                    self.base.metadata.remove(tmp_table)
 
             self.session.close()
             self.session = None
@@ -755,5 +764,5 @@ WHERE
         # work.
         connection = self.engine.connect()
         connection.execute("COMMIT")
-        connection.execute(f"VACUUM ANALYZE {self._get_tablename()}")
+        connection.execute(f"VACUUM ANALYZE {self.tablename}")
         connection.close()
