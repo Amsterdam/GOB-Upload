@@ -2,11 +2,20 @@ import importlib
 import unittest
 from unittest.mock import MagicMock, patch
 
+from sqlalchemy import MetaData
+from sqlalchemy.engine import Connection
+
 from gobcore.exceptions import GOBException
 
-from gobupload.storage.handler import with_session
+from gobupload.storage.handler import with_session, StreamSession
 from gobupload.storage import handler
 from tests import fixtures
+
+
+class MockMeta:
+    source = "AMSBI"
+    catalogue = "meetbouten"
+    entity = "meetbouten"
 
 
 class TestWithSession(unittest.TestCase):
@@ -37,6 +46,7 @@ class TestContextManager(unittest.TestCase):
     def setUp(self):
         # patch __init__, we don't test that here, but we need session and engine to be present
         def side_effect(self, param):
+            self.metadata = param
             self.session = None
             self.engine = MagicMock()
         handler.GOBStorageHandler.__init__ = side_effect
@@ -96,4 +106,36 @@ class TestContextManager(unittest.TestCase):
             self.assertEqual(storage.session, mock_session_instance)
 
         mock_conn.execution_options.assert_called_with(compile_cache=None)
-        mock_session.assert_called_with(bind=mock_conn.execution_options.return_value)
+        mock_session.assert_called_with(bind=mock_conn)
+
+    def test_session_context_invalidate(self):
+        mock_session = MagicMock(spec=StreamSession)
+        handler.GOBStorageHandler.Session = mock_session
+        storage = handler.GOBStorageHandler(MockMeta())
+
+        mock_conn = MagicMock(spec=Connection)
+        storage.engine.connect.return_value = mock_conn
+
+        mock_session_instance = MagicMock(spec=StreamSession)
+        mock_session.return_value = mock_session_instance
+
+        with patch.object(storage.base, "metadata", spec=MetaData) as mock_meta:
+            mock_meta.tables = {}
+
+            with storage.get_session(invalidate=True):
+                pass
+
+            mock_conn.invalidate.assert_called()
+            mock_session_instance.close.assert_called()
+            mock_meta.remove.assert_not_called()
+
+            mock_conn.invalidate.reset_mock()
+            mock_session_instance.close.reset_mock()
+            mock_meta.tables = {"meetbouten_meetbouten_tmp": "my_table_obj"}
+
+            with storage.get_session(invalidate=True):
+                pass
+
+            mock_conn.invalidate.assert_called()
+            mock_session_instance.close.assert_called()
+            mock_meta.remove.assert_called_with("my_table_obj")

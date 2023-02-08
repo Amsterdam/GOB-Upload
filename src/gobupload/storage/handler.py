@@ -12,13 +12,13 @@ from __future__ import annotations
 import functools
 import json
 import warnings
-import random
-import string
 import traceback
 from contextlib import contextmanager
 from typing import Union, Iterator, Iterable
 
-from sqlalchemy import create_engine, Table, update, exc as sa_exc, select, column, String, values
+from sqlalchemy import (
+    create_engine, Table, update, exc as sa_exc, select, column, String, values, Column, text
+)
 from sqlalchemy.engine import Row
 from sqlalchemy.engine.url import URL
 from sqlalchemy.exc import OperationalError, MultipleResultsFound
@@ -28,6 +28,7 @@ from sqlalchemy.orm import sessionmaker, Session as SessionORM
 from gobcore.enum import ImportMode
 from gobcore.exceptions import GOBException
 from gobcore.logging.logger import logger
+from gobcore.model import FIELD
 from gobcore.model.sa.gob import get_column
 from gobcore.model.sa.indexes import get_indexes
 from gobcore.typesystem import get_gob_type
@@ -37,6 +38,7 @@ from alembic.runtime import migration
 import alembic.config
 import alembic.script
 
+from gobcore.typesystem.gob_types import JSON
 from gobcore.typesystem.json import GobTypeJSONEncoder
 from gobupload import gob_model
 from gobupload.config import GOB_DB
@@ -101,7 +103,11 @@ class StreamSession(SessionORM):
 
 class GOBStorageHandler:
     """Metadata aware Storage handler."""
-    engine = create_engine(URL.create(**GOB_DB), connect_args={'sslmode': 'require'}, pool_pre_ping=True)
+    engine = create_engine(
+        URL.create(**GOB_DB),
+        connect_args={'sslmode': 'require'},
+        pool_pre_ping=True,
+    )
     Session = sessionmaker(
         autocommit=True,
         autoflush=False,
@@ -163,8 +169,10 @@ class GOBStorageHandler:
         self.session: StreamSession | None = None
 
         if gob_metadata:
-            tables = [self.EVENTS_TABLE, self._get_tablename()]
-            reflection_options["only"] = tables + reflection_options.get("only", [])
+            self._fields = self.get_collection_model()["all_fields"]
+            self._field_types = {field: get_gob_type(self._fields[field]["type"]) for field in self._fields}
+
+            reflection_options["only"] = [self.EVENTS_TABLE, self.tablename] + reflection_options.get("only", [])
 
         GOBStorageHandler._set_base(reflection_options=reflection_options)
 
@@ -313,111 +321,86 @@ WHERE
             except OperationalError as e:
                 print(f"ERROR: Index {name} failed: {e}")
 
-    def _get_tmp_table_name(self, table_name):
-        # Add a random 3 character string to the table name
-        return table_name + "_" + ''.join(random.choice(string.ascii_lowercase) for i in range(3))
-
+    @with_session
     def create_temporary_table(self):
-        """ Create a new temporary table based on the current table for a collection
-
-        Message data is inserted to be compared with the current state
-
-        :param data: the imported data
-        :return:
         """
-        self.collection = self.get_collection_model()
-        table_name = gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
-        tmp_table_name = self._get_tmp_table_name(table_name)
-
-        self.fields = ['_tid', '_source', '_hash']
-
-        # Drop any existing temporary table
-        self.drop_temporary_table(tmp_table_name)
-
-        columns = [get_column(c, self.collection['all_fields'][c]) for c in self.fields]
-        columns.append(get_gob_type("GOB.JSON").get_column_definition("_original_value"))
-        self.tmp_table = Table(tmp_table_name, self.base.metadata, *columns, extend_existing=True)
-        self.tmp_table.create(self.engine)
-
-        self.temporary_rows = []
-        return tmp_table_name
-
-    def write_temporary_entity(self, entity):
+        Create a new temporary table based on the current table for a collection.
+        Add table to current metadata stored in `base`.
+        The table will be dropped when the connection is released.
         """
-        Writes an entity to the temporary table
-        :param entity:
-        :return:
-        """
-        row = {}
-        for field in self.fields:
-            gob_type = get_gob_type(self.collection['all_fields'][field]['type'])
-            if field == '_source':
-                row[field] = gob_type.from_value(self.metadata.source).to_db
-            else:
-                row[field] = gob_type.from_value(entity[field]).to_db
-        row["_original_value"] = entity
-        self.temporary_rows.append(row)
-        self._write_temporary_entities(write_per=10000)
+        if self.tablename_temp in self.base.metadata.tables:
+            raise ValueError(f"Temporary table exists in metadata: {self.tablename_temp}")
 
-    def _write_temporary_entities(self, write_per=1):
+        columns: list[Column] = [
+            get_column(FIELD.TID, self._fields[FIELD.TID]),
+            get_column(FIELD.SOURCE, self._fields[FIELD.SOURCE]),
+            get_column(FIELD.HASH, self._fields[FIELD.HASH]),
+            JSON.get_column_definition("_original_value")
+        ]
+
+        table = Table(
+            self.tablename_temp,
+            self.base.metadata,
+            *columns,
+            implicit_returning=False,  # no returning on insert
+            prefixes=["TEMPORARY"]     # CREATE TEMPORARY TABLE <table>
+        )
+        table.create(bind=self.session.bind)
+
+    @with_session
+    def write_temporary_entities(self, entities):
         """
         Writes the temporary entities to the temporary table
 
         If no arguments are given the write will always take place
         If the write_per argument is specified writes will take place in chunks
-        :param write_per:
         :return:
         """
-        if len(self.temporary_rows) >= write_per:
-            result = self.engine.execute(
-                self.tmp_table.insert(),
-                self.temporary_rows
-            )
-            result.close()
-            self.temporary_rows = []
+        table = self.base.metadata.tables[self.tablename_temp]
+        tid_type = self._field_types[FIELD.TID]
+        hash_type = self._field_types[FIELD.HASH]
+        source_value = self._field_types[FIELD.SOURCE].from_value(self.metadata.source).to_db
 
-    def close_temporary_table(self):
-        """
-        Writes any left temporary entities to the temporary table
-        :return:
-        """
-        self._write_temporary_entities()
+        rows = [
+            {
+                FIELD.TID: tid_type.from_value(entity[FIELD.TID]).to_db,
+                FIELD.SOURCE: source_value,
+                FIELD.HASH: hash_type.from_value(entity[FIELD.HASH]).to_db,
+                "_original_value": entity
+            }
+            for entity in entities
+        ]
+        self.session.execute(table.insert(), rows)
 
-    def compare_temporary_data(self, tmp_table_name, mode=ImportMode.FULL):
+    @with_session
+    def compare_temporary_data(self, mode: ImportMode = ImportMode.FULL) -> Iterator[dict]:
         """ Compare the data in the temporay table to the current state
 
         The created query compares each model field and returns the tid, last_event
         _hash and if the record should be a ADD, DELETE or MODIFY. CONFIRM records are not
         included in the result, but can be derived from the message
 
-        :return: a list of dicts with tid, hash, last_event and type
+        :return: a iterator of dicts with tid, hash, last_event and type
         """
-        current = gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
+        query = queries.get_comparison_query(
+            source=self.metadata.source,
+            current=self.tablename,
+            temporary=self.tablename_temp,
+            fields=[FIELD.TID],
+            mode=mode
+        )
+        for row in self.session.stream_execute(query):
+            yield dict(row)
 
-        fields = ["_tid"]
-        source = self.metadata.source
+    @with_session
+    def analyze_temporary_table(self):
+        """Runs VACUUM ANALYZE on temporary table."""
+        conn = self.session.bind
 
-        result = None
-        try:
-            # Get the result of comparison where data is equal to the current state
-            result = self.engine.execution_options(stream_results=True)\
-                .execute(queries.get_comparison_query(source, current, tmp_table_name, fields, mode))
-
-            for row in result:
-                yield dict(row)
-
-        except Exception as e:
-            raise e
-        finally:
-            # Always cleanup
-            if result:
-                result.close()
-            # Drop the temporary table
-            self.drop_temporary_table(tmp_table_name)
-
-    def drop_temporary_table(self, tmp_table_name):
-        # Drop the temporary table
-        self.execute(f"DROP TABLE IF EXISTS {tmp_table_name}")
+        # Temporary switch to database AUTOCOMMIT, reset after VACUUM
+        conn.execution_options(isolation_level="AUTOCOMMIT")
+        conn.execute(text(f"VACUUM ANALYZE {self.tablename_temp}"))
+        conn.execution_options(isolation_level=conn.default_isolation_level)
 
     @property
     def DbEvent(self):
@@ -425,23 +408,32 @@ WHERE
 
     @property
     def DbEntity(self):
-        return getattr(self.base.classes, self._get_tablename())
+        return getattr(self.base.classes, self.tablename)
 
-    def _get_tablename(self):
-        return gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
+    @property
+    def tablename(self) -> str | None:
+        if self.metadata:
+            return gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
+
+    @property
+    def tablename_temp(self) -> str | None:
+        if self.metadata:
+            return self.tablename + "_tmp"
 
     @contextmanager
-    def get_session(self, **execution_options) -> StreamSession:
+    def get_session(self, invalidate: bool = False, **execution_options) -> StreamSession:
         """
         Exposes an underlying database session as a managed, not transactional, context.
         Isolation level for this context is 'autocommmit' through sessionmaker.
 
+        :param invalidate: Invalidate and release connection on exiting context.
+            Useful in case you want to discard the database session, i.e. to drop temp table
         :param execution_options: options passed to the connection bound to the session
-        e.g. 'compile_cache' and 'yield_per'
+            e.g. 'compile_cache' and 'yield_per'
         """
         connection = self.engine.connect()
         if execution_options:
-            connection = connection.execution_options(**execution_options)
+            connection.execution_options(**execution_options)
 
         self.session = self.Session(bind=connection)
 
@@ -454,7 +446,15 @@ WHERE
         else:
             self.session.flush()
         finally:
-            self.session.close()  # expunge_all() is called
+            if invalidate:
+                # release connection to database -> dropping temp tables
+                connection.invalidate()
+
+                # make sure temp table is removed from the (base) metadata class var
+                if (tmp_table := self.base.metadata.tables.get(self.tablename_temp)) is not None:
+                    self.base.metadata.remove(tmp_table)
+
+            self.session.close()
             self.session = None
 
     @with_session
@@ -764,5 +764,5 @@ WHERE
         # work.
         connection = self.engine.connect()
         connection.execute("COMMIT")
-        connection.execute(f"VACUUM ANALYZE {self._get_tablename()}")
+        connection.execute(f"VACUUM ANALYZE {self.tablename}")
         connection.close()

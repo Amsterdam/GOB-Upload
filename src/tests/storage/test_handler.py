@@ -1,9 +1,10 @@
 import datetime
 import unittest
 from decimal import Decimal
-from unittest.mock import call, MagicMock, patch
+from unittest.mock import call, MagicMock, patch, ANY
 
 from sqlalchemy import Integer, DateTime, String, JSON
+from sqlalchemy.engine import Connection
 from sqlalchemy.orm import declarative_base
 
 from gobcore.events.import_message import ImportMessage
@@ -345,52 +346,76 @@ WHERE
         ])
         self.storage._drop_indexes.assert_called_once()
 
-    def test_create_temporary_table(self):
-        expected_table = f'{self.msg["header"]["catalogue"]}_{self.msg["header"]["entity"]}_tmp'
+    @patch("gobupload.storage.handler.Table")
+    def test_create_temporary_table(self, mock_table):
+        mock_session = MagicMock(spec=StreamSession)
+        mock_session.bind = MagicMock(spec=Connection)
+        self.storage.session = mock_session
 
         self.storage.create_temporary_table()
 
-        for entity in self.msg["contents"]:
-            self.storage.write_temporary_entity(entity)
+        mock_table.assert_called_with(
+            "meetbouten_meetbouten_tmp",
+            self.storage.base.metadata,
+            *[ANY] * 4,  # columns
+            implicit_returning=False,
+            prefixes=["TEMPORARY"]
+        )
+        mock_table.return_value.create.assert_called_with(bind=mock_session.bind)
 
-        # And the engine has been called to fill the temporary table
-        self.storage.engine.execute.assert_called()
+        with patch.object(self.storage.base.metadata, "tables", {"meetbouten_meetbouten_tmp": 1}):
+            with self.assertRaises(ValueError):
+                self.storage.create_temporary_table()
 
-    def test_create_temporary_table_exists(self):
-        expected_table = f'{self.msg["header"]["catalogue"]}_{self.msg["header"]["entity"]}_tmp'
+    def test_write_temporary_entities(self):
+        mock_session = MagicMock(spec=StreamSession)
+        mock_session.stream_execute.return_value = [{"any": "value"}]
+        self.storage.session = mock_session
 
-        mock_table = MagicMock()
+        entities = [{"_tid": "1", "_hash": "any", "_id": "any id"}]
+        self.storage.write_temporary_entities(entities)
 
-        # Make sure the test table already exists
-        self.storage.base.metadata.tables = {expected_table: mock_table}
-        expected_table = self.storage.create_temporary_table()
-
-        # Assert the drop function is called
-        self.storage.engine.execute.assert_any_call(f"DROP TABLE IF EXISTS {expected_table}")
-
-        for entity in self.msg["contents"]:
-            self.storage.write_temporary_entity(entity)
-
-        # And the engine has been called to fill the temporary table
-        self.storage.engine.execute.assert_called()
+        expected = [{
+            "_tid": "1",
+            "_source": "any source",
+            "_hash": "any",
+            "_original_value": {"_tid": "1", "_hash": "any", "_id": "any id"}
+        }]
+        mock_session.execute.assert_called_with(
+            self.storage.base.metadata.tables.__getitem__.return_value.insert.return_value,
+            expected
+        )
 
     def test_compare_temporary_data(self):
+        mock_session = MagicMock(spec=StreamSession)
+        mock_session.stream_execute.return_value = [{"any": "value"}]
+        self.storage.session = mock_session
+
         current = f'{self.msg["header"]["catalogue"]}_{self.msg["header"]["entity"]}'
         temporary = f'{self.msg["header"]["catalogue"]}_{self.msg["header"]["entity"]}_tmp'
+        query = queries.get_comparison_query("any source", current, temporary, ["_tid"])
 
-        fields = ['_tid']
-        query = queries.get_comparison_query('any source', current, temporary, fields)
+        diff = self.storage.compare_temporary_data()
+        result = list(diff)
 
-        diff = self.storage.compare_temporary_data(temporary)
-        results = [result for result in diff]
+        assert result == [{"any": "value"}]
+        mock_session.stream_execute.assert_called_with(query)
 
-        self.storage.engine.execution_options.assert_called_with(stream_results=True)
+    @patch("gobupload.storage.handler.text")
+    def test_analyze_temporary_table(self, mock_text):
+        mock_session = MagicMock(spec=StreamSession)
+        mock_session.bind = MagicMock(spec=Connection)
+        self.storage.session = mock_session
 
-        # Assert the query is performed is deleted
-        self.storage.engine.execution_options().execute.assert_any_call(query)
+        self.storage.analyze_temporary_table()
 
-        # Assert the temporary table is deleted
-        self.storage.engine.execute.assert_any_call(f"DROP TABLE IF EXISTS {temporary}")
+        mock_session.bind.execution_options.has_calls([
+            call(isolation_level="AUTOCOMMIT"),
+            call(isolation_level=mock_session.bind.default_isolation_level)
+        ])
+
+        mock_text.assert_called_with("VACUUM ANALYZE meetbouten_meetbouten_tmp")
+        mock_session.bind.execute.assert_called_with(mock_text.return_value)
 
     def test_get_query_value(self):
         self.storage.get_query_value('SELECT * FROM test')
@@ -428,19 +453,10 @@ WHERE
             query
         )
 
-    @patch('gobupload.storage.handler.gob_model.get_table_name')
-    def test_get_tablename(self, mock_get_table_name):
-        result = self.storage._get_tablename()
-        self.assertEqual(mock_get_table_name.return_value, result)
-        mock_get_table_name.assert_called_with(
-            self.storage.metadata.catalogue, self.storage.metadata.entity)
-
     def test_analyze_table(self):
         self.storage.engine = MagicMock()
-        self.storage._get_tablename = lambda: 'tablename'
         self.storage.analyze_table()
-
-        self.storage.engine.connect.return_value.execute.assert_called_with('VACUUM ANALYZE tablename')
+        self.storage.engine.connect.return_value.execute.assert_called_with('VACUUM ANALYZE meetbouten_meetbouten')
 
     def test_add_events(self):
         self.storage.session = MagicMock()

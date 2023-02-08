@@ -42,41 +42,40 @@ def compare(msg):
 
     # Initialize a storage handler for the collection
     storage = GOBStorageHandler(metadata)
+
     model = f"{metadata.source} {metadata.catalogue} {metadata.entity}"
     logger.info(f"Compare {model}")
 
     stats = CompareStatistics()
 
-    tmp_table_name = None
-    with storage.get_session():
-        with ProgressTicker("Collect compare events", 10000) as progress:
-            # Check any dependencies
-            if not meets_dependencies(storage, msg):
-                return {
-                    "header": msg["header"],
-                    "summary": logger.get_summary(),
-                    "contents": None
-                }
+    with storage.get_session(invalidate=True, yield_per=10_000):
+        # Check any dependencies
+        if not meets_dependencies(storage, msg):
+            return {
+                "header": msg["header"],
+                "summary": logger.get_summary(),
+                "contents": None
+            }
 
-            enricher = Enricher(storage, msg)
-            populator = Populator(entity_model, msg)
+        enricher = Enricher(storage, msg)
+        populator = Populator(entity_model, msg)
 
-            # If there are no records in the database all data are ADD events
-            initial_add = not storage.has_any_entity()
-            if initial_add:
-                logger.info("Initial load of new collection detected")
-                # Write ADD events directly, without using a temporary table
-                contents_writer = ContentsWriter()
-                contents_writer.open()
-                # Pass a None confirms_writer because only ADD events are written
-                collector = EventCollector(contents_writer, confirms_writer=None, version=entity_model['version'])
-                collect = collector.collect_initial_add
-            else:
-                # Collect entities in a temporary table
-                collector = EntityCollector(storage)
-                collect = collector.collect
-                tmp_table_name = collector.tmp_table_name
+        # If there are no records in the database all data are ADD events
+        initial_add = not storage.has_any_entity()
+        if initial_add:
+            logger.info("Initial load of new collection detected")
+            # Write ADD events directly, without using a temporary table
+            contents_writer = ContentsWriter()
+            contents_writer.open()
+            # Pass a None confirms_writer because only ADD events are written
+            collector = EventCollector(contents_writer, confirms_writer=None, version=entity_model['version'])
+            collect = collector.collect_initial_add
+        else:
+            # Collect entities in a temporary table
+            collector = EntityCollector(storage)
+            collect = collector.collect
 
+        with ProgressTicker("Collect compare events", 10_000) as progress:
             for entity in msg["contents"]:
                 progress.tick()
                 stats.collect(entity)
@@ -86,14 +85,12 @@ def compare(msg):
 
             collector.close()
 
-    if initial_add:
-        filename = contents_writer.filename
-        confirms = None
-        contents_writer.close()
-    else:
-        # Compare entities from temporary table
-        with storage.get_session():
-            diff = storage.compare_temporary_data(tmp_table_name, mode)
+        if initial_add:
+            filename = contents_writer.filename
+            confirms = None
+            contents_writer.close()
+        else:
+            diff = storage.compare_temporary_data(mode)
             filename, confirms = _process_compare_results(storage, entity_model, diff, stats)
 
     # Build result message
