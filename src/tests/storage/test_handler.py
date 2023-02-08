@@ -64,7 +64,6 @@ class MockMeta:
 
 class TestStorageHandler(unittest.TestCase):
 
-    @patch("gobupload.storage.handler.utils.random_string", MagicMock(return_value="xyz"))
     @patch("gobupload.storage.handler.automap_base", MagicMock())
     @patch('gobupload.storage.handler.create_engine', MagicMock())
     def setUp(self):
@@ -356,13 +355,17 @@ WHERE
         self.storage.create_temporary_table()
 
         mock_table.assert_called_with(
-            "meetbouten_meetbouten_xyz",
+            "meetbouten_meetbouten_tmp",
             self.storage.base.metadata,
             *[ANY] * 4,  # columns
             implicit_returning=False,
             prefixes=["TEMPORARY"]
         )
         mock_table.return_value.create.assert_called_with(bind=mock_session.bind)
+
+        with patch.object(self.storage.base.metadata, "tables", {"meetbouten_meetbouten_tmp": 1}):
+            with self.assertRaises(ValueError):
+                self.storage.create_temporary_table()
 
     def test_write_temporary_entities(self):
         mock_session = MagicMock(spec=StreamSession)
@@ -389,7 +392,7 @@ WHERE
         self.storage.session = mock_session
 
         current = f'{self.msg["header"]["catalogue"]}_{self.msg["header"]["entity"]}'
-        temporary = f'{self.msg["header"]["catalogue"]}_{self.msg["header"]["entity"]}_xyz'
+        temporary = f'{self.msg["header"]["catalogue"]}_{self.msg["header"]["entity"]}_tmp'
         query = queries.get_comparison_query("any source", current, temporary, ["_tid"])
 
         diff = self.storage.compare_temporary_data()
@@ -411,7 +414,7 @@ WHERE
             call(isolation_level=mock_session.bind.default_isolation_level)
         ])
 
-        mock_text.assert_called_with("VACUUM ANALYZE meetbouten_meetbouten_xyz")
+        mock_text.assert_called_with("VACUUM ANALYZE meetbouten_meetbouten_tmp")
         mock_session.bind.execute.assert_called_with(mock_text.return_value)
 
     def test_get_query_value(self):
@@ -450,19 +453,10 @@ WHERE
             query
         )
 
-    @patch('gobupload.storage.handler.gob_model.get_table_name')
-    def test_get_tablename(self, mock_get_table_name):
-        result = self.storage._get_tablename()
-        self.assertEqual(mock_get_table_name.return_value, result)
-        mock_get_table_name.assert_called_with(
-            self.storage.metadata.catalogue, self.storage.metadata.entity)
-
     def test_analyze_table(self):
         self.storage.engine = MagicMock()
-        self.storage._get_tablename = lambda: 'tablename'
         self.storage.analyze_table()
-
-        self.storage.engine.connect.return_value.execute.assert_called_with('VACUUM ANALYZE tablename')
+        self.storage.engine.connect.return_value.execute.assert_called_with('VACUUM ANALYZE meetbouten_meetbouten')
 
     def test_add_events(self):
         self.storage.session = MagicMock()
