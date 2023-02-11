@@ -72,15 +72,20 @@ def with_session(func):
 class StreamSession(SessionORM):
     """Extended session class with streaming functionality."""
 
-    # tweak this variable for batchsize
+    # default value for batchsize
+    # only used if not specified otherwise
     # higher value leads to more memory allocation per cycle
     YIELD_PER = 2_000
 
     def _update_param(self, **kwargs) -> dict[str, dict]:
         exec_opts = kwargs.pop("execution_options", {})
-        if "yield_per" not in exec_opts:
+        if not (
+            "yield_per" in exec_opts and
+            "yield_per" in self.bind.get_execution_options()  # already set on connection
+        ):
             exec_opts["yield_per"] = self.YIELD_PER
-        return {"execution_options": exec_opts, **kwargs}
+
+        return {"execution_options": exec_opts, **kwargs} if exec_opts else kwargs
 
     def stream_scalars(self, statement, **kwargs):
         """
