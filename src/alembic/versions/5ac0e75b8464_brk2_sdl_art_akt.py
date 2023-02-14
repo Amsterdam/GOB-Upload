@@ -590,11 +590,15 @@ def upgrade():
     sa.UniqueConstraint('_tid', name='rel_brk2_tng_brk2_sdl_is_gebaseerd_op_brk_stukdelen__tid_key')
     )
     op.add_column('brk2_tenaamstellingen', sa.Column('is_gebaseerd_op_brk_stukdelen', postgresql.JSONB(astext_type=sa.Text()), autoincrement=False, nullable=True))
+
+    # Drop GOB-API legacy views
+    op.execute('DROP VIEW IF EXISTS legacy."brk2_tenaamstellingen"')
     op.alter_column('brk2_tenaamstellingen', 'toestandsdatum',
                existing_type=postgresql.TIMESTAMP(),
                type_=sa.Date(),
                existing_nullable=True,
                autoincrement=False)
+    op.execute('DROP VIEW IF EXISTS legacy."brk2_zakelijkerechten"')
     op.alter_column('brk2_zakelijkerechten', 'toestandsdatum',
                existing_type=postgresql.TIMESTAMP(),
                type_=sa.Date(),
