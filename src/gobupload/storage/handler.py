@@ -79,10 +79,9 @@ class StreamSession(SessionORM):
 
     def _update_param(self, **kwargs) -> dict[str, dict]:
         exec_opts = kwargs.pop("execution_options", {})
-        if not (
-            "yield_per" in exec_opts and
-            "yield_per" in self.bind.get_execution_options()  # already set on connection
-        ):
+        bind_exec_opts = self.bind.get_execution_options() if self.bind else {}
+
+        if "yield_per" not in exec_opts | bind_exec_opts:
             exec_opts["yield_per"] = self.YIELD_PER
 
         return {"execution_options": exec_opts, **kwargs} if exec_opts else kwargs

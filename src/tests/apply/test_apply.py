@@ -106,10 +106,10 @@ class TestApply(TestCase):
 
     def test_apply_confirms_bulkconfirm_event(self, _):
         msg = {"header": {"timestamp": "any timestamp"}}
-        items = [{"event": "BULKCONFIRM", "data": {"confirms": [{"_tid": "confirm1"}]}}]
+        item = {"event": "BULKCONFIRM", "data": {"confirms": [{"_tid": "confirm1"}]}}
 
         with NamedTemporaryFile(mode="w", delete=False) as tmpfile:
-            json.dump(items, tmpfile)
+            json.dump(item, tmpfile)
             msg["confirms"] = tmpfile.name
 
         apply_confirm_events(self.mock_storage, MagicMock(), msg)
@@ -122,10 +122,10 @@ class TestApply(TestCase):
 
     def test_apply_confirms_confirm_event(self, _):
         msg = {"header": {"timestamp": "any timestamp"}}
-        items = [{"event": "CONFIRM", "data": {"some key": "any data"}}]
+        item = {"event": "CONFIRM", "data": {"some key": "any data"}}
 
         with NamedTemporaryFile(mode="w", delete=False) as tmpfile:
-            json.dump(items, tmpfile)
+            json.dump(item, tmpfile)
             msg["confirms"] = tmpfile.name
 
         apply_confirm_events(self.mock_storage, MagicMock(), msg)
@@ -139,10 +139,10 @@ class TestApply(TestCase):
     def test_apply_confirms_only_confirm_events(self, _):
         """Assert that only (BULK)CONFIRMS are handled."""
         msg = {"header": {"timestamp": "any timestamp"}}
-        items = [{"event": "some other event"}]
+        item = {"event": "some other event"}
 
         with NamedTemporaryFile(mode="w", delete=False) as tmpfile:
-            json.dump(items, tmpfile)
+            json.dump(item, tmpfile)
             msg["confirms"] = tmpfile.name
 
         with self.assertRaises(GOBException):

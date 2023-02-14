@@ -531,6 +531,14 @@ WHERE
         obj.stream_execute("query", extra=5, execution_options={"yield_per": 2000})
         mock_execute.assert_called_with("query", execution_options={"yield_per": 2000}, extra=5)
 
+        # test we don't overwrite yield_per when set on the connection
+        mock_execute.reset_mock()
+        obj.bind = MagicMock(spec=Connection)
+        obj.bind.get_execution_options.return_value = {"yield_per": 1000}
+        obj.stream_execute("query")
+        mock_execute.assert_called_with("query")
+
+
     @patch("gobupload.storage.handler.GOBStorageHandler.execute")
     def test_apply_confirms(self, mock_execute):
         confirms = [{"_tid": "confirm1"}, {"_tid": "confirm2"}]
