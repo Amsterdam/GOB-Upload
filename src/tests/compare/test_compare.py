@@ -17,6 +17,7 @@ mock_model = MagicMock(spec_set=gob_model)
 mock_writer = MagicMock(spec_set=ContentsWriter)
 mock_event_collector = MagicMock(spec_set=EventCollector)
 
+
 @patch('gobupload.compare.main.ContentsWriter', mock_writer)
 @patch('gobupload.compare.main.gob_model', mock_model)
 @patch('gobupload.compare.main.GOBStorageHandler')
@@ -129,7 +130,7 @@ class TestCompare(TestCase):
         # expectations: add event is generated
         self.assertIsNotNone(result["contents_ref"])
         mock_writer.return_value.__enter__().write.assert_not_called()
-        mock_event_collector.return_value.collect_initial_add.assert_called_once()
+        mock_event_collector.return_value.__enter__.return_value.collect_initial_add.assert_called_once()
 
     def test_compare_creates_confirm(self, storage_mock):
         storage_mock.return_value = self.mock_storage

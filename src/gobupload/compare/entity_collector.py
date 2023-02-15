@@ -16,7 +16,13 @@ class EntityCollector:
         """
         self.storage = storage
         self._entities = []
-        storage.create_temporary_table()
+
+    def __enter__(self):
+        self.storage.create_temporary_table()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
 
     def _clear(self):
         self._entities.clear()
