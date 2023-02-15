@@ -6,6 +6,7 @@ from unittest.mock import call, MagicMock, patch, ANY
 from sqlalchemy import Integer, DateTime, String, JSON
 from sqlalchemy.engine import Connection
 from sqlalchemy.orm import declarative_base
+from sqlalchemy.cimmutabledict import immutabledict
 
 from gobcore.events.import_message import ImportMessage
 from gobcore.exceptions import GOBException
@@ -534,7 +535,7 @@ WHERE
         # test we don't overwrite yield_per when set on the connection
         mock_execute.reset_mock()
         obj.bind = MagicMock(spec=Connection)
-        obj.bind.get_execution_options.return_value = {"yield_per": 1000}
+        obj.bind.get_execution_options.return_value = immutabledict({"yield_per": 1000})
         obj.stream_execute("query")
         mock_execute.assert_called_with("query")
 

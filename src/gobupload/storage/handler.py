@@ -81,7 +81,8 @@ class StreamSession(SessionORM):
         exec_opts = kwargs.pop("execution_options", {})
         bind_exec_opts = self.bind.get_execution_options() if self.bind else {}
 
-        if "yield_per" not in exec_opts | bind_exec_opts:
+        # bind_exec_opts can be a sqlalchemy immutable dict, which doesnt allow dict merging
+        if "yield_per" not in bind_exec_opts.keys() | exec_opts.keys():
             exec_opts["yield_per"] = self.YIELD_PER
 
         return {"execution_options": exec_opts, **kwargs} if exec_opts else kwargs
