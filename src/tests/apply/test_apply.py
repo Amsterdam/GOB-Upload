@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+from tempfile import NamedTemporaryFile
 from unittest import TestCase
 
 import logging
@@ -101,82 +104,70 @@ class TestApply(TestCase):
         mock_event_notification.assert_called_with({}, [1, 1])
         mock_add_notification.assert_called_with(result_msg, mock_event_notification())
 
-    @patch('gobupload.apply.main.add_notification', MagicMock())
-    @patch('gobupload.apply.main.os')
-    @patch('gobupload.apply.main.ContentsReader')
-    def test_apply_confirm_events(self, mock_contents_reader, mock_os, mock):
-        mock_stats = MagicMock()
-        mock_reader = MagicMock()
-        mock_contents_reader.return_value = mock_reader
+    def test_apply_confirms_bulkconfirm_event(self, _):
+        msg = {"header": {"timestamp": "any timestamp"}}
+        item = {"event": "BULKCONFIRM", "data": {"confirms": [{"_tid": "confirm1"}]}}
 
-        msg = {
-            'header': {
-                'timestamp': 'any timestamp'
-            },
-            'confirms': 'any filename'
-        }
+        with NamedTemporaryFile(mode="w", delete=False) as tmpfile:
+            json.dump(item, tmpfile)
+            msg["confirms"] = tmpfile.name
 
-        # Bulkconfirm
-        items = [
-            {
-                'event': 'BULKCONFIRM',
-                'data': {
-                    'confirms': 'any confirms'
-                }
-            }
-        ]
+        apply_confirm_events(self.mock_storage, MagicMock(), msg)
 
-        mock_reader.items.return_value = items
-        apply_confirm_events(self.mock_storage, mock_stats, msg)
+        self.mock_storage.apply_confirms.assert_called_with(
+            [{"_tid": "confirm1"}], timestamp="any timestamp"
+        )
+        assert not Path(tmpfile.name).exists()
+        assert msg.get("confirms") is None
 
-        self.mock_storage.apply_confirms.assert_called_with('any confirms', 'any timestamp')
-        mock_os.remove.assert_called_with('any filename')
-        self.assertIsNone(msg.get('confirms'))
+    def test_apply_confirms_confirm_event(self, _):
+        msg = {"header": {"timestamp": "any timestamp"}}
+        item = {"event": "CONFIRM", "data": {"some key": "any data"}}
 
-        msg = {
-            'header': {
-                'timestamp': 'any timestamp'
-            },
-            'confirms': 'any filename'
-        }
+        with NamedTemporaryFile(mode="w", delete=False) as tmpfile:
+            json.dump(item, tmpfile)
+            msg["confirms"] = tmpfile.name
 
-        # put CONFIRM data in a list
-        items = [
-            {
-                'event': 'CONFIRM',
-                'data': {'some key': 'any data'}
-            }
-        ]
+        apply_confirm_events(self.mock_storage, MagicMock(), msg)
 
-        mock_reader.items.return_value = items
-        apply_confirm_events(self.mock_storage, mock_stats, msg)
+        self.mock_storage.apply_confirms.assert_called_with(
+            [{"some key": "any data"}], timestamp="any timestamp"
+        )
+        assert not Path(tmpfile.name).exists()
+        assert msg.get("confirms") is None
 
-        self.mock_storage.apply_confirms.assert_called_with([{'some key': 'any data'}], 'any timestamp')
+    def test_apply_confirms_only_confirm_events(self, _):
+        """Assert that only (BULK)CONFIRMS are handled."""
+        msg = {"header": {"timestamp": "any timestamp"}}
+        item = {"event": "some other event"}
 
-        msg = {
-            'header': {
-                'timestamp': 'any timestamp'
-            },
-            'confirms': 'any filename'
-        }
+        with NamedTemporaryFile(mode="w", delete=False) as tmpfile:
+            json.dump(item, tmpfile)
+            msg["confirms"] = tmpfile.name
 
-        # Assert that only (BULK)CONFIRMS are handled
-        items = [
-            {
-                'event': 'some other event'
-            }
-        ]
-        mock_reader.items.return_value = items
-        with self.assertRaises(AssertionError):
-            apply_confirm_events(self.mock_storage, mock_stats, msg)
+        with self.assertRaises(GOBException):
+            apply_confirm_events(self.mock_storage, MagicMock(), msg)
 
-        # Only execute if msg has confirms
-        mock_os.remove.reset_mock()
-        msg = {
-            'header': {}
-        }
-        apply_confirm_events(self.mock_storage, mock_stats, msg)
-        mock_os.remove.assert_not_called()
+        assert not Path(tmpfile.name).exists()
+        assert "confirms" not in msg
+
+    @patch("gobupload.apply.main._apply_confirms")
+    def test_apply_confirms_empty(self, mock_apply, _):
+        apply_confirm_events(MagicMock(), MagicMock(), {'header': {}})
+        mock_apply.assert_not_called()
+
+        apply_confirm_events(MagicMock(), MagicMock(), {'header': {}, "confirms": None})
+        mock_apply.assert_not_called()
+
+        apply_confirm_events(MagicMock(), MagicMock(), {'header': {}, "confirms": []})
+        mock_apply.assert_not_called()
+
+    @patch("gobupload.apply.main._apply_confirms")
+    def test_apply_confirms_rel_cat(self, mock_apply, _):
+        msg = {'header': {"catalogue": "rel", "timestamp": "any ts"}, "confirms": "any"}
+        apply_confirm_events(MagicMock(), MagicMock(), msg)
+        mock_apply.assert_not_called()
+        assert "confirms" not in msg
 
     @patch('gobupload.apply.main.add_notification', MagicMock())
     @patch('gobupload.apply.main.logger', MagicMock())

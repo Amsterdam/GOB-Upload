@@ -72,15 +72,19 @@ def with_session(func):
 class StreamSession(SessionORM):
     """Extended session class with streaming functionality."""
 
-    # tweak this variable for batchsize
+    # default value for batchsize
+    # only used if not specified otherwise
     # higher value leads to more memory allocation per cycle
     YIELD_PER = 2_000
 
     def _update_param(self, **kwargs) -> dict[str, dict]:
         exec_opts = kwargs.pop("execution_options", {})
-        if "yield_per" not in exec_opts:
+        bind_exec_opts = self.bind.get_execution_options() if self.bind else {}
+
+        if "yield_per" not in exec_opts | bind_exec_opts:
             exec_opts["yield_per"] = self.YIELD_PER
-        return {"execution_options": exec_opts, **kwargs}
+
+        return {"execution_options": exec_opts, **kwargs} if exec_opts else kwargs
 
     def stream_scalars(self, statement, **kwargs):
         """
@@ -718,9 +722,15 @@ WHERE
         :param timestamp: Time to set as last_confirmed
         :return:
         """
-        tids = [record['_tid'] for record in confirms]
-        stmt = update(self.DbEntity).where(self.DbEntity._tid.in_(tids)).\
-            values({CONFIRM.timestamp_field: timestamp})
+        values_tid = \
+            values(column("_tid", String), name="tids") \
+            .data([(record['_tid'],) for record in confirms])
+
+        stmt = (
+            update(self.DbEntity)
+            .where(self.DbEntity._tid == values_tid.c._tid)
+            .values({CONFIRM.timestamp_field: timestamp})
+        )
         self.execute(stmt)
 
     def execute(self, statement):
