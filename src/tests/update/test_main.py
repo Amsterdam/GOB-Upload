@@ -1,5 +1,4 @@
 from unittest import TestCase
-from unittest.mock import MagicMock, patch
 
 from gobupload.update.main import is_corrupted
 
