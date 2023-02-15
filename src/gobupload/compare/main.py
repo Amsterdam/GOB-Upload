@@ -4,6 +4,7 @@ Derive Add, Change, Delete and Confirm events by comparing a full set of new dat
 
 Todo: Event, action and mutation are used for the same subject. Use one name to improve maintainability.
 """
+from typing import Iterator, Callable
 
 from gobcore.enum import ImportMode
 from gobcore.events import get_event_for, GOB
@@ -23,6 +24,22 @@ from gobupload.compare.event_collector import EventCollector
 from gobupload.compare.compare_statistics import CompareStatistics
 
 
+def _collect_entities(
+        entities: Iterator[dict],
+        collect: Callable[[dict], None],
+        enricher: Enricher,
+        populator: Populator,
+        stats: CompareStatistics
+):
+    with ProgressTicker("Collect compare events", 10_000) as progress:
+        for entity in entities:
+            progress.tick()
+            stats.collect(entity)
+            enricher.enrich(entity)
+            populator.populate(entity)
+            collect(entity)
+
+
 def compare(msg):
     """Compare new data in msg (contents) with the current data.
 
@@ -39,6 +56,7 @@ def compare(msg):
 
     # Get the collection to be compared
     entity_model = gob_model[metadata.catalogue]['collections'][metadata.entity]
+    version = entity_model['version']
 
     # Initialize a storage handler for the collection
     storage = GOBStorageHandler(metadata)
@@ -60,38 +78,25 @@ def compare(msg):
         enricher = Enricher(storage, msg)
         populator = Populator(entity_model, msg)
 
-        # If there are no records in the database all data are ADD events
-        initial_add = not storage.has_any_entity()
-        if initial_add:
-            logger.info("Initial load of new collection detected")
-            # Write ADD events directly, without using a temporary table
-            contents_writer = ContentsWriter()
-            contents_writer.open()
-            # Pass a None confirms_writer because only ADD events are written
-            collector = EventCollector(contents_writer, confirms_writer=None, version=entity_model['version'])
-            collect = collector.collect_initial_add
-        else:
+        if storage.has_any_entity():
             # Collect entities in a temporary table
-            collector = EntityCollector(storage)
-            collect = collector.collect
+            with EntityCollector(storage) as collector:
+                _collect_entities(msg["contents"], collector.collect, enricher, populator, stats)
 
-        with ProgressTicker("Collect compare events", 10_000) as progress:
-            for entity in msg["contents"]:
-                progress.tick()
-                stats.collect(entity)
-                enricher.enrich(entity)
-                populator.populate(entity)
-                collect(entity)
-
-            collector.close()
-
-        if initial_add:
-            filename = contents_writer.filename
-            confirms = None
-            contents_writer.close()
-        else:
             diff = storage.compare_temporary_data(mode)
             filename, confirms = _process_compare_results(storage, entity_model, diff, stats)
+
+        else:
+            # If there are no records in the database all data are ADD events
+            logger.info("Initial load of new collection detected")
+
+            with (
+                ContentsWriter() as writer,
+                EventCollector(contents_writer=writer, confirms_writer=None, version=version) as collector
+            ):
+                _collect_entities(msg["contents"], collector.collect_initial_add, enricher, populator, stats)
+
+            filename, confirms = writer.filename, None
 
     # Build result message
     results = stats.results()

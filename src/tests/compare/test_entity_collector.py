@@ -15,7 +15,10 @@ class TestEntityCollector(TestCase):
     def test_init(self):
         assert self.collector.storage == self.storage
         assert self.collector._entities == []
-        self.storage.create_temporary_table.assert_called()
+
+        with self.collector:
+            self.storage.create_temporary_table.assert_called()
+        self.storage.analyze_temporary_table.assert_called()
 
     def test_collect(self):
         entity = {"any": "value"}
