@@ -117,7 +117,6 @@ def full_update(msg):
     message = {
         "header": msg["header"],
         "summary": results,
-        "contents": None,
         "confirms": msg.get('confirms')
     }
     return message

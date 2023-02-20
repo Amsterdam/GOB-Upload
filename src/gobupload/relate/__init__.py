@@ -130,7 +130,6 @@ def check_relation(msg: dict):
     return {
         "header": msg["header"],
         "summary": logger.get_summary(),
-        "contents": None
     }
 
 
