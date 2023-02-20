@@ -539,7 +539,6 @@ WHERE
         obj.stream_execute("query")
         mock_execute.assert_called_with("query")
 
-
     @patch("gobupload.storage.handler.GOBStorageHandler.execute")
     def test_apply_confirms(self, mock_execute):
         confirms = [{"_tid": "confirm1"}, {"_tid": "confirm2"}]
@@ -557,3 +556,48 @@ WHERE
             "WHERE meetbouten_meetbouten._tid = tids._tid"
         )
         assert query == expected
+
+    def test_get_events_starting_after(self):
+        mock_row = MagicMock(eventid=14)
+        mock_engine = self.storage.engine.connect.return_value.__enter__.return_value
+        mock_engine.execute.return_value.all.side_effect = [[mock_row], []]
+
+        result = self.storage.get_events_starting_after(12)
+        assert next(result) == [mock_row]
+
+        with self.assertRaises(StopIteration):
+            next(result)
+
+        query = mock_engine.execute.call_args_list[0][0][0]
+        query = str(query.compile(compile_kwargs={"literal_binds": True}))
+
+        expected = "\n".join([
+            "SELECT events.eventid, events.timestamp, events.catalogue, "
+            "events.entity, events.version, events.action, events.source, "
+            "events.contents, events.application, events.tid ",
+            "FROM events ",
+            "WHERE events.source = 'any source' "
+            "AND events.catalogue = 'meetbouten' "
+            "AND events.entity = 'meetbouten' "
+            "AND events.eventid > 12 "
+            "ORDER BY events.eventid ASC",
+            " LIMIT 10000"
+        ])
+        assert query == expected
+
+        query2 = mock_engine.execute.call_args_list[1][0][0]
+        query2 = str(query2.compile(compile_kwargs={"literal_binds": True}))
+
+        expected = "\n".join([
+            "SELECT events.eventid, events.timestamp, events.catalogue, "
+            "events.entity, events.version, events.action, events.source, "
+            "events.contents, events.application, events.tid ",
+            "FROM events ",
+            "WHERE events.source = 'any source' "
+            "AND events.catalogue = 'meetbouten' "
+            "AND events.entity = 'meetbouten' "
+            "AND events.eventid > 14 "
+            "ORDER BY events.eventid ASC",
+            " LIMIT 10000"
+        ])
+        assert query2 == expected

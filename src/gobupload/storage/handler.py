@@ -494,12 +494,16 @@ WHERE
         )
         return self.session.execute(query).scalar() or 0
 
-    def get_events_starting_after(self, eventid: int) -> Iterator[list[Row]]:
+    def get_events_starting_after(self, eventid: int, limit: int = 10_000) -> Iterator[list[Row]]:
         """
         Return chunks of events with eventid starting at `eventid`.
         Example with size=2: ([event1, event2], [event3, event4], [event5])
+        This process can take a long time for big collections, keep this in a seperate session.
+        Use pagination by eventid instead of streaming results to prevent locking the events table.
+
 
         :param eventid: minimal eventid (0 for all)
+        :param limit: limit returned result to this size
         :return: Iterator containing lists of events
         """
         events = self.DbEvent
@@ -519,16 +523,15 @@ WHERE
             .where(events.source == self.metadata.source)
             .where(events.catalogue == self.metadata.catalogue)
             .where(events.entity == self.metadata.entity)
-            .where(events.eventid > eventid)
             .order_by(events.eventid.asc())
+            .limit(limit)
         )
+        start_after = eventid
 
-        # A new session is necessary, because this cursor must stay alive
-        # and not be closed by other queries operating on self.session
-        # partition size is equal to StreamSession.YIELD_PER
-        # https://docs.sqlalchemy.org/en/14/core/connections.html#sqlalchemy.engine.Result.partitions
-        with StreamSession(bind=self.engine.connect()) as session:
-            yield from session.stream_execute(query).partitions()
+        with self.engine.connect() as conn:
+            while chunk := conn.execute(query.where(events.eventid > start_after)).all():
+                yield chunk
+                start_after = getattr(chunk[-1], "eventid")
 
     @with_session
     def has_any_event(self, filter_: dict) -> bool:
