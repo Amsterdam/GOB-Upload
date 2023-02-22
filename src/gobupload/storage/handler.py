@@ -378,7 +378,7 @@ WHERE
         self.session.execute(table.insert(), rows)
 
     @with_session
-    def compare_temporary_data(self, mode: ImportMode = ImportMode.FULL) -> Iterator[dict]:
+    def compare_temporary_data(self, mode: ImportMode = ImportMode.FULL) -> Iterator[Row]:
         """ Compare the data in the temporay table to the current state
 
         The created query compares each model field and returns the tid, last_event
@@ -394,8 +394,7 @@ WHERE
             fields=[FIELD.TID],
             mode=mode
         )
-        for row in self.session.stream_execute(query):
-            yield dict(row)
+        yield from self.session.stream_execute(query)
 
     @with_session
     def analyze_temporary_table(self):
