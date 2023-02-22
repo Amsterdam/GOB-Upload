@@ -658,7 +658,7 @@ WHERE
             raise GOBException(f"Found multiple rows with filter: {filter_str}")
 
     @with_session
-    def get_entities(self, tids: Iterable[str], with_deleted=False) -> Iterator:
+    def get_entities(self, tids: Iterable[str], with_deleted=False) -> Iterator[Row]:
         """
         Get entities with tid contained in the given list of tid's
 

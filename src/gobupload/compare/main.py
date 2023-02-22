@@ -139,17 +139,17 @@ def meets_dependencies(storage, msg):
     return True
 
 
-def _get_modify_current_entities(storage: GOBStorageHandler, chunk: list[Row]) -> dict[str, dict]:
+def _get_modify_current_entities(storage: GOBStorageHandler, chunk: list[Row]) -> dict[str, Row]:
     """Return current entities for MODIFY events in `chunk`."""
     if tids_modify := [getattr(row, "_tid") for row in chunk if getattr(row, "type") == "MODIFY"]:
-        return {entity._tid: entity for entity in storage.get_entities(tids_modify)}
+        return {getattr(entity, "_tid"): entity for entity in storage.get_entities(tids_modify)}
     return {}
 
 
 def _process_compare_result_row(
         row: Row,
         event_version: str,
-        modify_current_entities: dict[str, Any],
+        modify_current_entities: dict[str, Row],
         modify_fields: dict[str, Any]
 ) -> dict[str, Any]:
     """Return event from processed compare result row."""
