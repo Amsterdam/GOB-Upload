@@ -4,11 +4,15 @@ Derive Add, Change, Delete and Confirm events by comparing a full set of new dat
 
 Todo: Event, action and mutation are used for the same subject. Use one name to improve maintainability.
 """
-from typing import Iterator, Callable
+from typing import Iterator, Callable, Any
+from more_itertools import chunked
+from sqlalchemy.engine import Row
 
 from gobcore.enum import ImportMode
 from gobcore.events import get_event_for, GOB
 from gobcore.events.import_message import ImportMessage
+from gobcore.exceptions import GOBException
+from gobcore.model import FIELD
 from gobcore.typesystem import get_modifications
 from gobcore.logging.logger import logger
 from gobcore.message_broker.offline_contents import ContentsWriter
@@ -135,7 +139,62 @@ def meets_dependencies(storage, msg):
     return True
 
 
-def _process_compare_results(storage, model, results, stats):
+def _get_modify_current_entities(storage: GOBStorageHandler, chunk: list[Row]) -> dict[str, Row]:
+    """Return current entities for MODIFY events in `chunk`."""
+    if tids_modify := [getattr(row, "_tid") for row in chunk if getattr(row, "type") == "MODIFY"]:
+        return {getattr(entity, "_tid"): entity for entity in storage.get_entities(tids_modify)}
+    return {}
+
+
+def _process_compare_result_row(
+        row: Row,
+        event_version: str,
+        modify_current_entities: dict[str, Row],
+        modify_fields: dict[str, Any]
+) -> dict[str, Any]:
+    """Return event from processed compare result row."""
+    event_type = getattr(row, "type")
+    tid = getattr(row, "_tid")
+    last_event = getattr(row, "_last_event")
+
+    if event_type == "ADD":
+        return GOB.ADD.create_event(
+            _tid=tid,
+            data=getattr(row, "_original_value") | {FIELD.LAST_EVENT: last_event},
+            version=event_version
+        )
+
+    elif event_type == "CONFIRM":
+        return GOB.CONFIRM.create_event(
+            _tid=tid,
+            data={FIELD.LAST_EVENT: last_event},
+            version=event_version
+        )
+
+    elif event_type == "MODIFY":
+        entity = getattr(row, "_original_value")
+        current_entity = modify_current_entities[tid]
+        return get_event_for(
+            old_data=current_entity,
+            new_data=entity,
+            modifications=get_modifications(current_entity, entity, modify_fields),
+            version=event_version
+        )
+
+    elif event_type == "DELETE":
+        return GOB.DELETE.create_event(
+            _tid=getattr(row, "_entity_tid"),
+            data={FIELD.LAST_EVENT: last_event},
+            version=event_version
+        )
+
+    else:
+        raise GOBException(f"Invalid event type: {event_type}")
+
+
+def _process_compare_results(
+        storage: GOBStorageHandler, model: dict, results: Iterator[Row], stats: CompareStatistics
+) -> tuple[str, str]:
     """Process the results of the in database compare.
 
     Creates the ADD, DELETE and CONFIRM records and returns them with the remaining records.
@@ -144,42 +203,27 @@ def _process_compare_results(storage, model, results, stats):
     :return: list of events, list of remaining records
     """
     version = model['version']
-    # Take two files: one for confirms and one for other events
-    with ProgressTicker("Process compare result", 10000) as progress, \
-            ContentsWriter() as contents_writer, \
-            ContentsWriter() as confirms_writer, \
-            EventCollector(contents_writer, confirms_writer, version) as event_collector:
+    fields = model["all_fields"]
 
-        filename = contents_writer.filename
-        confirms = confirms_writer.filename
+    with (
+        ProgressTicker("Process compare result", 10_000) as progress,
+        ContentsWriter() as contents_writer,
+        ContentsWriter() as confirms_writer,
+        EventCollector(contents_writer, confirms_writer, version) as event_collector
+    ):
+        for chunk in chunked(results, 10_000):
+            modify_cur_entities = _get_modify_current_entities(storage, chunk)
 
-        for row in results:
-            progress.tick()
-            # Get the data for this record and create the event
-            entity = row["_original_value"]
+            for row in chunk:
+                progress.tick()
 
-            stats.compare(row)
+                event = _process_compare_result_row(
+                    row=row,
+                    event_version=version,
+                    modify_current_entities=modify_cur_entities,
+                    modify_fields=fields
+                )
+                stats.compare({"type": event["event"]})
+                event_collector.collect(event)
 
-            if row['type'] == 'ADD':
-                entity["_last_event"] = row['_last_event']
-                event = GOB.ADD.create_event(row['_tid'], entity, version)
-            elif row['type'] == 'CONFIRM':
-                data = {
-                    '_last_event': row['_last_event']
-                }
-                event = GOB.CONFIRM.create_event(row['_tid'], data, version)
-            elif row['type'] == 'MODIFY':
-                current_entity = storage.get_current_entity(entity)
-                modifications = get_modifications(current_entity, entity, model['all_fields'])
-                event = get_event_for(current_entity, entity, modifications, version)
-            elif row['type'] == 'DELETE':
-                data = {
-                    '_last_event': row['_last_event']
-                }
-                event = GOB.DELETE.create_event(row['_entity_tid'], data, version)
-            else:
-                continue
-
-            event_collector.collect(event)
-
-    return filename, confirms
+    return contents_writer.filename, confirms_writer.filename
