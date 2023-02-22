@@ -3,6 +3,7 @@ import logging
 from unittest import TestCase, mock
 from unittest.mock import MagicMock, patch, ANY
 
+from gobcore.exceptions import GOBException
 from gobcore.logging.logger import logger
 from gobcore.message_broker.offline_contents import ContentsWriter
 
@@ -33,9 +34,15 @@ class TestCompare(TestCase):
                     "entity_id": "identificatie",
                     "version": '0.9',
                     "has_states": False,
+                    "all_fields": {
+                        "identificatie": {
+                            "type": "GOB.String"
+                        }
+                    }
                 }
             }
         }
+        mock_model.__getitem__.return_value
         mock_event_collector.reset_mock()
         mock_writer.reset_mock()
         logger.configure({}, "TEST_COMPARE")
@@ -68,6 +75,24 @@ class TestCompare(TestCase):
         result = compare(message)
         self.assertNotEqual(result, None)
 
+    def test_compare_invalid_type(self, storage_mock):
+        storage_mock.return_value = self.mock_storage
+        original_value = {"_last_event": 123}
+
+        class Row:
+            _original_value = original_value
+            _tid = 1
+            type = "NONVALIDTYPE"
+            _last_event = 1
+            _hash = "1234567890"
+            _entity_tid = 2
+
+        self.mock_storage.compare_temporary_data.return_value = [Row]
+        message = fixtures.get_message_fixture()
+
+        with self.assertRaises(GOBException):
+            compare(message)
+
     def test_compare_creates_delete(self, storage_mock):
         storage_mock.return_value = self.mock_storage
 
@@ -75,9 +100,16 @@ class TestCompare(TestCase):
         original_value = {
             "_last_event": 123
         }
-        self.mock_storage.compare_temporary_data.return_value = [
-            {'_original_value': original_value, '_tid': 1, 'type': 'DELETE',
-             '_entity_tid': 2, '_last_event': 1, '_hash': '1234567890'}]
+
+        class Row:
+            _original_value = original_value
+            _tid = 1
+            type = "DELETE"
+            _last_event = 1
+            _hash = "1234567890"
+            _entity_tid = 2
+
+        self.mock_storage.compare_temporary_data.return_value = [Row]
         message = fixtures.get_message_fixture()
 
         result = compare(message)
@@ -98,9 +130,15 @@ class TestCompare(TestCase):
         original_value = {
             "_last_event": 123
         }
-        self.mock_storage.compare_temporary_data.return_value = [
-            {'_original_value': original_value, '_tid': data['_tid'],
-             'type': 'ADD', '_last_event': 1, '_hash': '1234567890'}]
+
+        class Row:
+            _original_value = original_value
+            _tid = data["_tid"]
+            type = "ADD"
+            _last_event = 1
+            _hash = "1234567890"
+
+        self.mock_storage.compare_temporary_data.return_value = [Row]
 
         result = compare(message)
 
@@ -121,9 +159,15 @@ class TestCompare(TestCase):
         original_value = {
             "_last_event": 123
         }
-        self.mock_storage.compare_temporary_data.return_value = [
-            {'_original_value': original_value, '_tid': data['_tid'],
-             'type': 'ADD', '_last_event': 1, '_hash': '1234567890'}]
+
+        class Row:
+            _original_value = original_value
+            _tid = data["_tid"]
+            type = "ADD"
+            _last_event = 1
+            _hash = "1234567890"
+
+        self.mock_storage.compare_temporary_data.return_value = [Row]
 
         result = compare(message)
 
@@ -139,9 +183,15 @@ class TestCompare(TestCase):
         original_value = {
             "_last_event": 123
         }
-        self.mock_storage.compare_temporary_data.return_value = [
-            {'_original_value': original_value, '_tid': 1, 'type': 'CONFIRM',
-             '_last_event': 1, '_hash': '1234567890'}]
+
+        class Row:
+            _original_value = original_value
+            _tid = 1
+            type = "CONFIRM"
+            _last_event = 1
+            _hash = "1234567890"
+
+        self.mock_storage.compare_temporary_data.return_value = [Row]
         message = fixtures.get_message_fixture()
 
         result = compare(message)
@@ -159,12 +209,15 @@ class TestCompare(TestCase):
         original_value = {
             "_last_event": 123
         }
-        self.mock_storage.compare_temporary_data.return_value = [
-            {'_original_value': original_value, '_tid': 1, 'type': 'CONFIRM',
-             '_last_event': 1, '_hash': '1234567890'},
-            {'_original_value': original_value, '_tid': 1, 'type': 'CONFIRM',
-             '_last_event': 1, '_hash': '1234567890'}
-        ]
+
+        class Row:
+            _original_value = original_value
+            _tid = 1
+            type = "CONFIRM"
+            _last_event = 1
+            _hash = "1234567890"
+
+        self.mock_storage.compare_temporary_data.return_value = [Row] * 2
         message = fixtures.get_message_fixture()
 
         result = compare(message)
@@ -190,8 +243,7 @@ class TestCompare(TestCase):
         entity = fixtures.get_entity_fixture(**data_object)
         setattr(entity, field_name, old_value)
 
-        self.mock_storage.get_current_ids.return_value = [entity]
-        self.mock_storage.get_current_entity.return_value = entity
+        self.mock_storage.get_entities.return_value = [entity]
 
         # Add the field to the model as well
         mock_model.__getitem__.return_value = {
@@ -215,10 +267,15 @@ class TestCompare(TestCase):
             "_hash": "1234",
             field_name: new_value
         }
-        self.mock_storage.compare_temporary_data.return_value = [
-            {'_original_value': original_value, '_tid': data_object['_tid'],
-             'type': 'MODIFY', '_last_event': 1,
-             '_hash': '1234567890'}]
+
+        class Row:
+            _original_value = original_value
+            _tid = data_object['_tid']
+            type = "MODIFY"
+            _last_event = 1
+            _hash = "1234567890"
+
+        self.mock_storage.compare_temporary_data.return_value = [Row]
 
         result = compare(message)
 
