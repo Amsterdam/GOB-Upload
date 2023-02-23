@@ -95,18 +95,20 @@ class TestContextManager(unittest.TestCase):
         handler.GOBStorageHandler.Session = mock_session
         storage = handler.GOBStorageHandler(fixtures.random_string())
 
-        mock_conn = MagicMock()
+        mock_conn = MagicMock(spec=Connection)
         storage.engine.connect.return_value = mock_conn
 
         mock_session_instance = MagicMock()
         mock_session.return_value = mock_session_instance
 
         with storage.get_session(compile_cache=None) as session:
-            self.assertEqual(session, mock_session_instance)
-            self.assertEqual(storage.session, mock_session_instance)
+            assert session == mock_session_instance
+            assert storage.session == mock_session_instance
 
         mock_conn.execution_options.assert_called_with(compile_cache=None)
-        mock_session.assert_called_with(bind=mock_conn)
+
+        # assert we call session with connection including execution options (copy)
+        mock_session.assert_called_with(bind=mock_conn.execution_options.return_value)
 
     def test_session_context_invalidate(self):
         mock_session = MagicMock(spec=StreamSession)
