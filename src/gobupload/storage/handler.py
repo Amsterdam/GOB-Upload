@@ -436,9 +436,8 @@ WHERE
             e.g. 'compile_cache' and 'yield_per'
         """
         connection = self.engine.connect()
-        if execution_options:
-            connection.execution_options(**execution_options)
-
+        # sqlalchemy < 2.0: connection.execution_options returns a copy, not inplace
+        connection = connection.execution_options(**execution_options) if execution_options else connection
         self.session = self.Session(bind=connection)
 
         try:
