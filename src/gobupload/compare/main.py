@@ -70,7 +70,7 @@ def compare(msg):
 
     stats = CompareStatistics()
 
-    with storage.get_session(invalidate=True, yield_per=10_000):
+    with storage.get_session(invalidate=True):
         # Check any dependencies
         if not meets_dependencies(storage, msg):
             return {

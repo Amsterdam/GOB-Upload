@@ -79,10 +79,8 @@ class StreamSession(SessionORM):
 
     def _update_param(self, **kwargs) -> dict[str, dict]:
         exec_opts = kwargs.pop("execution_options", {})
-        bind_exec_opts = self.bind.get_execution_options() if self.bind else {}
 
-        # bind_exec_opts can be a sqlalchemy immutable dict, which doesnt allow dict merging
-        if "yield_per" not in bind_exec_opts.keys() | exec_opts.keys():
+        if "yield_per" not in exec_opts:
             exec_opts["yield_per"] = self.YIELD_PER
 
         return {"execution_options": exec_opts, **kwargs} if exec_opts else kwargs
@@ -394,7 +392,7 @@ WHERE
             fields=[FIELD.TID],
             mode=mode
         )
-        yield from self.session.stream_execute(query)
+        yield from self.session.stream_execute(query, execution_options={"yield_per": 10_000})
 
     @with_session
     def analyze_temporary_table(self):
@@ -425,19 +423,15 @@ WHERE
             return self.tablename + "_tmp"
 
     @contextmanager
-    def get_session(self, invalidate: bool = False, **execution_options) -> StreamSession:
+    def get_session(self, invalidate: bool = False) -> StreamSession:
         """
         Exposes an underlying database session as a managed, not transactional, context.
         Isolation level for this context is 'autocommmit' through sessionmaker.
 
         :param invalidate: Invalidate and release connection on exiting context.
             Useful in case you want to discard the database session, i.e. to drop temp table
-        :param execution_options: options passed to the connection bound to the session
-            e.g. 'compile_cache' and 'yield_per'
         """
         connection = self.engine.connect()
-        # sqlalchemy < 2.0: connection.execution_options returns a copy, not inplace
-        connection = connection.execution_options(**execution_options) if execution_options else connection
         self.session = self.Session(bind=connection)
 
         try:
