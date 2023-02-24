@@ -90,24 +90,6 @@ class TestContextManager(unittest.TestCase):
         mock_session_instance.close.assert_called()
         mock_logger.error.assert_called_with("ConnectionError('any')")
 
-    def test_session_context_execution_options(self):
-        mock_session = MagicMock()
-        handler.GOBStorageHandler.Session = mock_session
-        storage = handler.GOBStorageHandler(fixtures.random_string())
-
-        mock_conn = MagicMock()
-        storage.engine.connect.return_value = mock_conn
-
-        mock_session_instance = MagicMock()
-        mock_session.return_value = mock_session_instance
-
-        with storage.get_session(compile_cache=None) as session:
-            self.assertEqual(session, mock_session_instance)
-            self.assertEqual(storage.session, mock_session_instance)
-
-        mock_conn.execution_options.assert_called_with(compile_cache=None)
-        mock_session.assert_called_with(bind=mock_conn)
-
     def test_session_context_invalidate(self):
         mock_session = MagicMock(spec=StreamSession)
         handler.GOBStorageHandler.Session = mock_session

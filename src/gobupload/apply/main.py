@@ -133,7 +133,7 @@ def apply(msg):
             apply_confirm_events(storage, stats, msg)
         else:
             logger.info(f"Start application of unhandled {model} events")
-            with storage.get_session(compile_cache=None):
+            with storage.get_session():
                 last_events = set(storage.get_current_ids(exclude_deleted=False))
 
             apply_events(storage, last_events, entity_max_eventid, stats)
