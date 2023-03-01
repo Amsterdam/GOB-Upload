@@ -436,35 +436,34 @@ WHERE
         self.storage.engine.execute.assert_called_with('SELECT * FROM test')
 
     def test_combinations_plain(self):
-        mock_session = MagicMock()
-        self.storage.get_session = mock_session
+        mock_conn = MagicMock(spec=Connection)
+        mock_conn.__enter__.return_value.execute.return_value.all.return_value = ["row1"]
+        self.storage.engine.connect.return_value = mock_conn
 
         result = self.storage.get_source_catalogue_entity_combinations()
-        self.assertIsInstance(result, list)
+        assert result == ["row1"]
 
-        query = mock_session.return_value.__enter__().stream_execute.call_args[0][0]
+        query = mock_conn.__enter__.return_value.execute.call_args[0][0]
         query = str(query.compile(compile_kwargs={"literal_binds": True}))
-        self.assertEqual(
-            "SELECT DISTINCT events.source, events.catalogue, events.entity \n"
-            "FROM events",
-            query
-        )
+        expected = "SELECT DISTINCT events.source, events.catalogue, events.entity \nFROM events"
+        assert query == expected
 
     def test_combinations_with_args(self):
-        mock_session = MagicMock()
-        self.storage.get_session = mock_session
+        mock_conn = MagicMock(spec=Connection)
+        mock_conn.__enter__.return_value.execute.return_value.all.return_value = ["row1"]
+        self.storage.engine.connect.return_value = mock_conn
 
         result = self.storage.get_source_catalogue_entity_combinations(source="val")
-        self.assertIsInstance(result, list)
+        assert result == ["row1"]
 
-        query = mock_session.return_value.__enter__().stream_execute.call_args[0][0]
+        query = mock_conn.__enter__.return_value.execute.call_args[0][0]
         query = str(query.compile(compile_kwargs={"literal_binds": True}))
-        self.assertEqual(
-            "SELECT DISTINCT events.source, events.catalogue, events.entity \n"
-            "FROM events \n"
-            "WHERE events.source = 'val'",
-            query
-        )
+        expected = "\n".join([
+            "SELECT DISTINCT events.source, events.catalogue, events.entity ",
+            "FROM events ",
+            "WHERE events.source = 'val'"
+        ])
+        assert query == expected
 
     def test_analyze_table(self):
         self.storage.engine = MagicMock()
