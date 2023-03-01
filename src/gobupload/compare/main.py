@@ -69,6 +69,7 @@ def compare(msg):
     logger.info(f"Compare {model}")
 
     stats = CompareStatistics()
+    filename, confirms = None, None  # initialise here, storage.get_session doesn't re-raise exception
 
     with storage.get_session(invalidate=True):
         # Check any dependencies
@@ -100,7 +101,7 @@ def compare(msg):
             ):
                 _collect_entities(msg["contents"], collector.collect_initial_add, enricher, populator, stats)
 
-            filename, confirms = writer.filename, None
+            filename = writer.filename
 
     # Build result message
     results = stats.results()
