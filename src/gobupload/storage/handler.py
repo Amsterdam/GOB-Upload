@@ -493,7 +493,6 @@ WHERE
         This process can take a long time for big collections, keep this in a seperate session.
         Use pagination by eventid instead of streaming results to prevent locking the events table.
 
-
         :param eventid: minimal eventid (0 for all)
         :param limit: limit returned result to this size
         :return: Iterator containing lists of events
@@ -518,12 +517,17 @@ WHERE
             .order_by(events.eventid.asc())
             .limit(limit)
         )
+
+        def _get_chunk(after_event: int) -> list[Row]:
+            # close connection after every query, release transaction
+            with self.engine.connect() as conn:
+                return conn.execute(query.where(events.eventid > after_event)).all()
+
         start_after = eventid
 
-        with self.engine.connect() as conn:
-            while chunk := conn.execute(query.where(events.eventid > start_after)).all():
-                yield chunk
-                start_after = getattr(chunk[-1], "eventid")
+        while chunk := _get_chunk(start_after):
+            yield chunk
+            start_after = getattr(chunk[-1], "eventid")
 
     @with_session
     def has_any_event(self, filter_: dict) -> bool:
@@ -758,8 +762,8 @@ WHERE
             if hasattr(self.DbEvent, key) and val:
                 query = query.where(getattr(self.DbEvent, key) == val)
 
-        with self.get_session() as session:
-            return list(session.stream_execute(query))
+        with self.engine.connect() as conn:
+            return conn.execute(query).all()
 
     def analyze_table(self):
         """Runs VACUUM ANALYZE on table

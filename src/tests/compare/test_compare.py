@@ -1,3 +1,4 @@
+import contextlib
 import logging
 
 from unittest import TestCase, mock
@@ -293,3 +294,28 @@ class TestCompare(TestCase):
         self.assertEqual(modifications[0]['key'], field_name)
         self.assertEqual(modifications[0]['old_value'], old_value)
         self.assertEqual(modifications[0]['new_value'], new_value)
+
+    def test_session_exception_return_msg(self, storage_mock):
+        """Validate we return a message during a database session exception."""
+        @contextlib.contextmanager
+        def MockSession(invalidate=False):
+            try:
+                yield MagicMock()
+            except:
+                pass
+            finally:
+                pass
+
+        storage_mock.return_value = self.mock_storage
+        self.mock_storage.get_session = MockSession
+        self.mock_storage.has_any_event.side_effect = Exception("Database fail")
+
+        message = fixtures.get_message_fixture(contents=[])
+        message["header"]["depends_on"] = {"xyz": "abc"}
+
+        result = compare(message)
+
+        assert result["header"] == message["header"]
+        assert result["contents_ref"] is None
+        assert result["confirms"] is None
+        assert result["summary"] is not None  # assert summary is set
