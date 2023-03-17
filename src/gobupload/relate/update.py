@@ -3,6 +3,9 @@
 import hashlib
 import json
 from datetime import date, datetime
+from typing import Iterator
+
+from sqlalchemy import text
 
 from gobcore.events.import_events import ADD, CONFIRM, DELETE, MODIFY
 from gobcore.exceptions import GOBException
@@ -16,8 +19,7 @@ from gobcore.utils import ProgressTicker
 
 from gobupload import gob_model
 from gobupload.compare.event_collector import EventCollector
-from gobupload.config import DEBUG
-from gobupload.storage.execute import _execute
+from gobupload.storage.handler import StreamSession
 from gobupload.utils import random_string
 from gobupload.relate.exceptions import RelateException
 
@@ -98,23 +100,16 @@ FROM group_start_validity
 WINDOW w AS (PARTITION BY {FIELD.ID}, consecutive_period ORDER BY {FIELD.ID}, {FIELD.SEQNR})
 """
 
-    def create(self):
+    def create(self, session: StreamSession):
         """Creates the table with index on id, volgnummer
 
         :return:
         """
-        self.drop()
         query = self._query()
 
-        _execute(f"CREATE UNLOGGED TABLE {self.name} AS ({query})")
-        _execute(f"CREATE INDEX ON {self.name}({FIELD.ID}, {FIELD.SEQNR})")
-
-    def drop(self):
-        """Drops this table
-
-        :return:
-        """
-        _execute(f"DROP TABLE IF EXISTS {self.name}")
+        session.execute(f"CREATE TEMPORARY TABLE {self.name} AS ({query})")
+        session.execute(f"CREATE INDEX ON {self.name}({FIELD.ID}, {FIELD.SEQNR})")
+        session.execute(f"ANALYZE {self.name}")
 
     @classmethod
     def from_catalog_collection(cls, catalog_name: str, collection_name: str, table_name: str):
@@ -192,8 +187,8 @@ class EventCreator:
                 FIELD.HASH: row[FIELD.HASH],
             }
             return MODIFY.create_event(row['rel_id'], data, _RELATE_VERSION)
-        data = {FIELD.LAST_EVENT: row[FIELD.LAST_EVENT]}
-        return CONFIRM.create_event(row['rel_id'], data, _RELATE_VERSION)
+
+        return None  # No event created, CONFIRMS are skipped
 
 
 class Relater:
@@ -247,7 +242,8 @@ class Relater:
         f'rel_{FIELD.HASH}',
     ]
 
-    def __init__(self, src_catalog_name, src_collection_name, src_field_name):
+    def __init__(self, session: StreamSession, src_catalog_name: str, src_collection_name: str, src_field_name: str):
+        self.session = session
         self.src_catalog_name = src_catalog_name
         self.src_collection_name = src_collection_name
         self.src_field_name = src_field_name
@@ -286,18 +282,20 @@ class Relater:
         self.relation_table = "rel_" + get_relation_name(self.model, src_catalog_name, src_collection_name,
                                                          src_field_name)
 
-        # begin_geldigheid tmp table names
-        datestr = datetime.now().strftime('%Y%m%d')
-        src_intv_tmp_table_name = f"tmp_{self.src_catalog_name}_{self.src_collection['abbreviation']}_intv_{datestr}" \
-                                  f"_{random_string(6)}".lower()
-        dst_intv_tmp_table_name = f"tmp_{self.dst_catalog_name}_{self.dst_collection['abbreviation']}_intv_{datestr}" \
-                                  f"_{random_string(6)}".lower()
+        src_intv_tmp_table_name = "_".join([
+            self.src_catalog_name, self.src_collection['abbreviation'], "intv", random_string(6)
+        ]).lower()
+
+        dst_intv_tmp_table_name = "_".join([
+            self.dst_catalog_name, self.dst_collection['abbreviation'], "intv", random_string(6)
+        ]).lower()
 
         self.src_intv_tmp_table = StartValiditiesTable(self.src_table_name, src_intv_tmp_table_name)
         self.dst_intv_tmp_table = StartValiditiesTable(self.dst_table_name, dst_intv_tmp_table_name)
 
-        self.result_table_name = f"tmp_{self.src_catalog_name}_{self.src_collection['abbreviation']}_" \
-                                 f"{src_field_name}_result"
+        self.result_table_name = "_".join([
+            self.src_catalog_name, self.src_collection['abbreviation'], src_field_name, "result"
+        ]).lower()
 
     def __enter__(self):
         self._create_tmp_intv_tables()
@@ -305,18 +303,11 @@ class Relater:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if DEBUG:
-            logger.info("DEBUG ON: Not removing temporary tables")
-        else:
-            self.src_intv_tmp_table.drop()
-            self.dst_intv_tmp_table.drop()
-            self._drop_tmp_result_table()
+        pass
 
-    def _get_applications_in_src(self):
+    def _get_applications_in_src(self) -> list[str]:
         query = f"SELECT DISTINCT {FIELD.APPLICATION} FROM {self.src_table_name}"
-
-        result = _execute(query)
-        return [row[0] for row in result]
+        return self.session.execute(query).scalars().all()
 
     def _validity_select_expressions_src(self):
         if self.src_has_states and self.dst_has_states:
@@ -731,7 +722,7 @@ INNER JOIN (
         """Creates tmp tables from recursive queries to determine the begin_geldigheid for each volgnummer."""
         if self.src_has_states:
             logger.info(f"Creating temporary table {self.src_intv_tmp_table.name}")
-            self.src_intv_tmp_table.create()
+            self.src_intv_tmp_table.create(self.session)
 
         if self.dst_has_states:
             if self.src_table_name == self.dst_table_name:
@@ -739,10 +730,7 @@ INNER JOIN (
                 self.dst_intv_tmp_table = self.src_intv_tmp_table
             else:
                 logger.info(f"Creating temporary table {self.dst_intv_tmp_table.name}")
-                self.dst_intv_tmp_table.create()
-
-    def _drop_tmp_result_table(self):
-        _execute(f"DROP TABLE IF EXISTS {self.result_table_name}")
+                self.dst_intv_tmp_table.create(self.session)
 
     def _create_tmp_result_table(self):
         varchar = 'varchar'
@@ -789,11 +777,10 @@ INNER JOIN (
         columns = ['rowid'] + self._select_aliases()
 
         column_list = ",\n".join([f"    {column} {types[column]}" for column in columns])
-        query = f"CREATE UNLOGGED TABLE IF NOT EXISTS {self.result_table_name} (\n{column_list}\n)"
+        query = text(f"CREATE TEMPORARY TABLE {self.result_table_name} (\n{column_list}\n)")
 
         logger.info(f"Create temporary results table {self.result_table_name}")
-        _execute(query)
-        _execute("TRUNCATE " + self.result_table_name)
+        self.session.execute(query)
 
     def _src_entities_range(self, min_src_event_id: int, max_src_event_id: int = None):
         filters = []
@@ -1036,14 +1023,12 @@ LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(self._dst_table_outer
         return relation
 
     def _is_initial_load(self) -> bool:
-        query = f"SELECT {FIELD.ID} FROM {self.relation_table} LIMIT 1"
-        result = _execute(query)
+        query = text(f"SELECT {FIELD.ID} FROM {self.relation_table} LIMIT 1")
 
-        try:
-            next(result)
-        except StopIteration:
+        if self.session.execute(query).scalar() is None:
             logger.info("Relation table is empty. Have initial load.")
             return True
+
         return False
 
     def _check_preconditions(self):
@@ -1064,20 +1049,20 @@ LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(self._dst_table_outer
                                f"{FIELD.APPLICATION} that are not defined in GOBSources: {','.join(difference)}")
 
     def _get_max_src_event(self) -> int:
-        query = f"SELECT MAX({FIELD.LAST_EVENT}) FROM {self.src_table_name}"
-        return next(_execute(query))[0] or 0
+        query = text(f"SELECT MAX({FIELD.LAST_EVENT}) FROM {self.src_table_name}")
+        return self.session.execute(query).scalar() or 0
 
     def _get_max_dst_event(self) -> int:
-        query = f"SELECT MAX({FIELD.LAST_EVENT}) FROM {self.dst_table_name}"
-        return next(_execute(query))[0] or 0
+        query = text(f"SELECT MAX({FIELD.LAST_EVENT}) FROM {self.dst_table_name}")
+        return self.session.execute(query).scalar() or 0
 
     def _get_min_src_event(self) -> int:
-        query = f"SELECT MAX({FIELD.LAST_SRC_EVENT}) FROM {self.relation_table}"
-        return next(_execute(query))[0] or 0
+        query = text(f"SELECT MAX({FIELD.LAST_SRC_EVENT}) FROM {self.relation_table}")
+        return self.session.execute(query).scalar() or 0
 
     def _get_min_dst_event(self) -> int:
-        query = f"SELECT MAX({FIELD.LAST_DST_EVENT}) FROM {self.relation_table}"
-        return next(_execute(query))[0] or 0
+        query = text(f"SELECT MAX({FIELD.LAST_DST_EVENT}) FROM {self.relation_table}")
+        return self.session.execute(query).scalar() or 0
 
     def _get_next_max_src_event(self, start_eventid: int, max_rows: int, max_eventid: int) -> int:
         """Gets next max src event, counting max :max_rows: from :start_eventid:, respecting :max_eventid:
@@ -1096,24 +1081,16 @@ LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(self._dst_table_outer
                 f"ORDER BY src.{FIELD.LAST_EVENT} " \
                 f"OFFSET {max_rows} - 1 " \
                 f"LIMIT 1"
+        return self.session.execute(text(query)).scalar() or max_eventid
 
-        try:
-            return next(_execute(query))[0]
-        except StopIteration:
-            return max_eventid
-
-    def _get_next_max_dst_event(self, start_eventid: int, max_rows: int, max_eventid: int):
+    def _get_next_max_dst_event(self, start_eventid: int, max_rows: int, max_eventid: int) -> int:
         query = f"SELECT {FIELD.LAST_EVENT} " \
                 f"FROM {self.dst_table_name} " \
                 f"WHERE {FIELD.LAST_EVENT} > {start_eventid} AND {FIELD.LAST_EVENT} <= {max_eventid} " \
                 f"ORDER BY {FIELD.LAST_EVENT} " \
                 f"OFFSET {max_rows} - 1 " \
                 f"LIMIT 1"
-
-        try:
-            return next(_execute(query))[0]
-        except StopIteration:
-            return max_eventid
+        return self.session.execute(text(query)).scalar() or max_eventid
 
     def _get_chunks(self, start_src_event: int, max_src_event: int, start_dst_event: int, max_dst_event: int,
                     only_src_side: bool = False):
@@ -1199,11 +1176,12 @@ LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(self._dst_table_outer
                 f"  ) q WHERE rn > 1" \
                 f")"
 
-        return _execute(query)
+        return self.session.execute(text(query))
 
     def _query_into_results_table(self, query: str, is_conflicts_query: bool = False):
         result_table_columns = ', '.join(self._select_aliases(is_conflicts_query))
-        return _execute(f"INSERT INTO {self.result_table_name} ({result_table_columns}) ({query})")
+        query = f"INSERT INTO {self.result_table_name} ({result_table_columns}) ({query})"
+        return self.session.execute(text(query))
 
     def _get_updates(self, initial_load: bool = False):
         """Relates in chunks. Chunks are determined by the _get_chunks method.
@@ -1222,11 +1200,15 @@ LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(self._dst_table_outer
         query = self._create_delete_events_query(start_src_event, max_src_event, start_dst_event, max_dst_event)
         self._query_into_results_table(query)
 
-        for row in self._read_results():
-            yield dict(row)
+        self.session.execute(text(f"ANALYZE {self.result_table_name}"))
 
-    def _read_results(self):
-        yield from _execute(f"SELECT * FROM {self.result_table_name}", stream=True, max_row_buffer=25000)
+        return self._read_results()
+
+    def _read_results(self) -> Iterator[dict]:
+        query = text(f"SELECT * FROM {self.result_table_name}")
+
+        for row in self.session.stream_execute(query, execution_options={"yield_per": 25_000}):
+            yield dict(row)
 
     def _get_changed_ranges(self):
         """Returns a tuple (start_src_event, max_src_event, start_dst_event, max_dst_event) of objects to consider
@@ -1248,9 +1230,8 @@ LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(self._dst_table_outer
         self._get_updates_chunked(0, max_src_event, 0, max_dst_event, only_src_side=True,
                                   is_conflicts_query=is_conflicts_query)
 
-    def _get_count_for(self, frm: str):
-        result = _execute(f"SELECT COUNT(*) FROM {frm} alias")
-        return next(result)[0]
+    def _get_count_for(self, frm: str) -> int:
+        return self.session.execute(f"SELECT COUNT(*) FROM {frm} alias").scalar() or 0
 
     def _force_full_relate(self) -> bool:
         """Returns True if should force full relate. Full relate is forced when there are many updated src/dst objects
@@ -1285,27 +1266,24 @@ LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(self._dst_table_outer
 
         event_creator = EventCreator(self.dst_has_states)
         initial_load = do_full_update or self._is_initial_load() or self._force_full_relate()
+        result = self._get_updates(initial_load)
 
-        with ProgressTicker("Process relate src result", 10000) as progress, \
-                ContentsWriter() as contents_writer, \
-                ContentsWriter() as confirms_writer, \
-                EventCollector(contents_writer, confirms_writer, _RELATE_VERSION) as event_collector:
-
-            filename = contents_writer.filename
-            confirms = confirms_writer.filename
-
-            result = self._get_updates(initial_load)
-
+        with (
+            ProgressTicker("Process relate src result", 10_000) as progress,
+            ContentsWriter() as contents_writer,
+            EventCollector(contents_writer, confirms_writer=None, version=_RELATE_VERSION) as event_collector
+        ):
             for row in result:
                 progress.tick()
-                event = event_creator.create_event(self._format_relation(row))
-                event_collector.collect(event)
 
-            return filename, confirms
+                if event := event_creator.create_event(self._format_relation(row)):
+                    event_collector.collect(event)
+
+        return contents_writer.filename
 
     def get_conflicts(self):
         max_src_event = self._get_max_src_event()
         max_dst_event = self._get_max_dst_event()
 
         self._get_updates_full(max_src_event, max_dst_event, is_conflicts_query=True)
-        yield from self._read_results()
+        return self._read_results()

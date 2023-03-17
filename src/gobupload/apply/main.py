@@ -82,8 +82,7 @@ def apply_confirm_events(storage: GOBStorageHandler, stats: UpdateStatistics, ms
     timestamp = msg["header"]["timestamp"]
 
     try:
-        if catalogue != "rel":
-            _apply_confirms(storage, confirms, timestamp=timestamp, stats=stats)
+        _apply_confirms(storage, confirms, timestamp=timestamp, stats=stats)
     finally:
         confirms.unlink(missing_ok=True)
         del msg["confirms"]
