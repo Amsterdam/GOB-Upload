@@ -470,6 +470,9 @@ WHERE
         self.storage.analyze_table()
         self.storage.engine.connect.return_value.execute.assert_called_with('VACUUM ANALYZE meetbouten_meetbouten')
 
+        self.storage.analyze_table(vacuum=False)
+        self.storage.engine.connect.return_value.execute.assert_called_with('ANALYZE meetbouten_meetbouten')
+
     def test_add_events(self):
         self.storage.session = MagicMock()
         metadata = fixtures.get_metadata_fixture()

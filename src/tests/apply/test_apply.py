@@ -84,12 +84,13 @@ class TestApply(TestCase):
         # Even if none are applied, still trigger notification
         mock_add_notification.assert_called_with(expected_result_msg, mock_event_notification())
 
+    @patch('gobupload.apply.main._should_analyze')
     @patch('gobupload.apply.main.add_notification')
     @patch('gobupload.apply.main.EventNotification')
     @patch('gobupload.apply.main.logger', MagicMock())
     @patch('gobupload.apply.main.get_event_ids', lambda s: (1, 2))
     @patch('gobupload.apply.main.apply_events')
-    def test_apply(self, mock_apply, mock_event_notification, mock_add_notification, mock):
+    def test_apply(self, mock_apply, mock_event_notification, mock_add_notification, mock_analyze, mock):
         mock.return_value = self.mock_storage
         combination = MockCombination("any source", "any catalogue", "any entity")
         self.mock_storage.get_source_catalogue_entity_combinations.return_value = [combination]
@@ -99,8 +100,9 @@ class TestApply(TestCase):
         result_msg = {'header': {}, 'summary': ANY}
 
         self.assertEqual(result, result_msg)
-        mock_apply.assert_called()
 
+        mock_apply.assert_called()
+        mock_analyze.assert_called()
         mock_event_notification.assert_called_with({}, [1, 1])
         mock_add_notification.assert_called_with(result_msg, mock_event_notification())
 
@@ -192,61 +194,38 @@ class TestApply(TestCase):
         mock_apply.assert_not_called()
 
     def test_should_analyze(self, mock):
-        stats = MagicMock()
+        stats = MagicMock(spec=UpdateStatistics)
+        storage = MagicMock(spec=GOBStorageHandler)
+
         stats.get_applied_stats = lambda: {
-            'CONFIRM': {
-                'relative': 0.2,
-                'absolute': 1,
+            "CONFIRM": {
+                "relative": 0.2,
+                "absolute": 1,
             }
         }
 
-        self.assertTrue(_should_analyze(stats))
+        _should_analyze(storage, stats)
+        storage.analyze_table.assert_called_with(vacuum=True)
 
         stats.get_applied_stats = lambda: {
-            'CONFIRM': {
-                'relative': 0,
-                'absolute': 0,
+            "CONFIRM": {
+                "relative": 0,
+                "absolute": 0,
             }
         }
-        self.assertFalse(_should_analyze(stats))
+        storage.analyze_table.reset_mock()
+        assert _should_analyze(storage, stats) is None
+        storage.analyze_table.assert_not_called()
 
         stats.get_applied_stats = lambda: {
-            'CONFIRM': {
-                'relative': 0.8,
-                'absolute': 2,
+            "CONFIRM": {
+                "relative": 0.8,
+                "absolute": 2,
             }
         }
-
-        self.assertFalse(_should_analyze(stats))
-
-    @patch("gobupload.apply.main.UpdateStatistics")
-    @patch("gobupload.apply.main._should_analyze")
-    @patch("gobupload.apply.main.get_event_ids", lambda x: (1, 1))
-    @patch("gobupload.apply.main.is_corrupted", lambda x, y: True)
-    def test_apply_trigger_analyze(self, mock_should_analyze, mock_statistics, mock_storage_handler):
-        mock_storage_handler.return_value.get_source_catalogue_entity_combinations.return_value = [type('Res', (), {
-            'source': 'the source',
-            'catalogue': 'the catalogue',
-            'entity': 'the entity',
-        })]
-
-        # Should analyze is True and mode is full
-        msg = {'header': {'mode': 'full'}}
-        mock_should_analyze.return_value = True
-        apply(msg)
-        mock_storage_handler.return_value.analyze_table.assert_called_once()
-        mock_storage_handler.reset_mock()
-
-        # Should analyze is True and mode is not full
-        msg = {'header': {'mode': 'notfull'}}
-        apply(msg)
-        mock_storage_handler.return_value.analyze_table.assert_not_called()
-
-        # Should analyze is False and mode is full
-        msg = {'header': {'mode': 'full'}}
-        mock_should_analyze.return_value = False
-        apply(msg)
-        mock_storage_handler.return_value.analyze_table.assert_not_called()
+        storage.analyze_table.reset_mock()
+        _should_analyze(storage, stats)
+        storage.analyze_table.assert_called_with(vacuum=False)
 
     @patch("gobupload.apply.main.add_notification")
     @patch("gobupload.apply.main._get_source_catalog_entity_combinations")

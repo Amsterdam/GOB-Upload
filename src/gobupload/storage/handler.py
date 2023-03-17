@@ -765,14 +765,16 @@ WHERE
         with self.engine.connect() as conn:
             return conn.execute(query).all()
 
-    def analyze_table(self):
-        """Runs VACUUM ANALYZE on table
+    def analyze_table(self, vacuum: bool = True):
+        """Runs (VACUUM) ANALYZE on table
 
+        :param vacuum: Run VACUUM ANALYZE instead of ANALYZE (default True)
         :return:
         """
         # Create separate connection and start with COMMIT to be outside of transaction context, otherwise VACUUM won't
         # work.
+        cmd = "VACUUM ANALYZE" if vacuum else "ANALYZE"
         connection = self.engine.connect()
         connection.execute("COMMIT")
-        connection.execute(f"VACUUM ANALYZE {self.tablename}")
+        connection.execute(f"{cmd} {self.tablename}")
         connection.close()

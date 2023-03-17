@@ -87,10 +87,19 @@ def apply_confirm_events(storage: GOBStorageHandler, stats: UpdateStatistics, ms
         del msg["confirms"]
 
 
-def _should_analyze(stats):
+def _should_analyze(storage: GOBStorageHandler, stats: UpdateStatistics):
     applied_stats = stats.get_applied_stats()
-    return (1 - applied_stats.get('CONFIRM', {}).get('relative', 0)) > ANALYZE_THRESHOLD and \
-        sum([value['absolute'] for value in applied_stats.values()]) > 0
+
+    if sum([value['absolute'] for value in applied_stats.values()]) == 0:
+        return  # nothing changed
+
+    pct_confirms = applied_stats.get(CONFIRM.name, {}).get('relative', 0)
+
+    # VACUUM if % ADD/MODIFY/DELETE > threshold, else just ANALYZE
+    vacuum = (1 - pct_confirms) > ANALYZE_THRESHOLD
+
+    logger.info(f"Running {'VACUUM' if vacuum else ''} ANALYZE on table")
+    storage.analyze_table(vacuum=vacuum)
 
 
 def _get_source_catalog_entity_combinations(storage, msg):
@@ -106,7 +115,7 @@ def _get_source_catalog_entity_combinations(storage, msg):
 def apply(msg):
     mode = msg['header'].get('mode', FULL_UPLOAD)
 
-    logger.info("Apply events")
+    logger.info(f"Apply events (mode = {mode})")
 
     storage = GOBStorageHandler(only=[GOBStorageHandler.EVENTS_TABLE])
     combinations = _get_source_catalog_entity_combinations(storage, msg)
@@ -141,14 +150,10 @@ def apply(msg):
         entity_max_eventid, last_eventid = get_event_ids(storage)
         after = max(entity_max_eventid or 0, after or 0)
 
-        # Build result message
-        results = stats.results()
-        if mode == FULL_UPLOAD and _should_analyze(stats):
-            logger.info("Running VACUUM ANALYZE on table")
-            storage.analyze_table()
+        _should_analyze(storage, stats)
 
         stats.log()
-        logger.info(f"Apply events {model} completed", {'data': results})
+        logger.info(f"Apply events {model} completed", {'data': stats.results()})
 
     msg['summary'] = logger.get_summary()
 
