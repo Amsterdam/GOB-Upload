@@ -9,8 +9,12 @@ from gobupload.relate import update_materialized_view, _get_materialized_view_by
 from gobupload.relate import _get_materialized_view, WORKFLOW_EXCHANGE, WORKFLOW_REQUEST_KEY
 from gobupload.relate import process_relate, verify_process_message, get_catalog_from_msg
 from gobupload.relate import CATALOG_KEY, COLLECTION_KEY, ATTRIBUTE_KEY
+from gobupload.storage.handler import StreamSession
+
 
 mock_logger = MagicMock()
+
+
 @patch('gobupload.relate.logger', mock_logger)
 class TestInit(TestCase):
 
@@ -58,7 +62,6 @@ class TestInit(TestCase):
 
     def tearDown(self):
         pass
-
 
     @patch('gobupload.relate.gob_model', MagicMock(spec_set=gob_model))
     @patch('gobupload.relate._log_exception')
@@ -397,10 +400,14 @@ class TestInit(TestCase):
             with self.assertRaises(GOBException):
                 verify_process_message({'header': new_header})
 
+    @patch("gobupload.relate.GOBStorageHandler")
     @patch("gobupload.relate.get_relation_name", lambda m, cat, col, field: f"{cat}_{col}_{field}")
     @patch("gobupload.relate.verify_process_message")
     @patch("gobupload.relate.Relater")
-    def test_process_relate(self, mock_relater, mock_verify_process_message):
+    def test_process_relate(self, mock_relater, mock_verify_process_message, mock_storage):
+        mock_session = MagicMock(spec=StreamSession)
+        mock_storage.return_value.get_session.return_value.__enter__.return_value = mock_session
+
         msg = {
             'header': {
                 CATALOG_KEY: 'catalog',
@@ -409,15 +416,15 @@ class TestInit(TestCase):
             },
             'timestamp': 'the timestamp',
         }
-        mock_relater.return_value.__enter__.return_value.update.return_value = ('result filename', 2840)
+        mock_relater.return_value.__enter__.return_value.update.return_value = 'result filename'
 
         result = process_relate(msg)
         mock_verify_process_message.assert_called_with(msg)
 
-        mock_relater.assert_called_with('catalog', 'the collection', 'the attribute')
+        mock_relater.assert_called_with(mock_session, 'catalog', 'the collection', 'the attribute')
         mock_relater().__enter__().update.assert_called_with(False)
 
-        self.assertEqual({
+        assert result == {
             'header': {
                 CATALOG_KEY: 'catalog',
                 COLLECTION_KEY: 'the collection',
@@ -432,8 +439,7 @@ class TestInit(TestCase):
             },
             'summary': mock_logger.get_summary(),
             'contents_ref': 'result filename',
-            'confirms': 2840,
-        }, result)
+        }
 
         # Full relate forced
         msg['header']['mode'] = 'full'

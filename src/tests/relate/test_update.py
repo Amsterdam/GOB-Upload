@@ -6,6 +6,7 @@ from gobcore.exceptions import GOBException
 from gobcore.model.metadata import FIELD
 
 from gobupload.relate.update import EventCreator, RelateException, Relater, StartValiditiesTable
+from gobupload.storage.handler import StreamSession
 
 
 class MockModel:
@@ -89,25 +90,18 @@ WINDOW w AS (PARTITION BY _id, consecutive_period ORDER BY _id, volgnummer)
 
         self.assertTrue(expected in table._query())
 
-    @patch("gobupload.relate.update._execute")
-    def test_create(self, mock_execute):
+    def test_create(self):
+        mock_session = MagicMock(spec=StreamSession)
         table = StartValiditiesTable('from_table_name', 'to_table')
-        table.drop = MagicMock()
         table._query = MagicMock(return_value='the query')
 
-        table.create()
+        table.create(mock_session)
 
-        table.drop.assert_called_once()
-        mock_execute.assert_has_calls([
-            call("CREATE UNLOGGED TABLE to_table AS (the query)"),
-            call("CREATE INDEX ON to_table(_id, volgnummer)")
+        mock_session.execute.assert_has_calls([
+            call("CREATE TEMPORARY TABLE to_table AS (the query)"),
+            call("CREATE INDEX ON to_table(_id, volgnummer)"),
+            call("ANALYZE to_table")
         ])
-
-    @patch("gobupload.relate.update._execute")
-    def test_drop(self, mock_execute):
-        table = StartValiditiesTable('from_table_name', 'to_table')
-        table.drop()
-        mock_execute.assert_called_with("DROP TABLE IF EXISTS to_table")
 
     @patch("gobupload.relate.update.gob_model", MockModel())
     def test_from_catalog_collection(self):
@@ -144,8 +138,7 @@ class TestEventCreator(TestCase):
     @patch('gobupload.relate.update.ADD')
     @patch('gobupload.relate.update.MODIFY')
     @patch('gobupload.relate.update.DELETE')
-    @patch('gobupload.relate.update.CONFIRM')
-    def test_create_event(self, mock_confirm, mock_delete, mock_modify, mock_add):
+    def test_create_event(self, mock_delete, mock_modify, mock_add):
         ec = EventCreator(False)
 
         # ADD event (rel row not present)
@@ -240,7 +233,7 @@ class TestEventCreator(TestCase):
             '_hash': 'THE HASH'
         }, '123.0')
 
-        # CONFIRM EVENT
+        # CONFIRM EVENT = None
         row = {
             'id': 'rel id',
             'rel_id': 'rel id',
@@ -251,66 +244,62 @@ class TestEventCreator(TestCase):
             'rel_deleted': None,
         }
         event = ec.create_event(row)
-        self.assertEqual(mock_confirm.create_event.return_value, event)
-        mock_confirm.create_event.assert_called_with('rel id', {'_last_event': 'last'}, '123.0')
+        self.assertIsNone(event)
 
 
 @patch("gobupload.relate.update.logger", MagicMock())
-#@patch("gobupload.relate.update.Relater.model", MockModel(), spec_set=True)
 @patch("gobupload.relate.update.Relater.model", MockModel())
 @patch("gobupload.relate.update.Relater.sources", MockSources())
-@patch("gobupload.relate.update._execute")
-@patch("gobupload.relate.update.random_string", lambda x: x * 'a')
+@patch("gobupload.relate.update.random_string", lambda x: x * "a")
 @patch("gobupload.relate.update.get_relation_name", lambda m, cat, col, field: f"{cat}_{col}_{field}")
 class TestRelaterInit(TestCase):
 
-    def _get_relater(
-            self, catalog_name='src_catalog_name',
-            collection_name='src_collection_name', field_name='src_field_name'):
-        return Relater(catalog_name, collection_name, field_name)
+    def setUp(self) -> None:
+        self.mock_session = MagicMock(spec=StreamSession)
+        self.catalog = "src_catalog_name"
+        self.collection = "src_collection_name"
+        self.field_name = "src_field_name"
 
-    @patch("gobupload.relate.update.datetime")
-    def test_init(self, mock_datetime, mock_execute):
-        mock_execute.return_value = [('applicationA',)]
-        mock_datetime.now.return_value.strftime.return_value = '20200101'
+        self.mock_session.execute.return_value.scalars.return_value.all.return_value = ["applicationA"]
+        self.relater = lambda: Relater(self.mock_session, self.catalog, self.collection, self.field_name)
 
-        e = self._get_relater()
+    def test_init(self):
+        relater = self.relater()
 
-        self.assertEqual('src_catalog_name', e.src_catalog_name)
-        self.assertEqual('src_collection_name', e.src_collection_name)
-        self.assertEqual('src_field_name', e.src_field_name)
-        self.assertEqual(
-            MockModel()['src_catalog_name']['collections']['src_collection_name'], e.src_collection)
-        self.assertEqual(
-            MockModel()['src_catalog_name']['collections']['src_collection_name']['all_fields']['src_field_name'],
-            e.src_field)
-        self.assertEqual('dst_catalog_name_dst_collection_name_table', e.dst_table_name)
-        self.assertTrue(e.src_has_states)
-        self.assertFalse(e.dst_has_states)
-        self.assertEqual([{
-            # applicationB should be filtered out
-            'source': 'applicationA',
-            'multiple_allowed': False,
-        }], e.relation_specs)
-        self.assertFalse(e.is_many)
-        self.assertEqual('rel_src_catalog_name_src_collection_name_src_field_name', e.relation_table)
-        mock_execute.assert_called_with("SELECT DISTINCT _application FROM src_catalog_name_src_collection_name_table")
+        assert relater.src_catalog_name == self.catalog
+        assert relater.src_collection_name == self.collection
+        assert relater.src_field_name == self.field_name
 
-        self.assertEqual('tmp_src_catalog_name_srcabbr_intv_20200101_aaaaaa', e.src_intv_tmp_table.name)
-        self.assertEqual('tmp_dst_catalog_name_dstabbr_intv_20200101_aaaaaa', e.dst_intv_tmp_table.name)
+        src_collection_name = MockModel()["src_catalog_name"]["collections"]["src_collection_name"]
+        assert src_collection_name == relater.src_collection
+        assert src_collection_name["all_fields"]["src_field_name"] == relater.src_field
 
-        with patch('gobupload.relate.update.Relater.sources.get_field_relations',
-                   lambda cat, col, field: []):
-            with self.assertRaises(RelateException):
-                self._get_relater()
+        assert "dst_catalog_name_dst_collection_name_table" == relater.dst_table_name
+        assert relater.src_has_states is True
+        assert relater.dst_has_states is False
 
-        # Not many.
-        e = self._get_relater()
-        self.assertFalse(e.is_many)
+        # applicationB should be filtered out
+        assert [{"source": "applicationA", "multiple_allowed": False}] == relater.relation_specs
+        assert relater.is_many is False
+        assert "rel_src_catalog_name_src_collection_name_src_field_name" == relater.relation_table
 
-        # Many.
-        e = self._get_relater('src_catalog_name', 'src_many_collection_name', 'src_field_name')
-        self.assertTrue(e.is_many)
+        query = "SELECT DISTINCT _application FROM src_catalog_name_src_collection_name_table"
+        self.mock_session.execute.assert_called_with(query)
+
+        assert "src_catalog_name_srcabbr_intv_aaaaaa" == relater.src_intv_tmp_table.name
+        assert "dst_catalog_name_dstabbr_intv_aaaaaa" == relater.dst_intv_tmp_table.name
+        assert "src_catalog_name_srcabbr_src_field_name_result" == relater.result_table_name
+
+    def test_init_relate_exception(self):
+        with patch("gobupload.relate.update.Relater.sources.get_field_relations", lambda cat, col, field: []):
+            self.assertRaises(RelateException, self.relater)
+
+    def test_init_many(self):
+        relater = self.relater()
+        assert relater.is_many is False
+
+        relater = Relater(MagicMock(), "src_catalog_name", "src_many_collection_name", "src_field_name")
+        assert relater.is_many is True
 
 
 @patch("gobupload.relate.update.logger", MagicMock())
@@ -321,7 +310,7 @@ class TestRelaterInit(TestCase):
 class TestRelater(TestCase):
 
     def _get_relater(self):
-        return Relater('src_catalog_name', 'src_collection_name', 'src_field_name')
+        return Relater(MagicMock(spec=StreamSession), 'src_catalog_name', 'src_collection_name', 'src_field_name')
 
     def test_validity_select_expressions_src(self):
         test_cases = [
@@ -881,22 +870,6 @@ INNER JOIN (
     )
 """, relater._select_rest_src())
 
-    @patch("gobupload.relate.update._execute")
-    def test_cleanup_tmp_tables(self, mock_execute):
-        relater = self._get_relater()
-        relater.src_intv_tmp_table = MagicMock()
-        relater.dst_intv_tmp_table = MagicMock()
-        relater.result_table_name = 'RESULT TABLE NAME'
-
-        with relater:
-            pass
-
-        relater.src_intv_tmp_table.drop.assert_called_once()
-        relater.dst_intv_tmp_table.drop.assert_called_once()
-        mock_execute.assert_called_with("DROP TABLE IF EXISTS RESULT TABLE NAME")
-
-    @patch("gobupload.relate.update._execute", MagicMock())
-    @patch("gobupload.relate.update.logger", MagicMock())
     def test_create_tmp_tables(self):
         relater = self._get_relater()
         relater._start_validity_per_seqnr = lambda tablename: "START_VALIDITIES_" + tablename
@@ -964,15 +937,14 @@ INNER JOIN (
         relater._create_tmp_result_table.assert_called_once()
         # Don't check dst_intv_tmp_table, because that is the same object as src_intv_tmp_table now
 
-    @patch("gobupload.relate.update._execute")
-    def test_create_tmp_result_table(self, mock_execute):
+    def test_create_tmp_result_table(self):
         relater = self._get_relater()
         relater.result_table_name = "tmp_table_name"
         relater.dst_has_states = True
         relater.src_has_states = True
         relater._create_tmp_result_table()
 
-        query = """CREATE UNLOGGED TABLE IF NOT EXISTS tmp_table_name (
+        query = """CREATE TEMPORARY TABLE tmp_table_name (
     rowid serial,
     _version varchar,
     _application varchar,
@@ -1008,10 +980,7 @@ INNER JOIN (
     dst_volgnummer integer
 )"""
 
-        mock_execute.assert_has_calls([
-            call(query),
-            call("TRUNCATE tmp_table_name"),
-        ])
+        relater.session.execute.assert_called_with(query)
 
     def test_src_entities_range(self):
         relater = self._get_relater()
@@ -1157,13 +1126,13 @@ WHERE rel.id IN (
     SELECT rel.id FROM rel_src_catalog_name_src_collection_name_src_field_name rel
     JOIN src_catalog_name_src_collection_name_table src ON rel.src_id = src._id AND rel.src_volgnummer = src.volgnummer
       AND src._last_event > 1 AND src._last_event <= 2
-    LEFT JOIN tmp_src_catalog_name_srcabbr_src_field_name_result res ON res.rel_id = rel.id
+    LEFT JOIN src_catalog_name_srcabbr_src_field_name_result res ON res.rel_id = rel.id
     WHERE rel._date_deleted IS NULL AND res.rel_id IS NULL
     UNION
     SELECT rel.id FROM rel_src_catalog_name_src_collection_name_src_field_name rel
     JOIN dst_catalog_name_dst_collection_name_table dst ON rel.dst_id = dst._id AND rel.dst_volgnummer = dst.volgnummer
       AND dst._last_event > 3 AND dst._last_event <= 4
-    LEFT JOIN tmp_src_catalog_name_srcabbr_src_field_name_result res ON res.rel_id = rel.id
+    LEFT JOIN src_catalog_name_srcabbr_src_field_name_result res ON res.rel_id = rel.id
     WHERE rel._date_deleted IS NULL AND res.rel_id IS NULL
 )
 """
@@ -1181,13 +1150,13 @@ WHERE rel.id IN (
     SELECT rel.id FROM rel_src_catalog_name_src_collection_name_src_field_name rel
     JOIN src_catalog_name_src_collection_name_table src ON rel.src_id = src._id
       AND src._last_event > 1 AND src._last_event <= 2
-    LEFT JOIN tmp_src_catalog_name_srcabbr_src_field_name_result res ON res.rel_id = rel.id
+    LEFT JOIN src_catalog_name_srcabbr_src_field_name_result res ON res.rel_id = rel.id
     WHERE rel._date_deleted IS NULL AND res.rel_id IS NULL
     UNION
     SELECT rel.id FROM rel_src_catalog_name_src_collection_name_src_field_name rel
     JOIN dst_catalog_name_dst_collection_name_table dst ON rel.dst_id = dst._id
       AND dst._last_event > 3 AND dst._last_event <= 4
-    LEFT JOIN tmp_src_catalog_name_srcabbr_src_field_name_result res ON res.rel_id = rel.id
+    LEFT JOIN src_catalog_name_srcabbr_src_field_name_result res ON res.rel_id = rel.id
     WHERE rel._date_deleted IS NULL AND res.rel_id IS NULL
 )
 """
@@ -1317,15 +1286,14 @@ WHERE CLAUSE CONFLICTS
         updater = self._get_relater()
         self.assertEqual(expected_result, [updater._format_relation(relation) for relation in rows])
 
-    @patch("gobupload.relate.update._execute")
-    def test_is_initial_load(self, mock_execute):
+    def test_is_initial_load(self):
         relater = self._get_relater()
 
-        mock_execute.return_value = iter([])
-        self.assertTrue(relater._is_initial_load())
+        relater.session.execute.return_value.scalar.return_value = None
+        assert relater._is_initial_load() is True
 
-        mock_execute.return_value = iter([1])
-        self.assertFalse(relater._is_initial_load())
+        relater.session.execute.return_value.scalar.return_value = 1
+        assert relater._is_initial_load() is False
 
     @patch("gobupload.relate.update._FORCE_FULL_RELATE_THRESHOLD", 1.0)
     def test_force_full_relate(self):
@@ -1346,7 +1314,7 @@ WHERE CLAUSE CONFLICTS
         ]
 
         for counts, result in testcases:
-            relater._get_count_for = MagicMock(side_effect=counts)
+            relater.session.execute.return_value.scalar.side_effect = counts
 
             self.assertEqual(result, relater._force_full_relate())
 
@@ -1377,48 +1345,42 @@ WHERE CLAUSE CONFLICTS
         with self.assertRaises(GOBException):
             relater._check_preconditions()
 
-    @patch("gobupload.relate.update._execute")
-    def test_get_max_src_event(self, mock_execute):
+    def test_get_max_src_event(self):
         relater = self._get_relater()
         relater.src_table_name = 'src_table'
+        relater.session.execute.return_value.scalar.return_value = 2480
 
-        mock_execute.return_value = iter([(2480,)])
+        assert 2480 == relater._get_max_src_event()
+        relater.session.execute.assert_called_with("SELECT MAX(_last_event) FROM src_table")
 
-        self.assertEqual(2480, relater._get_max_src_event())
-        mock_execute.assert_called_with("SELECT MAX(_last_event) FROM src_table")
-
-    @patch("gobupload.relate.update._execute")
-    def test_get_max_dst_event(self, mock_execute):
+    def test_get_max_dst_event(self):
         relater = self._get_relater()
         relater.dst_table_name = 'dst_table'
 
-        mock_execute.return_value = iter([(2480,)])
+        relater.session.execute.return_value.scalar.return_value = 2480
 
-        self.assertEqual(2480, relater._get_max_dst_event())
-        mock_execute.assert_called_with("SELECT MAX(_last_event) FROM dst_table")
+        assert 2480 == relater._get_max_dst_event()
+        relater.session.execute.assert_called_with("SELECT MAX(_last_event) FROM dst_table")
 
-    @patch("gobupload.relate.update._execute")
-    def test_get_min_src_event(self, mock_execute):
+    def test_get_min_src_event(self):
         relater = self._get_relater()
         relater.relation_table = 'rel_table'
 
-        mock_execute.return_value = iter([(2480,)])
+        relater.session.execute.return_value.scalar.return_value = 2480
 
-        self.assertEqual(2480, relater._get_min_src_event())
-        mock_execute.assert_called_with("SELECT MAX(_last_src_event) FROM rel_table")
+        assert 2480 == relater._get_min_src_event()
+        relater.session.execute.assert_called_with("SELECT MAX(_last_src_event) FROM rel_table")
 
-    @patch("gobupload.relate.update._execute")
-    def test_get_min_dst_event(self, mock_execute):
+    def test_get_min_dst_event(self):
         relater = self._get_relater()
         relater.relation_table = 'rel_table'
 
-        mock_execute.return_value = iter([(2480,)])
+        relater.session.execute.return_value.scalar.return_value = 2480
 
-        self.assertEqual(2480, relater._get_min_dst_event())
-        mock_execute.assert_called_with("SELECT MAX(_last_dst_event) FROM rel_table")
+        assert 2480 == relater._get_min_dst_event()
+        relater.session.execute.assert_called_with("SELECT MAX(_last_dst_event) FROM rel_table")
 
-    @patch("gobupload.relate.update._execute")
-    def test_get_next_max_src_event(self, mock_execute):
+    def test_get_next_max_src_event(self):
         relater = self._get_relater()
         relater.src_table_name = "src_table"
         relater.is_many = False
@@ -1427,35 +1389,47 @@ WHERE CLAUSE CONFLICTS
         max_rows = 400
         max_eventid = 200
 
-        mock_execute.return_value = iter([(300,)])
-        self.assertEqual(300, relater._get_next_max_src_event(start_eventid, max_rows, max_eventid))
-        mock_execute.assert_called_with(
-            "SELECT src._last_event FROM src_table src  WHERE src._last_event > 0 AND src._last_event <= 200 ORDER BY src._last_event OFFSET 400 - 1 LIMIT 1")
+        relater.session.execute.return_value.scalar.return_value = 300
+        assert 300 == relater._get_next_max_src_event(start_eventid, max_rows, max_eventid)
+        relater.session.execute.assert_called_with(
+            "SELECT src._last_event FROM src_table src  "
+            "WHERE src._last_event > 0 AND src._last_event <= 200 "
+            "ORDER BY src._last_event OFFSET 400 - 1 LIMIT 1"
+        )
 
         relater.is_many = True
-        mock_execute.return_value = iter([(300,)])
-        self.assertEqual(300, relater._get_next_max_src_event(start_eventid, max_rows, max_eventid))
-        mock_execute.assert_called_with(
-            "SELECT src._last_event FROM src_table src JOIN ARR ELMS WHERE src._last_event > 0 AND src._last_event <= 200 ORDER BY src._last_event OFFSET 400 - 1 LIMIT 1")
+        relater.session.execute.return_value.scalar.return_value = 300
+        assert 300 == relater._get_next_max_src_event(start_eventid, max_rows, max_eventid)
+        relater.session.execute.assert_called_with(
+            "SELECT src._last_event FROM src_table src JOIN ARR ELMS "
+            "WHERE src._last_event > 0 AND src._last_event <= 200 "
+            "ORDER BY src._last_event "
+            "OFFSET 400 - 1 "
+            "LIMIT 1"
+        )
 
-        mock_execute.return_value = iter([])
-        self.assertEqual(200, relater._get_next_max_src_event(start_eventid, max_rows, max_eventid))
+        relater.session.execute.return_value.scalar.return_value = None
+        assert 200 == relater._get_next_max_src_event(start_eventid, max_rows, max_eventid)
 
-    @patch("gobupload.relate.update._execute")
-    def test_get_next_max_dst_event(self, mock_execute):
+    def test_get_next_max_dst_event(self):
         relater = self._get_relater()
         relater.dst_table_name = "dst_table"
         start_eventid = 0
         max_rows = 400
         max_eventid = 200
 
-        mock_execute.return_value = iter([(300,)])
-        self.assertEqual(300, relater._get_next_max_dst_event(start_eventid, max_rows, max_eventid))
-        mock_execute.assert_called_with(
-            "SELECT _last_event FROM dst_table WHERE _last_event > 0 AND _last_event <= 200 ORDER BY _last_event OFFSET 400 - 1 LIMIT 1")
+        relater.session.execute.return_value.scalar.return_value = 300
+        assert 300 == relater._get_next_max_dst_event(start_eventid, max_rows, max_eventid)
+        relater.session.execute.assert_called_with(
+            "SELECT _last_event FROM dst_table "
+            "WHERE _last_event > 0 AND _last_event <= 200 "
+            "ORDER BY _last_event "
+            "OFFSET 400 - 1 "
+            "LIMIT 1"
+        )
 
-        mock_execute.return_value = iter([])
-        self.assertEqual(200, relater._get_next_max_dst_event(start_eventid, max_rows, max_eventid))
+        relater.session.execute.return_value.scalar.return_value = None
+        assert 200 == relater._get_next_max_dst_event(start_eventid, max_rows, max_eventid)
 
     def test_get_chunks(self):
         relater = self._get_relater()
@@ -1530,41 +1504,39 @@ WHERE CLAUSE CONFLICTS
         relater._query_into_results_table.assert_called_with(relater.get_query.return_value, True)
         relater._remove_duplicate_rows.assert_called_once()
 
-    @patch("gobupload.relate.update._execute")
-    def test_remove_duplicate_rows(self, mock_execute):
+    def test_remove_duplicate_rows(self):
         relater = self._get_relater()
         relater.dst_has_states = False
 
         relater._remove_duplicate_rows()
-        mock_execute.assert_called_with(
-            "DELETE FROM tmp_src_catalog_name_srcabbr_src_field_name_result WHERE rowid IN (  "
+        relater.session.execute.assert_called_with(
+            "DELETE FROM src_catalog_name_srcabbr_src_field_name_result WHERE rowid IN (  "
             "SELECT rowid   FROM ("
             "    SELECT rowid, row_number() OVER (PARTITION BY id ORDER BY dst_id) rn"
-            "     FROM tmp_src_catalog_name_srcabbr_src_field_name_result  ) q WHERE rn > 1)")
+            "     FROM src_catalog_name_srcabbr_src_field_name_result  ) q WHERE rn > 1)"
+        )
 
         relater.dst_has_states = True
         relater._remove_duplicate_rows()
-        mock_execute.assert_called_with(
-            "DELETE FROM tmp_src_catalog_name_srcabbr_src_field_name_result WHERE rowid IN (  "
+        relater.session.execute.assert_called_with(
+            "DELETE FROM src_catalog_name_srcabbr_src_field_name_result WHERE rowid IN (  "
             "SELECT rowid   FROM ("
             "    SELECT rowid, row_number() OVER (PARTITION BY id ORDER BY dst_id, dst_volgnummer DESC) rn"
-            "     FROM tmp_src_catalog_name_srcabbr_src_field_name_result  ) q WHERE rn > 1)")
+            "     FROM src_catalog_name_srcabbr_src_field_name_result  ) q WHERE rn > 1)"
+        )
 
-    @patch("gobupload.relate.update._execute")
-    def test_query_into_results_table(self, mock_execute):
+    def test_query_into_results_table(self):
         relater = self._get_relater()
         relater.result_table_name = "result_table"
         relater._select_aliases = lambda is_conflicts: ["columnA", "columnB"] if is_conflicts else ["columnC",
                                                                                                     "columnD"]
 
         relater._query_into_results_table("the query", False)
-        mock_execute.assert_called_with("INSERT INTO result_table (columnC, columnD) (the query)")
+        relater.session.execute.assert_called_with("INSERT INTO result_table (columnC, columnD) (the query)")
 
         relater._query_into_results_table("the query", True)
-        mock_execute.assert_called_with("INSERT INTO result_table (columnA, columnB) (the query)")
+        relater.session.execute.assert_called_with("INSERT INTO result_table (columnA, columnB) (the query)")
 
-    @patch("gobupload.relate.update._execute", MagicMock())
-    @patch("gobupload.relate.logger", MagicMock())
     def test_get_updates(self):
         relater = self._get_relater()
         relater._create_tmp_intv_tables = MagicMock()
@@ -1588,8 +1560,7 @@ WHERE CLAUSE CONFLICTS
         relater._create_delete_events_query.assert_called_with(1, 2, 3, 4)
 
         relater._create_tmp_intv_tables.assert_called()
-        relater.src_intv_tmp_table.drop.assert_called()
-        relater.dst_intv_tmp_table.drop.assert_called()
+        relater.session.execute.assert_called_with("ANALYZE src_catalog_name_srcabbr_src_field_name_result")
 
         # Initial load
         relater._get_updates_chunked.reset_mock()
@@ -1609,17 +1580,17 @@ WHERE CLAUSE CONFLICTS
         relater._create_delete_events_query.assert_called_with(1, 2, 3, 4)
 
         relater._create_tmp_intv_tables.assert_called()
-        relater.src_intv_tmp_table.drop.assert_called()
-        relater.dst_intv_tmp_table.drop.assert_called()
+        relater.session.execute.assert_called_with("ANALYZE src_catalog_name_srcabbr_src_field_name_result")
 
-    @patch("gobupload.relate.update._execute")
-    def test_read_results(self, mock_execute):
+    def test_read_results(self):
         relater = self._get_relater()
         relater.result_table_name = "result_table"
+        relater.session.stream_execute.return_value = [(("a", "b"), )]
 
-        mock_execute.return_value = iter(['a', 'b'])
-        self.assertEqual(['a', 'b'], list(relater._read_results()))
-        mock_execute.assert_called_with("SELECT * FROM result_table", stream=True, max_row_buffer=25000)
+        assert [{'a': 'b'}] == list(relater._read_results())
+        relater.session.stream_execute.assert_called_with(
+            "SELECT * FROM result_table", execution_options={"yield_per": 25_000}
+        )
 
     def test_get_cahnged_ranges(self):
         relater = self._get_relater()
@@ -1644,19 +1615,18 @@ WHERE CLAUSE CONFLICTS
         relater._get_updates_full(100, 200, True)
         relater._get_updates_chunked.assert_called_with(0, 100, 0, 200, only_src_side=True, is_conflicts_query=True)
 
-    @patch("gobupload.relate.update._execute", MagicMock())
     def test_get_conflicts(self):
         relater = self._get_relater()
         relater._create_tmp_intv_tables = MagicMock()
         relater._get_max_src_event = MagicMock(return_value=50)
         relater._get_max_dst_event = MagicMock(return_value=60)
         relater._get_updates_full = MagicMock()
-        relater._read_results = MagicMock(return_value=iter(['a', 'b']))
+        relater._read_results = MagicMock(return_value=[{"a": "b"}])
 
         with relater:
             pass
 
-        self.assertEqual(['a', 'b'], list(relater.get_conflicts()))
+        assert [{"a": "b"}] == list(relater.get_conflicts())
         relater._create_tmp_intv_tables.assert_called_once()
         relater._get_updates_full.assert_called_with(50, 60, is_conflicts_query=True)
 
@@ -1678,17 +1648,21 @@ WHERE CLAUSE CONFLICTS
 
         mock_event_collector.assert_called_with(
             mock_contents_writer.return_value.__enter__.return_value,
-            mock_contents_writer.return_value.__enter__.return_value,
-            "123.0",
+            confirms_writer=None,
+            version="123.0"
         )
         mock_event_collector.return_value.__enter__.return_value.collect.assert_has_calls([
             call({'a': 1}),
             call({'b': 2}),
             call({'c': 3}),
         ])
+        assert mock_contents_writer.return_value.__enter__.return_value.filename == result
 
-        self.assertEqual((mock_contents_writer.return_value.__enter__.return_value.filename,
-                          mock_contents_writer.return_value.__enter__.return_value.filename), result)
+        # test dont add empty events
+        mock_event_collector.reset_mock()
+        mock_event_creator.return_value.create_event.side_effect = lambda x: None
+        result = relater.update()
+        mock_event_collector.collect.assert_not_called()
 
     def test_update_failing_precondition(self):
         relater = self._get_relater()
