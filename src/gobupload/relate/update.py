@@ -5,9 +5,7 @@ import json
 from datetime import date, datetime
 from typing import Iterator
 
-from sqlalchemy import text
-
-from gobcore.events.import_events import ADD, CONFIRM, DELETE, MODIFY
+from gobcore.events.import_events import ADD, DELETE, MODIFY
 from gobcore.exceptions import GOBException
 from gobcore.logging.logger import logger
 from gobcore.message_broker.offline_contents import ContentsWriter
@@ -777,7 +775,7 @@ INNER JOIN (
         columns = ['rowid'] + self._select_aliases()
 
         column_list = ",\n".join([f"    {column} {types[column]}" for column in columns])
-        query = text(f"CREATE TEMPORARY TABLE {self.result_table_name} (\n{column_list}\n)")
+        query = f"CREATE TEMPORARY TABLE {self.result_table_name} (\n{column_list}\n)"
 
         logger.info(f"Create temporary results table {self.result_table_name}")
         self.session.execute(query)
@@ -1023,7 +1021,7 @@ LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(self._dst_table_outer
         return relation
 
     def _is_initial_load(self) -> bool:
-        query = text(f"SELECT {FIELD.ID} FROM {self.relation_table} LIMIT 1")
+        query = f"SELECT {FIELD.ID} FROM {self.relation_table} LIMIT 1"
 
         if self.session.execute(query).scalar() is None:
             logger.info("Relation table is empty. Have initial load.")
@@ -1049,19 +1047,19 @@ LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(self._dst_table_outer
                                f"{FIELD.APPLICATION} that are not defined in GOBSources: {','.join(difference)}")
 
     def _get_max_src_event(self) -> int:
-        query = text(f"SELECT MAX({FIELD.LAST_EVENT}) FROM {self.src_table_name}")
+        query = f"SELECT MAX({FIELD.LAST_EVENT}) FROM {self.src_table_name}"
         return self.session.execute(query).scalar() or 0
 
     def _get_max_dst_event(self) -> int:
-        query = text(f"SELECT MAX({FIELD.LAST_EVENT}) FROM {self.dst_table_name}")
+        query = f"SELECT MAX({FIELD.LAST_EVENT}) FROM {self.dst_table_name}"
         return self.session.execute(query).scalar() or 0
 
     def _get_min_src_event(self) -> int:
-        query = text(f"SELECT MAX({FIELD.LAST_SRC_EVENT}) FROM {self.relation_table}")
+        query = f"SELECT MAX({FIELD.LAST_SRC_EVENT}) FROM {self.relation_table}"
         return self.session.execute(query).scalar() or 0
 
     def _get_min_dst_event(self) -> int:
-        query = text(f"SELECT MAX({FIELD.LAST_DST_EVENT}) FROM {self.relation_table}")
+        query = f"SELECT MAX({FIELD.LAST_DST_EVENT}) FROM {self.relation_table}"
         return self.session.execute(query).scalar() or 0
 
     def _get_next_max_src_event(self, start_eventid: int, max_rows: int, max_eventid: int) -> int:
@@ -1081,7 +1079,7 @@ LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(self._dst_table_outer
                 f"ORDER BY src.{FIELD.LAST_EVENT} " \
                 f"OFFSET {max_rows} - 1 " \
                 f"LIMIT 1"
-        return self.session.execute(text(query)).scalar() or max_eventid
+        return self.session.execute(query).scalar() or max_eventid
 
     def _get_next_max_dst_event(self, start_eventid: int, max_rows: int, max_eventid: int) -> int:
         query = f"SELECT {FIELD.LAST_EVENT} " \
@@ -1090,7 +1088,7 @@ LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(self._dst_table_outer
                 f"ORDER BY {FIELD.LAST_EVENT} " \
                 f"OFFSET {max_rows} - 1 " \
                 f"LIMIT 1"
-        return self.session.execute(text(query)).scalar() or max_eventid
+        return self.session.execute(query).scalar() or max_eventid
 
     def _get_chunks(self, start_src_event: int, max_src_event: int, start_dst_event: int, max_dst_event: int,
                     only_src_side: bool = False):
@@ -1176,12 +1174,12 @@ LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(self._dst_table_outer
                 f"  ) q WHERE rn > 1" \
                 f")"
 
-        return self.session.execute(text(query))
+        return self.session.execute(query)
 
     def _query_into_results_table(self, query: str, is_conflicts_query: bool = False):
         result_table_columns = ', '.join(self._select_aliases(is_conflicts_query))
         query = f"INSERT INTO {self.result_table_name} ({result_table_columns}) ({query})"
-        return self.session.execute(text(query))
+        return self.session.execute(query)
 
     def _get_updates(self, initial_load: bool = False):
         """Relates in chunks. Chunks are determined by the _get_chunks method.
@@ -1200,12 +1198,12 @@ LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(self._dst_table_outer
         query = self._create_delete_events_query(start_src_event, max_src_event, start_dst_event, max_dst_event)
         self._query_into_results_table(query)
 
-        self.session.execute(text(f"ANALYZE {self.result_table_name}"))
+        self.session.execute(f"ANALYZE {self.result_table_name}")
 
         return self._read_results()
 
     def _read_results(self) -> Iterator[dict]:
-        query = text(f"SELECT * FROM {self.result_table_name}")
+        query = f"SELECT * FROM {self.result_table_name}"
 
         for row in self.session.stream_execute(query, execution_options={"yield_per": 25_000}):
             yield dict(row)

@@ -183,11 +183,15 @@ ORDER BY _source, _id, volgnummer, begin_geldigheid
         mock_missing.assert_called()
         self.assertEqual(mock_missing.call_count, 2)
 
+    @patch("gobupload.storage.relate.GOBStorageHandler")
     @patch('gobupload.storage.relate.Issue')
     @patch('gobupload.storage.relate.log_issue')
     @patch('gobupload.storage.relate.logger')
     @patch('gobupload.storage.relate.Relater')
-    def test_check_relation_conflicts(self, mock_relater, mock_logger, mock_log_issue, mock_issue):
+    def test_check_relation_conflicts(self, mock_relater, mock_logger, mock_log_issue, mock_issue, mock_storage):
+        mock_session = MagicMock()
+        mock_storage.return_value.get_session.return_value.__enter__.return_value = mock_session
+
         relater = mock_relater.return_value.__enter__.return_value
         relater.dst_has_states = False
 
@@ -207,7 +211,8 @@ ORDER BY _source, _id, volgnummer, begin_geldigheid
         }]
 
         check_relation_conflicts("any_catalog", "any_collection", "any_field_name")
-        mock_relater.assert_called_with("any_catalog", "any_collection", "any_field_name")
+        mock_relater.assert_called_with(mock_session, "any_catalog", "any_collection", "any_field_name")
+        mock_storage.return_value.get_session.assert_called_with(invalidate=True)
 
         mock_issue.assert_has_calls([
             call(QA_CHECK.Unique_destination, {

@@ -78,7 +78,6 @@ def apply_confirm_events(storage: GOBStorageHandler, stats: UpdateStatistics, ms
         return
 
     confirms = Path(msg["confirms"])
-    catalogue = msg['header'].get("catalogue", "")
     timestamp = msg["header"]["timestamp"]
 
     try:
