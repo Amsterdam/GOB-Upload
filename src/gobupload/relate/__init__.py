@@ -314,13 +314,20 @@ def process_relate(msg: dict):
     if full_update:
         logger.info("Full relate requested")
 
-    with Relater(header[CATALOG_KEY], header[COLLECTION_KEY], header[ATTRIBUTE_KEY]) as updater:
-        filename, confirms = updater.update(full_update)
+    storage = GOBStorageHandler()
+    filename = None
+
+    with (
+        storage.get_session(invalidate=True) as session,
+        Relater(session, header[CATALOG_KEY], header[COLLECTION_KEY], header[ATTRIBUTE_KEY]) as updater
+    ):
+        filename = updater.update(full_update)
 
     logger.info("Relate table completed")
 
     relation_name = get_relation_name(
-        gob_model, header[CATALOG_KEY], header[COLLECTION_KEY], header[ATTRIBUTE_KEY])
+        gob_model, header[CATALOG_KEY], header[COLLECTION_KEY], header[ATTRIBUTE_KEY]
+    )
 
     result_msg = {
         "header": {
@@ -335,7 +342,6 @@ def process_relate(msg: dict):
         },
         "summary": logger.get_summary(),
         "contents_ref": filename,
-        "confirms": confirms,
     }
 
     return result_msg

@@ -162,13 +162,6 @@ class TestApply(TestCase):
         apply_confirm_events(MagicMock(), MagicMock(), {'header': {}, "confirms": []})
         mock_apply.assert_not_called()
 
-    @patch("gobupload.apply.main._apply_confirms")
-    def test_apply_confirms_rel_cat(self, mock_apply, _):
-        msg = {'header': {"catalogue": "rel", "timestamp": "any ts"}, "confirms": "any"}
-        apply_confirm_events(MagicMock(), MagicMock(), msg)
-        mock_apply.assert_not_called()
-        assert "confirms" not in msg
-
     @patch('gobupload.apply.main.add_notification', MagicMock())
     @patch('gobupload.apply.main.logger', MagicMock())
     @patch('gobupload.apply.main.get_event_ids', lambda s: (2, 1))
