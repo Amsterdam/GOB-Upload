@@ -88,7 +88,7 @@ class TestCompare(TestCase):
             _hash = "1234567890"
             _entity_tid = 2
 
-        self.mock_storage.compare_temporary_data.return_value = [Row]
+        self.mock_storage.compare_temporary_data.return_value = yield [Row]
         message = fixtures.get_message_fixture()
 
         with self.assertRaises(GOBException):
@@ -110,7 +110,7 @@ class TestCompare(TestCase):
             _hash = "1234567890"
             _entity_tid = 2
 
-        self.mock_storage.compare_temporary_data.return_value = [Row]
+        self.mock_storage.compare_temporary_data.return_value = yield [Row]
         message = fixtures.get_message_fixture()
 
         result = compare(message)
@@ -139,7 +139,7 @@ class TestCompare(TestCase):
             _last_event = 1
             _hash = "1234567890"
 
-        self.mock_storage.compare_temporary_data.return_value = [Row]
+        self.mock_storage.compare_temporary_data.return_value = yield [Row]
 
         result = compare(message)
 
@@ -168,7 +168,7 @@ class TestCompare(TestCase):
             _last_event = 1
             _hash = "1234567890"
 
-        self.mock_storage.compare_temporary_data.return_value = [Row]
+        self.mock_storage.compare_temporary_data.return_value = yield [Row]
 
         result = compare(message)
 
@@ -192,7 +192,7 @@ class TestCompare(TestCase):
             _last_event = 1
             _hash = "1234567890"
 
-        self.mock_storage.compare_temporary_data.return_value = [Row]
+        self.mock_storage.compare_temporary_data.return_value = yield [Row]
         message = fixtures.get_message_fixture()
 
         result = compare(message)
@@ -218,7 +218,7 @@ class TestCompare(TestCase):
             _last_event = 1
             _hash = "1234567890"
 
-        self.mock_storage.compare_temporary_data.return_value = [Row] * 2
+        self.mock_storage.compare_temporary_data.return_value = yield [Row] * 2
         message = fixtures.get_message_fixture()
 
         result = compare(message)
@@ -276,7 +276,7 @@ class TestCompare(TestCase):
             _last_event = 1
             _hash = "1234567890"
 
-        self.mock_storage.compare_temporary_data.return_value = [Row]
+        self.mock_storage.compare_temporary_data.return_value = yield [Row]
 
         result = compare(message)
 

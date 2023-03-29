@@ -401,7 +401,8 @@ WHERE
 
     def test_compare_temporary_data(self):
         mock_session = MagicMock(spec=StreamSession)
-        mock_session.stream_execute.return_value = [{"any": "value"}]
+        row = type("Row", (object, ), {"any": "value"})
+        mock_session.stream_execute.return_value.partitions.return_value = [row]
         self.storage.session = mock_session
 
         current = f'{self.msg["header"]["catalogue"]}_{self.msg["header"]["entity"]}'
@@ -409,10 +410,10 @@ WHERE
         query = queries.get_comparison_query("any source", current, temporary, ["_tid"])
 
         diff = self.storage.compare_temporary_data()
-        result = list(diff)
 
-        assert result == [{"any": "value"}]
+        assert next(diff) == row
         mock_session.stream_execute.assert_called_with(query, execution_options={"yield_per": 10_000})
+        mock_session.stream_execute.return_value.partitions.assert_called_once()
 
     @patch("gobupload.storage.handler.text")
     def test_analyze_temporary_table(self, mock_text):
