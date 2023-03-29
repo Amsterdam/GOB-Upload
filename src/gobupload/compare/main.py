@@ -5,7 +5,6 @@ Derive Add, Change, Delete and Confirm events by comparing a full set of new dat
 Todo: Event, action and mutation are used for the same subject. Use one name to improve maintainability.
 """
 from typing import Iterator, Callable, Any
-from more_itertools import chunked
 from sqlalchemy.engine import Row
 
 from gobcore.enum import ImportMode
@@ -194,7 +193,7 @@ def _process_compare_result_row(
 
 
 def _process_compare_results(
-        storage: GOBStorageHandler, model: dict, results: Iterator[Row], stats: CompareStatistics
+        storage: GOBStorageHandler, model: dict, results: Iterator[list[Row]], stats: CompareStatistics
 ) -> tuple[str, str]:
     """Process the results of the in database compare.
 
@@ -212,7 +211,7 @@ def _process_compare_results(
         ContentsWriter() as confirms_writer,
         EventCollector(contents_writer, confirms_writer, version) as event_collector
     ):
-        for chunk in chunked(results, 10_000):
+        for chunk in results:
             modify_cur_entities = _get_modify_current_entities(storage, chunk)
 
             for row in chunk:

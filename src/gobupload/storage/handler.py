@@ -376,14 +376,14 @@ WHERE
         self.session.execute(table.insert(), rows)
 
     @with_session
-    def compare_temporary_data(self, mode: ImportMode = ImportMode.FULL) -> Iterator[Row]:
+    def compare_temporary_data(self, mode: ImportMode = ImportMode.FULL) -> Iterator[list[Row]]:
         """ Compare the data in the temporay table to the current state
 
         The created query compares each model field and returns the tid, last_event
         _hash and if the record should be a ADD, DELETE or MODIFY. CONFIRM records are not
         included in the result, but can be derived from the message
 
-        :return: a iterator of dicts with tid, hash, last_event and type
+        :return: a iterator of lists containing 10000 rows with tid, hash, last_event and type attributes
         """
         query = queries.get_comparison_query(
             source=self.metadata.source,
@@ -392,7 +392,7 @@ WHERE
             fields=[FIELD.TID],
             mode=mode
         )
-        yield from self.session.stream_execute(query, execution_options={"yield_per": 10_000})
+        yield from self.session.stream_execute(query, execution_options={"yield_per": 10_000}).partitions()
 
     @with_session
     def analyze_temporary_table(self):
