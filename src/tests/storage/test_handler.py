@@ -402,7 +402,7 @@ WHERE
     def test_compare_temporary_data(self):
         mock_session = MagicMock(spec=StreamSession)
         row = type("Row", (object, ), {"any": "value"})
-        mock_session.stream_execute.return_value.partitions.return_value = [row]
+        mock_session.stream_execute.return_value.partitions.return_value = yield [row]
         self.storage.session = mock_session
 
         current = f'{self.msg["header"]["catalogue"]}_{self.msg["header"]["entity"]}'
@@ -411,7 +411,8 @@ WHERE
 
         diff = self.storage.compare_temporary_data()
 
-        assert next(diff) == row
+        for result in diff:
+            assert result == [row]
         mock_session.stream_execute.assert_called_with(query)
         mock_session.stream_execute.return_value.partitions.assert_called_once()
 

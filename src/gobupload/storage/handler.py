@@ -393,7 +393,7 @@ WHERE
             fields=[FIELD.TID],
             mode=mode
         )
-        yield from self.session.stream_execute(query).partitions(size=25_000)
+        return self.session.stream_execute(query).partitions(size=25_000)
 
     @with_session
     def analyze_temporary_table(self):
