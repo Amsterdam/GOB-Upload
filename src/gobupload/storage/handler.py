@@ -402,7 +402,7 @@ WHERE
 
         # Temporary switch to database AUTOCOMMIT, reset after VACUUM
         conn.execution_options(isolation_level="AUTOCOMMIT")
-        conn.execute(text(f"VACUUM ANALYZE {self.tablename_temp}"))
+        conn.execute(text(f"ANALYZE {self.tablename_temp}"))
         conn.execution_options(isolation_level=conn.default_isolation_level)
 
     @property

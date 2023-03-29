@@ -428,7 +428,7 @@ WHERE
             call(isolation_level=mock_session.bind.default_isolation_level)
         ])
 
-        mock_text.assert_called_with("VACUUM ANALYZE meetbouten_meetbouten_tmp")
+        mock_text.assert_called_with("ANALYZE meetbouten_meetbouten_tmp")
         mock_session.bind.execute.assert_called_with(mock_text.return_value)
 
     def test_get_query_value(self):
