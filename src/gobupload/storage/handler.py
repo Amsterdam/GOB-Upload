@@ -79,6 +79,7 @@ class StreamSession(SessionORM):
 
     def _update_param(self, **kwargs) -> dict[str, dict]:
         exec_opts = kwargs.pop("execution_options", {})
+        exec_opts["stream_results"] = True  # always enable streaming, for ie .partitions()
 
         if "yield_per" not in exec_opts:
             exec_opts["yield_per"] = self.YIELD_PER
@@ -383,7 +384,7 @@ WHERE
         _hash and if the record should be a ADD, DELETE or MODIFY. CONFIRM records are not
         included in the result, but can be derived from the message
 
-        :return: a iterator of lists containing 10000 rows with tid, hash, last_event and type attributes
+        :return: a iterator of lists containing 25000 rows with tid, hash, last_event and type attributes
         """
         query = queries.get_comparison_query(
             source=self.metadata.source,
@@ -392,7 +393,7 @@ WHERE
             fields=[FIELD.TID],
             mode=mode
         )
-        yield from self.session.stream_execute(query, execution_options={"yield_per": 10_000}).partitions()
+        yield from self.session.stream_execute(query).partitions(size=25_000)
 
     @with_session
     def analyze_temporary_table(self):
@@ -672,7 +673,7 @@ WHERE
         if not with_deleted:
             query = query.where(self.DbEntity._date_deleted.is_(None))
 
-        return self.session.stream_scalars(query)
+        return self.session.stream_scalars(query, execution_options={"yield_per": 10_000})
 
     @with_session
     def add_add_events(self, events):

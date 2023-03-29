@@ -412,7 +412,7 @@ WHERE
         diff = self.storage.compare_temporary_data()
 
         assert next(diff) == row
-        mock_session.stream_execute.assert_called_with(query, execution_options={"yield_per": 10_000})
+        mock_session.stream_execute.assert_called_with(query)
         mock_session.stream_execute.return_value.partitions.assert_called_once()
 
     @patch("gobupload.storage.handler.text")
@@ -520,7 +520,7 @@ WHERE
     @patch("gobupload.storage.handler.SessionORM.execute")
     def test_stream_session(self, mock_execute, mock_scalars):
         obj = StreamSession()
-        default_opts = {"execution_options": {"yield_per": obj.YIELD_PER}}
+        default_opts = {"execution_options": {"stream_results": True, "yield_per": obj.YIELD_PER}}
 
         obj.stream_execute("query", extra=5)
         mock_execute.assert_called_with("query", **default_opts, extra=5)
@@ -530,7 +530,9 @@ WHERE
 
         mock_execute.reset_mock()
         obj.stream_execute("query", extra=5, execution_options={"yield_per": 2000})
-        mock_execute.assert_called_with("query", execution_options={"yield_per": 2000}, extra=5)
+        mock_execute.assert_called_with(
+            "query", execution_options={"yield_per": 2000, "stream_results": True}, extra=5
+        )
 
     @patch("gobupload.storage.handler.GOBStorageHandler.execute")
     def test_apply_confirms(self, mock_execute):
