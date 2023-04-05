@@ -28,7 +28,7 @@ def upgrade():
                existing_type=sa.NUMERIC(),
                type_=sa.Integer(),
                existing_nullable=True)
-    op.execute("DROP VIEW IF EXISTS legacy.meetbouten_referentiepunten")
+    op.execute("DROP VIEW IF EXISTS legacy.meetbouten_referentiepunten CASCADE")
     op.alter_column('meetbouten_referentiepunten', 'x_coordinaat_muurvlak',
                existing_type=sa.NUMERIC(),
                type_=sa.Integer(),
@@ -37,7 +37,7 @@ def upgrade():
                existing_type=sa.NUMERIC(),
                type_=sa.Integer(),
                existing_nullable=True)
-    op.execute("DROP VIEW IF EXISTS legacy.nap_peilmerken")
+    op.execute("DROP VIEW IF EXISTS legacy.nap_peilmerken CASCADE")
     op.alter_column('nap_peilmerken', 'x_coordinaat_muurvlak',
                existing_type=sa.NUMERIC(),
                type_=sa.Integer(),
