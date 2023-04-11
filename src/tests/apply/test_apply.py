@@ -81,8 +81,8 @@ class TestApply(TestCase):
         self.assertEqual(result, expected_result_msg)
         mock_apply.assert_not_called()
 
-        # Even if none are applied, still trigger notification
-        mock_add_notification.assert_called_with(expected_result_msg, mock_event_notification())
+        # If none are applied, add_notification should not have been called
+        mock_add_notification.assert_not_called()
 
     @patch('gobupload.apply.main.add_notification')
     @patch('gobupload.apply.main.EventNotification')
@@ -288,4 +288,10 @@ class TestApply(TestCase):
         mock_get_combinations.return_value = [MagicMock()]
         mock_get_event_ids.side_effect = [(0, 100), (1, 99), ]
         apply({'header': {'suppress_notifications': True}})
+        mock_add_notification.assert_not_called()
+
+        # Test that add_notifications is not called when no combinations are present and thus nothing happened
+        mock_add_notification.reset_mock()
+        mock_get_combinations.return_value = []
+        apply({'header': {}})
         mock_add_notification.assert_not_called()
