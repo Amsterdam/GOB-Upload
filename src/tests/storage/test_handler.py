@@ -401,7 +401,8 @@ WHERE
 
     def test_compare_temporary_data(self):
         mock_session = MagicMock(spec=StreamSession)
-        mock_session.stream_execute.return_value = [{"any": "value"}]
+        row = type("Row", (object, ), {"any": "value"})
+        mock_session.stream_execute.return_value.partitions.return_value = yield [row]
         self.storage.session = mock_session
 
         current = f'{self.msg["header"]["catalogue"]}_{self.msg["header"]["entity"]}'
@@ -409,10 +410,11 @@ WHERE
         query = queries.get_comparison_query("any source", current, temporary, ["_tid"])
 
         diff = self.storage.compare_temporary_data()
-        result = list(diff)
 
-        assert result == [{"any": "value"}]
-        mock_session.stream_execute.assert_called_with(query, execution_options={"yield_per": 10_000})
+        for result in diff:
+            assert result == [row]
+        mock_session.stream_execute.assert_called_with(query)
+        mock_session.stream_execute.return_value.partitions.assert_called_once()
 
     @patch("gobupload.storage.handler.text")
     def test_analyze_temporary_table(self, mock_text):
@@ -427,7 +429,7 @@ WHERE
             call(isolation_level=mock_session.bind.default_isolation_level)
         ])
 
-        mock_text.assert_called_with("VACUUM ANALYZE meetbouten_meetbouten_tmp")
+        mock_text.assert_called_with("ANALYZE meetbouten_meetbouten_tmp")
         mock_session.bind.execute.assert_called_with(mock_text.return_value)
 
     def test_get_query_value(self):
@@ -519,7 +521,7 @@ WHERE
     @patch("gobupload.storage.handler.SessionORM.execute")
     def test_stream_session(self, mock_execute, mock_scalars):
         obj = StreamSession()
-        default_opts = {"execution_options": {"yield_per": obj.YIELD_PER}}
+        default_opts = {"execution_options": {"stream_results": True, "yield_per": obj.YIELD_PER}}
 
         obj.stream_execute("query", extra=5)
         mock_execute.assert_called_with("query", **default_opts, extra=5)
@@ -529,7 +531,9 @@ WHERE
 
         mock_execute.reset_mock()
         obj.stream_execute("query", extra=5, execution_options={"yield_per": 2000})
-        mock_execute.assert_called_with("query", execution_options={"yield_per": 2000}, extra=5)
+        mock_execute.assert_called_with(
+            "query", execution_options={"yield_per": 2000, "stream_results": True}, extra=5
+        )
 
     @patch("gobupload.storage.handler.GOBStorageHandler.execute")
     def test_apply_confirms(self, mock_execute):

@@ -79,6 +79,7 @@ class StreamSession(SessionORM):
 
     def _update_param(self, **kwargs) -> dict[str, dict]:
         exec_opts = kwargs.pop("execution_options", {})
+        exec_opts["stream_results"] = True  # always enable streaming, for ie .partitions()
 
         if "yield_per" not in exec_opts:
             exec_opts["yield_per"] = self.YIELD_PER
@@ -376,14 +377,14 @@ WHERE
         self.session.execute(table.insert(), rows)
 
     @with_session
-    def compare_temporary_data(self, mode: ImportMode = ImportMode.FULL) -> Iterator[Row]:
+    def compare_temporary_data(self, mode: ImportMode = ImportMode.FULL) -> Iterator[list[Row]]:
         """ Compare the data in the temporay table to the current state
 
         The created query compares each model field and returns the tid, last_event
         _hash and if the record should be a ADD, DELETE or MODIFY. CONFIRM records are not
         included in the result, but can be derived from the message
 
-        :return: a iterator of dicts with tid, hash, last_event and type
+        :return: a iterator of lists containing 25000 rows with tid, hash, last_event and type attributes
         """
         query = queries.get_comparison_query(
             source=self.metadata.source,
@@ -392,7 +393,7 @@ WHERE
             fields=[FIELD.TID],
             mode=mode
         )
-        yield from self.session.stream_execute(query, execution_options={"yield_per": 10_000})
+        return self.session.stream_execute(query).partitions(size=25_000)
 
     @with_session
     def analyze_temporary_table(self):
@@ -401,7 +402,7 @@ WHERE
 
         # Temporary switch to database AUTOCOMMIT, reset after VACUUM
         conn.execution_options(isolation_level="AUTOCOMMIT")
-        conn.execute(text(f"VACUUM ANALYZE {self.tablename_temp}"))
+        conn.execute(text(f"ANALYZE {self.tablename_temp}"))
         conn.execution_options(isolation_level=conn.default_isolation_level)
 
     @property
@@ -672,7 +673,7 @@ WHERE
         if not with_deleted:
             query = query.where(self.DbEntity._date_deleted.is_(None))
 
-        return self.session.stream_scalars(query)
+        return self.session.stream_scalars(query, execution_options={"yield_per": 10_000})
 
     @with_session
     def add_add_events(self, events):
