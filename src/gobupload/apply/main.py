@@ -1,6 +1,8 @@
 import sys
 from pathlib import Path
 
+from sqlalchemy.engine import Row
+
 from gobcore.events.import_events import CONFIRM, BULKCONFIRM
 from gobcore.exceptions import GOBException
 from gobcore.logging.logger import logger
@@ -93,14 +95,20 @@ def _should_analyze(stats):
         sum([value['absolute'] for value in applied_stats.values()]) > 0
 
 
-def _get_source_catalog_entity_combinations(storage, msg):
-    source = msg['header'].get('source')
-    catalogue = msg['header'].get('catalogue', "")
-    entity = msg['header'].get('entity', "")
+def _get_source_catalog_entity_combinations(msg) -> list[Row]:
+    header = msg["header"]
+    storage = GOBStorageHandler(only=[GOBStorageHandler.EVENTS_TABLE])
 
-    combinations = storage.get_source_catalogue_entity_combinations(catalogue=catalogue, entity=entity)
-    # Apply for all sources if source is None or apply only the specified source
-    return [combination for combination in combinations if source is None or source == combination.source]
+    catalogue = header.get("catalogue")
+    entity = header.get("entity") or header.get("collection")
+
+    if catalogue is None and entity is None:
+        # we should not query event table without filters
+        raise GOBException(f"No catalogue or collection specified in header: {header}")
+
+    return storage.get_source_catalogue_entity_combinations(
+        catalogue=catalogue, entity=entity, source=header.get("source")
+    )
 
 
 def apply(msg):
@@ -108,15 +116,14 @@ def apply(msg):
 
     logger.info("Apply events")
 
-    storage = GOBStorageHandler(only=[GOBStorageHandler.EVENTS_TABLE])
-    combinations = _get_source_catalog_entity_combinations(storage, msg)
-
     # Gather statistics of update process
     stats = UpdateStatistics()
     before = None
     after = None
-    for result in combinations:
+
+    for result in _get_source_catalog_entity_combinations(msg):
         model = f"{result.source} {result.catalogue} {result.entity}"
+
         logger.info(f"Apply events {model}")
         storage = GOBStorageHandler(result)
 
