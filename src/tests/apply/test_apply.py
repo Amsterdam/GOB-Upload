@@ -75,9 +75,9 @@ class TestApply(TestCase):
         mock.return_value = self.mock_storage
         self.mock_storage.get_source_catalogue_entity_combinations.return_value = []
 
-        result = apply({'header': {}})
+        result = apply({'header': {"catalogue": "any_cat"}})
 
-        expected_result_msg = {'header': {}, 'summary': ANY}
+        expected_result_msg = {'header': {"catalogue": "any_cat"}, 'summary': ANY}
         self.assertEqual(result, expected_result_msg)
         mock_apply.assert_not_called()
 
@@ -94,15 +94,36 @@ class TestApply(TestCase):
         combination = MockCombination("any source", "any catalogue", "any entity")
         self.mock_storage.get_source_catalogue_entity_combinations.return_value = [combination]
 
-        result = apply({'header': {}})
+        msg = {"header": {"catalogue": "any cat", "entity": "any ent", "source": "any src"}}
+        result = apply(msg)
 
-        result_msg = {'header': {}, 'summary': ANY}
+        self.mock_storage.get_source_catalogue_entity_combinations.assert_called_with(
+            catalogue="any cat", entity="any ent", source="any src"
+        )
+
+        result_msg = {'header': msg["header"], 'summary': ANY}
 
         self.assertEqual(result, result_msg)
         mock_apply.assert_called()
 
         mock_event_notification.assert_called_with({}, [1, 1])
         mock_add_notification.assert_called_with(result_msg, mock_event_notification())
+
+        # collection instead of entity
+        apply({"header": {"catalogue": "any cat", "collection": "any ent", "source": "any src"}})
+        self.mock_storage.get_source_catalogue_entity_combinations.assert_called_with(
+            catalogue="any cat", entity="any ent", source="any src"
+        )
+
+        # only catalogue
+        apply({"header": {"catalogue": "any cat"}})
+        self.mock_storage.get_source_catalogue_entity_combinations.assert_called_with(
+            catalogue="any cat", entity=None, source=None
+        )
+
+        # empty header raises
+        with self.assertRaises(GOBException):
+            apply({"header": {}})
 
     def test_apply_confirms_bulkconfirm_event(self, _):
         msg = {"header": {"timestamp": "any timestamp"}}
@@ -171,9 +192,9 @@ class TestApply(TestCase):
         combination = MockCombination("any source", "any catalogue", "any entity")
         self.mock_storage.get_source_catalogue_entity_combinations.return_value = [combination]
 
-        result = apply({'header': {}})
+        result = apply({'header': {"catalogue": "any_cat"}})
 
-        self.assertEqual(result, {'header': {}, 'summary': ANY})
+        self.assertEqual(result, {'header': {"catalogue": "any_cat"}, 'summary': ANY})
         mock_apply.assert_not_called()
 
     @patch('gobupload.apply.main.add_notification', MagicMock())
@@ -186,9 +207,9 @@ class TestApply(TestCase):
         combination = MockCombination("any source", "any catalogue", "any entity")
         self.mock_storage.get_source_catalogue_entity_combinations.return_value = [combination]
 
-        result = apply({'header': {}})
+        result = apply({'header': {"catalogue": "any_cat"}})
 
-        self.assertEqual(result, {'header': {}, 'summary': ANY})
+        self.assertEqual(result, {'header': {"catalogue": "any_cat"}, 'summary': ANY})
         mock_apply.assert_not_called()
 
     def test_should_analyze(self, mock):
@@ -231,19 +252,19 @@ class TestApply(TestCase):
         })]
 
         # Should analyze is True and mode is full
-        msg = {'header': {'mode': 'full'}}
+        msg = {'header': {'mode': 'full', "catalogue": "any_cat"}}
         mock_should_analyze.return_value = True
         apply(msg)
         mock_storage_handler.return_value.analyze_table.assert_called_once()
         mock_storage_handler.reset_mock()
 
         # Should analyze is True and mode is not full
-        msg = {'header': {'mode': 'notfull'}}
+        msg = {'header': {'mode': 'notfull', "catalogue": "any_cat"}}
         apply(msg)
         mock_storage_handler.return_value.analyze_table.assert_not_called()
 
         # Should analyze is False and mode is full
-        msg = {'header': {'mode': 'full'}}
+        msg = {'header': {'mode': 'full', "catalogue": "any_cat"}}
         mock_should_analyze.return_value = False
         apply(msg)
         mock_storage_handler.return_value.analyze_table.assert_not_called()
