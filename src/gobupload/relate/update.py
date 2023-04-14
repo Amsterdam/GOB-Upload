@@ -106,7 +106,7 @@ WINDOW w AS (PARTITION BY {FIELD.ID}, consecutive_period ORDER BY {FIELD.ID}, {F
         query = self._query()
 
         session.execute(f"CREATE TEMPORARY TABLE {self.name} AS ({query})")
-        session.execute(f"CREATE INDEX ON {self.name}({FIELD.ID}, {FIELD.SEQNR})")
+        session.execute(f"CREATE INDEX ON {self.name}({FIELD.ID}, {FIELD.SEQNR}) INCLUDE ({FIELD.START_VALIDITY})")
         session.execute(f"ANALYZE {self.name}")
 
     @classmethod
