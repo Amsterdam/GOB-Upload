@@ -99,7 +99,7 @@ WINDOW w AS (PARTITION BY _id, consecutive_period ORDER BY _id, volgnummer)
 
         mock_session.execute.assert_has_calls([
             call("CREATE TEMPORARY TABLE to_table AS (the query)"),
-            call("CREATE INDEX ON to_table(_id, volgnummer)"),
+            call("CREATE INDEX ON to_table(_id, volgnummer) INCLUDE (begin_geldigheid)"),
             call("ANALYZE to_table")
         ])
 
