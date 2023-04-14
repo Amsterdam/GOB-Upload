@@ -7,7 +7,7 @@ set -e # stop on any error
 export COVERAGE_FILE=/tmp/.coverage
 
 echo "Running tests"
-coverage run --source=./gobupload -m pytest tests/
+coverage run  --omit="gobupload/dev_utils/*" --source=./gobupload -m pytest tests/
 
 echo "Coverage report"
 coverage report --show-missing --fail-under=95
