@@ -1,6 +1,6 @@
 import sys
-
 from gobupload.relate.update import StartValiditiesTable
+from gobcore.model.metadata import FIELD
 
 
 def run():
@@ -12,8 +12,11 @@ def run():
     table_name = sys.argv[3]
 
     table = StartValiditiesTable.from_catalog_collection(catalog, collection, table_name)
-    table.create()
-    print(f"Table {table.name} created")
+
+    print("-" * 20)
+    print(f"\n\nCREATE TABLE {table_name} AS ({table._query()})")
+    print(f"CREATE INDEX ON {table_name}({FIELD.ID}, {FIELD.SEQNR})")
+    print(f"ANALYZE {table_name}")
 
 
 if __name__ == "__main__":

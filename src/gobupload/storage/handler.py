@@ -317,8 +317,12 @@ WHERE
 
             columns = ','.join(definition['columns'])
             index_type = self._get_index_type(definition.get('type'))
-            statement = f"CREATE INDEX IF NOT EXISTS \"{name}\" " \
-                f"ON {definition['table_name']} USING {index_type}({columns})"
+            table = definition["table_name"]
+            statement = f'CREATE INDEX IF NOT EXISTS "{name}" ON {table} USING {index_type}({columns})'
+
+            if index_type == "GIST":
+                # Create GIST index for valid geometries (used during spatial relate)
+                statement += f" WHERE ST_Valid({columns})"
 
             try:
                 self.execute(statement)

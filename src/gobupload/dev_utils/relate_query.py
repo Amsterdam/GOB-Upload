@@ -1,29 +1,47 @@
 import sys
 
 from gobupload.relate.update import Relater
+from gobupload.storage.handler import GOBStorageHandler
 
 
 def run():
     assert len(sys.argv) >= 4, "Missing arguments: relate_query.py " \
                                "gebieden wijken ligt_in_stadsdeel [ initial/conflicts ]"
 
-    catalog = sys.argv[1]
-    collection = sys.argv[2]
-    attribute = sys.argv[3]
+    class MetaData:
+        catalogue = sys.argv[1]
+        entity = sys.argv[2]
+        attribute = sys.argv[3]
+
     option = sys.argv[4] if len(sys.argv) >= 5 else None
-    initial = option == 'initial'
     check_conflicts = option == 'conflicts'
 
-    relater = Relater(catalog, collection, attribute)
+    with GOBStorageHandler(gob_metadata=MetaData).get_session() as session:
+        relater = Relater(session, MetaData.catalogue, MetaData.entity, MetaData.attribute)
 
-    print(relater.get_conflicts_query() if check_conflicts else relater.get_query(initial))
+        max_src_event = relater._get_max_src_event()
+        max_dst_event = relater._get_max_dst_event()
+
+        src_entity_query, dst_entities_query = next(
+            relater._get_chunks(0, max_src_event, 0, max_dst_event, only_src_side=True)
+        )
+
+        print(
+            relater.get_query(
+                src_entity_query,
+                dst_entities_query,
+                max_src_event=max_src_event,
+                max_dst_event=max_dst_event,
+                is_conflicts_query=check_conflicts
+            )
+        )
 
     if relater.src_has_states or relater.dst_has_states:
         print("")
         print("NOTE: Temporary tables are not created. Create the temporary tables with the following commands.")
 
         if relater.src_has_states:
-            print(f"python -m gobupload.dev_utils.relate_interval_table {catalog} {collection} "
+            print(f"python -m gobupload.dev_utils.relate_interval_table {MetaData.catalogue} {MetaData.entity} "
                   f"{relater.src_intv_tmp_table.name}")
 
         if relater.dst_has_states and relater.src_intv_tmp_table.name != relater.dst_intv_tmp_table.name:
