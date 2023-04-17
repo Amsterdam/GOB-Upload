@@ -322,7 +322,7 @@ WHERE
 
             if index_type == "GIST":
                 # Create GIST index for valid geometries (used during spatial relate)
-                statement += f" WHERE ST_Valid({columns})"
+                statement += f" WHERE ST_IsValid({columns})"
 
             try:
                 self.execute(statement)

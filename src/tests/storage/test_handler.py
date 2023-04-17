@@ -352,7 +352,7 @@ WHERE
             call().close(),
             call("CREATE INDEX IF NOT EXISTS \"index2name\" ON someothertable USING BTREE(cola)"),
             call().close(),
-            call("CREATE INDEX IF NOT EXISTS \"geo_index\" ON table_with_geo USING GIST(geocol) WHERE ST_Valid(geocol)"),
+            call("CREATE INDEX IF NOT EXISTS \"geo_index\" ON table_with_geo USING GIST(geocol) WHERE ST_IsValid(geocol)"),
             call().close(),
             call("CREATE INDEX IF NOT EXISTS \"json_index\" ON table_with_json USING GIN(somejsoncol)"),
             call().close(),
