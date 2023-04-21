@@ -47,7 +47,9 @@ def upgrade():
 
         if 'precision' in attr:
             op.execute(f"DROP VIEW IF EXISTS legacy.{tablename} CASCADE")
-            op.alter_column(tablename, attr_name, type_=sa.DECIMAL(precision=10, scale=attr['precision']))
+
+            sa_type = sa.DECIMAL(precision=10 + int(attr['precision']), scale=attr['precision'])
+            op.alter_column(tablename, attr_name, type_=sa_type)
 
 
 def downgrade():
