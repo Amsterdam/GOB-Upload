@@ -46,6 +46,7 @@ def upgrade():
             continue
 
         if 'precision' in attr:
+            op.execute(f"DROP VIEW IF EXISTS legacy.{tablename}")
             op.alter_column(tablename, attr_name, type_=sa.DECIMAL(precision=10, scale=attr['precision']))
 
 
