@@ -1,0 +1,70 @@
+trigger:
+  branches:
+    include:
+      - develop
+      - master
+
+pr:
+  drafts: true
+  branches:
+    include:
+      - develop
+      - master
+  paths:
+    include:
+      - src/*
+      - azure-pipelines.yml
+
+resources:
+  repositories:
+    - repository: benk-infra
+      type: git
+      name: benk-infra
+
+stages:
+  - stage: Test
+    jobs:
+      - template: templates/test.yaml@benk-infra
+        parameters:
+          projectName: amsterdam-gob-upload
+          composeFile: src/.jenkins/test/docker-compose.yml
+
+  - stage: BuildOnt
+    displayName: Build and push develop image to ontwikkel
+    dependsOn: Test
+    condition: and(succeeded(), eq(variables['build.sourceBranch'], 'refs/heads/develop'))
+    jobs:
+      - template: templates/build_image.yaml@benk-infra
+        parameters:
+          environment: ont
+          dockerImageName: datapunt/gob-upload
+          dockerImageTag: develop
+          dockerOpts: --no-cache --target application
+          srcPath: src
+
+  - stage: BuildTst
+    displayName: Build and push develop image to test
+    dependsOn:
+      - Test
+      - BuildOnt
+    condition: and(succeeded(), eq(variables['build.sourceBranch'], 'refs/heads/develop'))
+    jobs:
+      - template: templates/tag_image.yaml@benk-infra
+        parameters:
+          sourceEnvironment: ont
+          destEnvironment: tst
+          dockerImageName: datapunt/gob-upload
+          dockerImageTag: develop
+
+  - stage: BuildAcc
+    displayName: Build and push develop image to acceptance
+    dependsOn: Test
+    condition: and(succeeded(), eq(variables['build.sourceBranch'], 'refs/heads/master'))
+    jobs:
+      - template: templates/build_image.yaml@benk-infra
+        parameters:
+          environment: acc
+          dockerImageName: datapunt/gob-upload
+          dockerImageTag: develop
+          dockerOpts: --no-cache --target application
+          srcPath: src
