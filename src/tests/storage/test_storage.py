@@ -49,6 +49,7 @@ class TestContextManager(unittest.TestCase):
             self.metadata = param
             self.session = None
             self.engine = MagicMock()
+            self.tablename_temp = handler.GOBStorageHandler._generate_temp_tablename(param)
         handler.GOBStorageHandler.__init__ = side_effect
 
     def tearDown(self):
@@ -58,7 +59,7 @@ class TestContextManager(unittest.TestCase):
     def test_session_context(self):
         mock_session = MagicMock()
         handler.GOBStorageHandler.Session = mock_session
-        storage = handler.GOBStorageHandler(fixtures.random_string())
+        storage = handler.GOBStorageHandler(MockMeta())
 
         # assert starting situation
         self.assertIsNone(storage.session)
@@ -93,7 +94,9 @@ class TestContextManager(unittest.TestCase):
     def test_session_context_invalidate(self):
         mock_session = MagicMock(spec=StreamSession)
         handler.GOBStorageHandler.Session = mock_session
-        storage = handler.GOBStorageHandler(MockMeta())
+
+        with patch("gobupload.storage.handler.random_string", return_value="abcdefgh"):
+            storage = handler.GOBStorageHandler(MockMeta())
 
         mock_conn = MagicMock(spec=Connection)
         storage.engine.connect.return_value = mock_conn
@@ -113,7 +116,7 @@ class TestContextManager(unittest.TestCase):
 
             mock_conn.invalidate.reset_mock()
             mock_session_instance.close.reset_mock()
-            mock_meta.tables = {"meetbouten_meetbouten_tmp": "my_table_obj"}
+            mock_meta.tables = {"tmp_meetbouten_meetbouten_abcdefgh": "my_table_obj"}
 
             with storage.get_session(invalidate=True):
                 pass
