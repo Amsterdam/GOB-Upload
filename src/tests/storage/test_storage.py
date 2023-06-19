@@ -45,11 +45,13 @@ class TestContextManager(unittest.TestCase):
 
     def setUp(self):
         # patch __init__, we don't test that here, but we need session and engine to be present
-        def side_effect(self, param):
+        def side_effect(self, param=None):
             self.metadata = param
             self.session = None
             self.engine = MagicMock()
-            self.tablename_temp = handler.GOBStorageHandler._generate_temp_tablename(param)
+
+            if param:
+                self.tablename_temp = handler.GOBStorageHandler._generate_temp_tablename(param)
         handler.GOBStorageHandler.__init__ = side_effect
 
     def tearDown(self):
@@ -124,3 +126,17 @@ class TestContextManager(unittest.TestCase):
             mock_conn.invalidate.assert_called()
             mock_session_instance.close.assert_called()
             mock_meta.remove.assert_called_with("my_table_obj")
+
+    @patch("gobupload.storage.handler.random_string", MagicMock(return_value="abcdefgh"))
+    def test_session_context_invalidate_no_metadata(self):
+        storage = handler.GOBStorageHandler()
+
+        mock_conn = MagicMock(spec=Connection)
+        storage.engine.connect.return_value = mock_conn
+
+        with patch.object(storage.base, "metadata", spec=MetaData) as mock_meta:
+            with storage.get_session(invalidate=True):
+                pass
+
+        mock_conn.invalidate.assert_called()
+        mock_meta.remove.assert_not_called()

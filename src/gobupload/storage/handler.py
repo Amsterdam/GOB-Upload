@@ -456,8 +456,8 @@ WHERE
                 connection.invalidate()
 
                 # make sure temp table is removed from the (base) metadata class var
-                if (tmp_table := self.base.metadata.tables.get(self.tablename_temp)) is not None:
-                    self.base.metadata.remove(tmp_table)
+                if self.metadata and self.tablename_temp in self.base.metadata.tables:
+                    self.base.metadata.remove(self.base.metadata.tables[self.tablename_temp])
 
             self.session.close()
             self.session = None
