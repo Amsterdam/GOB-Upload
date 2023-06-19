@@ -44,6 +44,7 @@ from gobupload import gob_model
 from gobupload.config import GOB_DB
 from gobupload.storage import queries
 from gobupload.storage.materialized_views import MaterializedViews
+from gobupload.utils import random_string
 
 # not used but must be imported
 # https://geoalchemy-2.readthedocs.io/en/latest/core_tutorial.html#reflecting-tables
@@ -175,6 +176,7 @@ class GOBStorageHandler:
         if gob_metadata:
             self._fields = self.get_collection_model()["all_fields"]
             self._field_types = {field: get_gob_type(self._fields[field]["type"]) for field in self._fields}
+            self.tablename_temp = self._generate_temp_tablename(gob_metadata)
 
             reflection_options["only"] = [self.EVENTS_TABLE, self.tablename] + reflection_options.get("only", [])
 
@@ -422,10 +424,11 @@ WHERE
         if self.metadata:
             return gob_model.get_table_name(self.metadata.catalogue, self.metadata.entity)
 
-    @property
-    def tablename_temp(self) -> str | None:
-        if self.metadata:
-            return self.tablename + "_tmp"
+    @staticmethod
+    def _generate_temp_tablename(metadata) -> str:
+        return "_".join(
+            ["tmp", gob_model.get_table_name(metadata.catalogue, metadata.entity)[:50], random_string(8)]
+        )
 
     @contextmanager
     def get_session(self, invalidate: bool = False) -> StreamSession:

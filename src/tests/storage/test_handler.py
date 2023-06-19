@@ -95,7 +95,10 @@ class TestStorageHandler(unittest.TestCase):
         metadata = message.metadata
 
         GOBStorageHandler.base = MagicMock()
-        self.storage = GOBStorageHandler(metadata)
+
+        with patch("gobupload.storage.handler.random_string", MagicMock(return_value="abcdefgh")):
+            self.storage = GOBStorageHandler(metadata)
+
         GOBStorageHandler.engine = MagicMock()
         GOBStorageHandler.engine.__enter__ = lambda self: None
         GOBStorageHandler.engine.__exit__ = lambda *args: None
@@ -192,6 +195,30 @@ class TestStorageHandler(unittest.TestCase):
             call("SELECT pg_advisory_lock(19935910)"),
             call("SELECT pg_advisory_unlock(19935910)")
         ])
+
+    @patch("gobupload.storage.handler.random_string", MagicMock(return_value="abcdefgh"))
+    @patch("gobupload.storage.handler.GOBStorageHandler.get_collection_model", MagicMock())
+    def test_tablename_temp(self):
+        """
+        Test whether repeated calls to tablename_temp yield the same result.
+        Different metadata yields different tablenames.
+        """
+        class Meta:
+            catalogue = "meetbouten"
+            entity = "meetbouten"
+            source = "any source1"
+
+        storage = GOBStorageHandler(Meta())
+        assert "tmp_meetbouten_meetbouten_abcdefgh" == storage.tablename_temp
+
+        class OtherMeta:
+            catalogue = "meetbouten"
+            entity = "very long enity" * 10
+            source = "any source2"
+
+        other = GOBStorageHandler(OtherMeta())
+        assert "tmp_meetbouten_very long enityvery long enityvery long_abcdefgh" == other.tablename_temp
+        assert len(other.tablename_temp) == 63
 
     def test_get_config_value(self):
         self.storage.engine = MagicMock()
@@ -368,7 +395,7 @@ WHERE
         self.storage.create_temporary_table()
 
         mock_table.assert_called_with(
-            "meetbouten_meetbouten_tmp",
+            "tmp_meetbouten_meetbouten_abcdefgh",
             self.storage.base.metadata,
             *[ANY] * 4,  # columns
             implicit_returning=False,
@@ -376,7 +403,7 @@ WHERE
         )
         mock_table.return_value.create.assert_called_with(bind=mock_session.bind)
 
-        with patch.object(self.storage.base.metadata, "tables", {"meetbouten_meetbouten_tmp": 1}):
+        with patch.object(self.storage.base.metadata, "tables", {"tmp_meetbouten_meetbouten_abcdefgh": 1}):
             with self.assertRaises(ValueError):
                 self.storage.create_temporary_table()
 
@@ -429,7 +456,7 @@ WHERE
             call(isolation_level=mock_session.bind.default_isolation_level)
         ])
 
-        mock_text.assert_called_with("ANALYZE meetbouten_meetbouten_tmp")
+        mock_text.assert_called_with("ANALYZE tmp_meetbouten_meetbouten_abcdefgh")
         mock_session.bind.execute.assert_called_with(mock_text.return_value)
 
     def test_get_query_value(self):
