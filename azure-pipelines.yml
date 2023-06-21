@@ -21,6 +21,15 @@ resources:
       type: git
       name: benk-infra
 
+schedules:
+  - cron: '0 3 * * *'
+    displayName: Daily build
+    always: true
+    branches:
+      include:
+      - master
+      - develop
+
 stages:
   - stage: Test
     jobs:
