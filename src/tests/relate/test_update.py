@@ -98,7 +98,7 @@ WINDOW w AS (PARTITION BY _id, consecutive_period ORDER BY _id, volgnummer)
         table.create(mock_session)
 
         mock_session.execute.assert_has_calls([
-            call("CREATE TEMPORARY TABLE to_table AS (the query)"),
+            call("CREATE TEMPORARY TABLE to_table USING columnar AS (the query)"),
             call("CREATE INDEX ON to_table(_id, volgnummer) INCLUDE (begin_geldigheid)"),
             call("ANALYZE to_table")
         ])
@@ -274,17 +274,17 @@ class TestRelaterInit(TestCase):
         assert src_collection_name == relater.src_collection
         assert src_collection_name["all_fields"]["src_field_name"] == relater.src_field
 
-        assert "dst_catalog_name_dst_collection_name_table" == relater.dst_table_name
+        assert "dst_catalog_name_dst_collection_name_table_clone" == relater.dst_table_name
         assert relater.src_has_states is True
         assert relater.dst_has_states is False
 
         # applicationB should be filtered out
         assert [{"source": "applicationA", "multiple_allowed": False}] == relater.relation_specs
         assert relater.is_many is False
-        assert "rel_src_catalog_name_src_collection_name_src_field_name" == relater.relation_table
+        assert "rel_src_catalog_name_src_collection_name_src_field_name_clone" == relater.relation_table
 
-        query = "SELECT DISTINCT _application FROM src_catalog_name_src_collection_name_table"
-        self.mock_session.execute.assert_called_with(query)
+        query = "SELECT DISTINCT _application FROM src_catalog_name_src_collection_name_table_clone"
+        self.mock_session.execute.assert_any_call(query)
 
         assert "src_catalog_name_srcabbr_intv_aaaaaa" == relater.src_intv_tmp_table.name
         assert "dst_catalog_name_dstabbr_intv_aaaaaa" == relater.dst_intv_tmp_table.name
@@ -780,7 +780,7 @@ INNER JOIN (
     FROM (
         SELECT * FROM src_entities WHERE _date_deleted IS NULL
     ) src
-    JOIN (SELECT * FROM src_catalog_name_src_collection_name_table WHERE (CHECK_VALID_GEO_SRC)) valid_src ON src._gobid = valid_src._gobid
+    JOIN (SELECT * FROM src_catalog_name_src_collection_name_table_clone WHERE (CHECK_VALID_GEO_SRC)) valid_src ON src._gobid = valid_src._gobid
     
     LEFT JOIN (DST ENTITIES) dst ON DST_TABLE_INNER_JOIN_ON1 AND
     DST_TABLE_INNER_JOIN_ON2 AND
@@ -807,7 +807,7 @@ INNER JOIN (
     FROM (
         SELECT * FROM src_entities WHERE _date_deleted IS NULL
     ) src
-    JOIN (SELECT * FROM src_catalog_name_src_collection_name_table WHERE (CHECK_VALID_GEO_SRC)) valid_src ON src._gobid = valid_src._gobid
+    JOIN (SELECT * FROM src_catalog_name_src_collection_name_table_clone WHERE (CHECK_VALID_GEO_SRC)) valid_src ON src._gobid = valid_src._gobid
     ARRAY_ELEMENTS
     LEFT JOIN (DST ENTITIES) dst ON DST_TABLE_INNER_JOIN_ON1 AND
     DST_TABLE_INNER_JOIN_ON2 AND
@@ -849,7 +849,7 @@ INNER JOIN (
         src.*,
         SRC_VAL_REF bronwaarde,
         PROVIDED_START_VALIDITY provided_begin_geldigheid
-    FROM src_catalog_name_src_collection_name_table src
+    FROM src_catalog_name_src_collection_name_table_clone src
     
     WHERE src._date_deleted IS NULL AND (_id) NOT IN (
         SELECT _id FROM src_entities
@@ -863,7 +863,7 @@ INNER JOIN (
         src.*,
         SRC_VAL_REF bronwaarde,
         PROVIDED_START_VALIDITY provided_begin_geldigheid
-    FROM src_catalog_name_src_collection_name_table src
+    FROM src_catalog_name_src_collection_name_table_clone src
     JOIN jsonb_array_elements(src.src_field_name) json_arr_elm(item) ON json_arr_elm->>'bronwaarde' IS NOT NULL
     WHERE src._date_deleted IS NULL AND (_id,volgnummer) NOT IN (
         SELECT _id,volgnummer FROM src_entities
@@ -987,20 +987,20 @@ INNER JOIN (
         relater._source_value_ref = lambda: 'SOURCE_VAL_REF'
         relater.is_many = True
         expected = f"""
-SELECT * FROM src_catalog_name_src_collection_name_table src
+SELECT * FROM src_catalog_name_src_collection_name_table_clone src
 
 """
         self.assertEqual(expected, relater._src_entities_range(0))
 
         relater.is_many = False
         expected = f"""
-SELECT * FROM src_catalog_name_src_collection_name_table src
+SELECT * FROM src_catalog_name_src_collection_name_table_clone src
 WHERE SOURCE_VAL_REF IS NOT NULL
 """
         self.assertEqual(expected, relater._src_entities_range(0))
 
         expected = f"""
-SELECT * FROM src_catalog_name_src_collection_name_table src
+SELECT * FROM src_catalog_name_src_collection_name_table_clone src
 WHERE SOURCE_VAL_REF IS NOT NULL AND src._last_event > 1 AND src._last_event <= 100
 """
         self.assertEqual(expected, relater._src_entities_range(1, 100))
@@ -1009,13 +1009,13 @@ WHERE SOURCE_VAL_REF IS NOT NULL AND src._last_event > 1 AND src._last_event <= 
         relater = self._get_relater()
 
         expected = f"""
-SELECT * FROM dst_catalog_name_dst_collection_name_table dst
+SELECT * FROM dst_catalog_name_dst_collection_name_table_clone dst
 
 """
         self.assertEqual(expected, relater._dst_entities_range(0))
 
         expected = f"""
-SELECT * FROM dst_catalog_name_dst_collection_name_table dst
+SELECT * FROM dst_catalog_name_dst_collection_name_table_clone dst
 WHERE dst._last_event > 1 AND dst._last_event <= 100
 """
         self.assertEqual(expected, relater._dst_entities_range(1, 100))
@@ -1046,7 +1046,7 @@ WHERE dst._last_event > 1 AND dst._last_event <= 100
         relater = self._get_relater()
         relater.src_has_states = False
 
-        self.assertEqual("LEFT JOIN rel_src_catalog_name_src_collection_name_src_field_name rel"
+        self.assertEqual("LEFT JOIN rel_src_catalog_name_src_collection_name_src_field_name_clone rel"
                          " ON rel.src_id = src._id"
                          " AND rel.src_source = src._source"
                          " AND src.src_field_name->>'bronwaarde' = rel.bronwaarde"
@@ -1055,7 +1055,7 @@ WHERE dst._last_event > 1 AND dst._last_event <= 100
 
         relater.src_has_states = True
 
-        self.assertEqual("LEFT JOIN rel_src_catalog_name_src_collection_name_src_field_name rel"
+        self.assertEqual("LEFT JOIN rel_src_catalog_name_src_collection_name_src_field_name_clone rel"
                          " ON rel.src_id = src._id"
                          " AND rel.src_volgnummer = src.volgnummer"
                          " AND rel.src_source = src._source"
@@ -1121,16 +1121,16 @@ WHERE dst._last_event > 1 AND dst._last_event <= 100
         expected = f"""
 SELECT EXPR1,
     EXPR2
-FROM rel_src_catalog_name_src_collection_name_src_field_name rel
+FROM rel_src_catalog_name_src_collection_name_src_field_name_clone rel
 WHERE rel.id IN (
-    SELECT rel.id FROM rel_src_catalog_name_src_collection_name_src_field_name rel
-    JOIN src_catalog_name_src_collection_name_table src ON rel.src_id = src._id AND rel.src_volgnummer = src.volgnummer
+    SELECT rel.id FROM rel_src_catalog_name_src_collection_name_src_field_name_clone rel
+    JOIN src_catalog_name_src_collection_name_table_clone src ON rel.src_id = src._id AND rel.src_volgnummer = src.volgnummer
       AND src._last_event > 1 AND src._last_event <= 2
     LEFT JOIN src_catalog_name_srcabbr_src_field_name_result res ON res.rel_id = rel.id
     WHERE rel._date_deleted IS NULL AND res.rel_id IS NULL
     UNION
-    SELECT rel.id FROM rel_src_catalog_name_src_collection_name_src_field_name rel
-    JOIN dst_catalog_name_dst_collection_name_table dst ON rel.dst_id = dst._id AND rel.dst_volgnummer = dst.volgnummer
+    SELECT rel.id FROM rel_src_catalog_name_src_collection_name_src_field_name_clone rel
+    JOIN dst_catalog_name_dst_collection_name_table_clone dst ON rel.dst_id = dst._id AND rel.dst_volgnummer = dst.volgnummer
       AND dst._last_event > 3 AND dst._last_event <= 4
     LEFT JOIN src_catalog_name_srcabbr_src_field_name_result res ON res.rel_id = rel.id
     WHERE rel._date_deleted IS NULL AND res.rel_id IS NULL
@@ -1145,16 +1145,16 @@ WHERE rel.id IN (
         expected = f"""
 SELECT EXPR1,
     EXPR2
-FROM rel_src_catalog_name_src_collection_name_src_field_name rel
+FROM rel_src_catalog_name_src_collection_name_src_field_name_clone rel
 WHERE rel.id IN (
-    SELECT rel.id FROM rel_src_catalog_name_src_collection_name_src_field_name rel
-    JOIN src_catalog_name_src_collection_name_table src ON rel.src_id = src._id
+    SELECT rel.id FROM rel_src_catalog_name_src_collection_name_src_field_name_clone rel
+    JOIN src_catalog_name_src_collection_name_table_clone src ON rel.src_id = src._id
       AND src._last_event > 1 AND src._last_event <= 2
     LEFT JOIN src_catalog_name_srcabbr_src_field_name_result res ON res.rel_id = rel.id
     WHERE rel._date_deleted IS NULL AND res.rel_id IS NULL
     UNION
-    SELECT rel.id FROM rel_src_catalog_name_src_collection_name_src_field_name rel
-    JOIN dst_catalog_name_dst_collection_name_table dst ON rel.dst_id = dst._id
+    SELECT rel.id FROM rel_src_catalog_name_src_collection_name_src_field_name_clone rel
+    JOIN dst_catalog_name_dst_collection_name_table_clone dst ON rel.dst_id = dst._id
       AND dst._last_event > 3 AND dst._last_event <= 4
     LEFT JOIN src_catalog_name_srcabbr_src_field_name_result res ON res.rel_id = rel.id
     WHERE rel._date_deleted IS NULL AND res.rel_id IS NULL
@@ -1190,7 +1190,7 @@ SELECT
 FROM src_entities src
 
 SRC_DST_JOIN DST ENTITIES
-LEFT JOIN dst_catalog_name_dst_collection_name_table dst ON DST_TABLE_OUTER_JOIN_ON1 AND
+LEFT JOIN dst_catalog_name_dst_collection_name_table_clone dst ON DST_TABLE_OUTER_JOIN_ON1 AND
     DST_TABLE_OUTER_JOIN_ON2
 JOIN REL
 JOIN_SRC_GELDIGHEID
@@ -1216,7 +1216,7 @@ SELECT
 FROM src_entities src
 ARRAY_ELEMENTS
 SRC_DST_JOIN DST ENTITIES
-LEFT JOIN dst_catalog_name_dst_collection_name_table dst ON DST_TABLE_OUTER_JOIN_ON1 AND
+LEFT JOIN dst_catalog_name_dst_collection_name_table_clone dst ON DST_TABLE_OUTER_JOIN_ON1 AND
     DST_TABLE_OUTER_JOIN_ON2
 JOIN REL
 JOIN_SRC_GELDIGHEID
@@ -1240,7 +1240,7 @@ SELECT
 FROM src_entities src
 
 SRC_DST_JOIN DST ENTITIES
-LEFT JOIN dst_catalog_name_dst_collection_name_table dst ON DST_TABLE_OUTER_JOIN_ON1 AND
+LEFT JOIN dst_catalog_name_dst_collection_name_table_clone dst ON DST_TABLE_OUTER_JOIN_ON1 AND
     DST_TABLE_OUTER_JOIN_ON2
 
 JOIN_SRC_GELDIGHEID
