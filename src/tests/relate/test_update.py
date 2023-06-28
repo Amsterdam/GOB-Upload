@@ -5,7 +5,7 @@ from datetime import date, datetime
 from gobcore.exceptions import GOBException
 from gobcore.model.metadata import FIELD
 
-from gobupload.relate.update import EventCreator, RelateException, Relater, StartValiditiesTable
+from gobupload.relate.update import EventCreator, RelateException, Relater
 from gobupload.storage.handler import StreamSession
 
 
@@ -65,50 +65,6 @@ class MockSources:
             'multiple_allowed': True
         }]
 
-
-class TestStartValiditiesTable(TestCase):
-
-    def test_query(self):
-        table = StartValiditiesTable('from_table_name', 'to_table')
-        expected = """
-WITH
-end_validity_lag AS (
-    SELECT _id, volgnummer, begin_geldigheid, LAG(eind_geldigheid) OVER w AS lagged_end
-    FROM from_table_name
-    WINDOW w AS (PARTITION BY _id ORDER BY _id, volgnummer)
-),
-group_start_validity AS (
-    SELECT _id, volgnummer, begin_geldigheid,
-        COUNT(*) FILTER ( WHERE begin_geldigheid <> lagged_end ) OVER w AS consecutive_period
-    FROM end_validity_lag
-    WINDOW w AS (PARTITION BY _id ORDER BY _id, volgnummer)
-)
-SELECT _id, volgnummer, MIN(begin_geldigheid) OVER w AS begin_geldigheid
-FROM group_start_validity
-WINDOW w AS (PARTITION BY _id, consecutive_period ORDER BY _id, volgnummer)
-"""
-
-        self.assertTrue(expected in table._query())
-
-    def test_create(self):
-        mock_session = MagicMock(spec=StreamSession)
-        table = StartValiditiesTable('from_table_name', 'to_table')
-        table._query = MagicMock(return_value='the query')
-
-        table.create(mock_session)
-
-        mock_session.execute.assert_has_calls([
-            call("CREATE TEMPORARY TABLE to_table USING columnar AS (the query)"),
-            call("CREATE INDEX ON to_table(_id, volgnummer) INCLUDE (begin_geldigheid)"),
-            call("ANALYZE to_table")
-        ])
-
-    @patch("gobupload.relate.update.gob_model", MockModel())
-    def test_from_catalog_collection(self):
-        res = StartValiditiesTable.from_catalog_collection('catalog_name', 'collection_name', 'table_name')
-
-        self.assertEqual('catalog_name_collection_name_table', res.from_table)
-        self.assertEqual('table_name', res.name)
 
 
 class TestEventCreator(TestCase):
@@ -250,7 +206,6 @@ class TestEventCreator(TestCase):
 @patch("gobupload.relate.update.logger", MagicMock())
 @patch("gobupload.relate.update.Relater.model", MockModel())
 @patch("gobupload.relate.update.Relater.sources", MockSources())
-@patch("gobupload.relate.update.random_string", lambda x: x * "a")
 @patch("gobupload.relate.update.get_relation_name", lambda m, cat, col, field: f"{cat}_{col}_{field}")
 class TestRelaterInit(TestCase):
 
@@ -286,8 +241,6 @@ class TestRelaterInit(TestCase):
         query = "SELECT DISTINCT _application FROM src_catalog_name_src_collection_name_table_clone"
         self.mock_session.execute.assert_any_call(query)
 
-        assert "src_catalog_name_srcabbr_intv_aaaaaa" == relater.src_intv_tmp_table.name
-        assert "dst_catalog_name_dstabbr_intv_aaaaaa" == relater.dst_intv_tmp_table.name
         assert "src_catalog_name_srcabbr_src_field_name_result" == relater.result_table_name
 
     def test_init_relate_exception(self):
@@ -314,10 +267,10 @@ class TestRelater(TestCase):
 
     def test_validity_select_expressions_src(self):
         test_cases = [
-            (True, True, ('GREATEST(src_bg.begin_geldigheid, dst_bg.begin_geldigheid, PROVIDED_START_VALIDITY)',
+            (True, True, ('GREATEST(src.begin_geldigheid, dst.begin_geldigheid, PROVIDED_START_VALIDITY)',
                           'LEAST(src.eind_geldigheid, dst.eind_geldigheid)')),
-            (True, False, ('GREATEST(src_bg.begin_geldigheid, PROVIDED_START_VALIDITY)', 'src.eind_geldigheid')),
-            (False, True, ('GREATEST(dst_bg.begin_geldigheid, PROVIDED_START_VALIDITY)', 'dst.eind_geldigheid')),
+            (True, False, ('GREATEST(src.begin_geldigheid, PROVIDED_START_VALIDITY)', 'src.eind_geldigheid')),
+            (False, True, ('GREATEST(dst.begin_geldigheid, PROVIDED_START_VALIDITY)', 'dst.eind_geldigheid')),
             (False, False, ('PROVIDED_START_VALIDITY', 'NULL')),
         ]
 
@@ -873,8 +826,6 @@ INNER JOIN (
     def test_create_tmp_tables(self):
         relater = self._get_relater()
         relater._start_validity_per_seqnr = lambda tablename: "START_VALIDITIES_" + tablename
-        relater.src_intv_tmp_table = MagicMock()
-        relater.dst_intv_tmp_table = MagicMock()
         relater._create_tmp_result_table = MagicMock()
 
         relater.src_table_name = 'src_table_name'
@@ -885,12 +836,8 @@ INNER JOIN (
         with relater:
             pass
 
-        relater.src_intv_tmp_table.create.assert_called_once()
-        relater.dst_intv_tmp_table.create.assert_called_once()
         relater._create_tmp_result_table.assert_called_once()
 
-        relater.src_intv_tmp_table.create.reset_mock()
-        relater.dst_intv_tmp_table.create.reset_mock()
         relater._create_tmp_result_table.reset_mock()
         relater.src_has_states = True
         relater.dst_has_states = False
@@ -898,12 +845,8 @@ INNER JOIN (
         with relater:
             pass
 
-        relater.src_intv_tmp_table.create.assert_called_once()
-        relater.dst_intv_tmp_table.create.assert_not_called()
         relater._create_tmp_result_table.assert_called_once()
 
-        relater.src_intv_tmp_table.create.reset_mock()
-        relater.dst_intv_tmp_table.create.reset_mock()
         relater._create_tmp_result_table.reset_mock()
         relater.src_has_states = False
         relater.dst_has_states = True
@@ -911,31 +854,19 @@ INNER JOIN (
         with relater:
             pass
 
-        relater.src_intv_tmp_table.create.assert_not_called()
-        relater.dst_intv_tmp_table.create.assert_called_once()
         relater._create_tmp_result_table.assert_called_once()
 
         relater.src_table_name = 'src_table_name'
         relater.dst_table_name = 'src_table_name'  # same table name, only create one tmp table
 
-        relater.src_intv_tmp_table.create.reset_mock()
-        relater.dst_intv_tmp_table.create.reset_mock()
         relater._create_tmp_result_table.reset_mock()
         relater.src_has_states = True
         relater.dst_has_states = True
 
-        # Should be different before
-        self.assertNotEqual(relater.src_intv_tmp_table, relater.dst_intv_tmp_table)
-
         with relater:
             pass
 
-        # But as src and dst table are the same, we set them to use the same intv tmp table
-        self.assertEqual(relater.src_intv_tmp_table, relater.dst_intv_tmp_table)
-
-        relater.src_intv_tmp_table.create.assert_called_once()
         relater._create_tmp_result_table.assert_called_once()
-        # Don't check dst_intv_tmp_table, because that is the same object as src_intv_tmp_table now
 
     def test_create_tmp_result_table(self):
         relater = self._get_relater()
@@ -1019,28 +950,6 @@ SELECT * FROM dst_catalog_name_dst_collection_name_table_clone dst
 WHERE dst._last_event > 1 AND dst._last_event <= 100
 """
         self.assertEqual(expected, relater._dst_entities_range(1, 100))
-
-    def test_join_src_geldigheid(self):
-        relater = self._get_relater()
-        relater.src_table_name = 'src_table'
-        relater.src_intv_tmp_table.name = 'src_intv_tmp_table_name'
-        relater.src_has_states = False
-        self.assertEqual("", relater._join_src_geldigheid())
-        relater.src_has_states = True
-        self.assertEqual("LEFT JOIN src_intv_tmp_table_name src_bg "
-                         "ON src_bg._id = src._id AND src_bg.volgnummer = src.volgnummer",
-                         relater._join_src_geldigheid())
-
-    def test_join_dst_geldigheid(self):
-        relater = self._get_relater()
-        relater.dst_table_name = 'dst_table'
-        relater.dst_intv_tmp_table.name = 'dst_intv_tmp_table_name'
-        relater.dst_has_states = False
-        self.assertEqual("", relater._join_dst_geldigheid())
-        relater.dst_has_states = True
-        self.assertEqual("LEFT JOIN dst_intv_tmp_table_name dst_bg "
-                         "ON dst_bg._id = dst._id AND dst_bg.volgnummer = dst.volgnummer",
-                         relater._join_dst_geldigheid())
 
     def test_join_rel(self):
         relater = self._get_relater()
@@ -1169,8 +1078,6 @@ WHERE rel.id IN (
         relater._select_expressions_dst = lambda: ['SELECT_EXPRESSION1DST', 'SELECT_EXPRESSION2DST']
         relater._join_array_elements = lambda: 'ARRAY_ELEMENTS'
         relater._src_dst_join = lambda dst_entities: 'SRC_DST_JOIN ' + dst_entities
-        relater._join_src_geldigheid = lambda: 'JOIN_SRC_GELDIGHEID'
-        relater._join_dst_geldigheid = lambda: 'JOIN_DST_GELDIGHEID'
         relater._get_where = lambda is_conflicts: 'WHERE CLAUSE ' + ("CONFLICTS" if is_conflicts else "FULL")
         relater._join_rel = lambda: 'JOIN REL'
 
@@ -1193,8 +1100,6 @@ SRC_DST_JOIN DST ENTITIES
 LEFT JOIN dst_catalog_name_dst_collection_name_table_clone dst ON DST_TABLE_OUTER_JOIN_ON1 AND
     DST_TABLE_OUTER_JOIN_ON2
 JOIN REL
-JOIN_SRC_GELDIGHEID
-JOIN_DST_GELDIGHEID
 WHERE CLAUSE FULL
 """
 
@@ -1219,8 +1124,6 @@ SRC_DST_JOIN DST ENTITIES
 LEFT JOIN dst_catalog_name_dst_collection_name_table_clone dst ON DST_TABLE_OUTER_JOIN_ON1 AND
     DST_TABLE_OUTER_JOIN_ON2
 JOIN REL
-JOIN_SRC_GELDIGHEID
-JOIN_DST_GELDIGHEID
 WHERE CLAUSE FULL
 """
         result = relater.get_query("SRC ENTITIES", "DST ENTITIES", 50, 100)
@@ -1243,8 +1146,6 @@ SRC_DST_JOIN DST ENTITIES
 LEFT JOIN dst_catalog_name_dst_collection_name_table_clone dst ON DST_TABLE_OUTER_JOIN_ON1 AND
     DST_TABLE_OUTER_JOIN_ON2
 
-JOIN_SRC_GELDIGHEID
-JOIN_DST_GELDIGHEID
 WHERE CLAUSE CONFLICTS
 """
         result = relater.get_query("SRC ENTITIES", "DST ENTITIES", 50, 100, True)
@@ -1539,9 +1440,6 @@ WHERE CLAUSE CONFLICTS
 
     def test_get_updates(self):
         relater = self._get_relater()
-        relater._create_tmp_intv_tables = MagicMock()
-        relater.src_intv_tmp_table = MagicMock()
-        relater.dst_intv_tmp_table = MagicMock()
         relater._get_changed_ranges = MagicMock(return_value=(1, 2, 3, 4))
         relater._get_updates_full = MagicMock()
         relater._get_updates_chunked = MagicMock()
@@ -1559,7 +1457,6 @@ WHERE CLAUSE CONFLICTS
         relater._query_into_results_table.assert_called_with(relater._create_delete_events_query.return_value)
         relater._create_delete_events_query.assert_called_with(1, 2, 3, 4)
 
-        relater._create_tmp_intv_tables.assert_called()
         relater.session.execute.assert_called_with("ANALYZE src_catalog_name_srcabbr_src_field_name_result")
 
         # Initial load
@@ -1567,7 +1464,6 @@ WHERE CLAUSE CONFLICTS
         relater._get_updates_full.reset_mock()
         relater._query_into_results_table.reset_mock()
         relater._create_delete_events_query.reset_mock()
-        relater._create_tmp_intv_tables.reset_mock()
 
         with relater as rel_ctx:
             res = rel_ctx._get_updates(True)
@@ -1579,7 +1475,6 @@ WHERE CLAUSE CONFLICTS
         relater._query_into_results_table.assert_called_with(relater._create_delete_events_query.return_value)
         relater._create_delete_events_query.assert_called_with(1, 2, 3, 4)
 
-        relater._create_tmp_intv_tables.assert_called()
         relater.session.execute.assert_called_with("ANALYZE src_catalog_name_srcabbr_src_field_name_result")
 
     def test_read_results(self):
@@ -1617,7 +1512,6 @@ WHERE CLAUSE CONFLICTS
 
     def test_get_conflicts(self):
         relater = self._get_relater()
-        relater._create_tmp_intv_tables = MagicMock()
         relater._get_max_src_event = MagicMock(return_value=50)
         relater._get_max_dst_event = MagicMock(return_value=60)
         relater._get_updates_full = MagicMock()
@@ -1627,7 +1521,6 @@ WHERE CLAUSE CONFLICTS
             pass
 
         assert [{"a": "b"}] == list(relater.get_conflicts())
-        relater._create_tmp_intv_tables.assert_called_once()
         relater._get_updates_full.assert_called_with(50, 60, is_conflicts_query=True)
 
     @patch("gobupload.relate.update._RELATE_VERSION", "123.0")
