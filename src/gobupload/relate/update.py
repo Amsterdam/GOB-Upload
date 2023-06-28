@@ -194,6 +194,7 @@ class Table:
         self.tablename = tablename
 
     def clone_using_columnar(self, session):
+        logger.info(f"Creating temporary citus table for: {self.tablename}")
         session.execute(f"CREATE TEMPORARY TABLE {self.tablename}_clone USING columnar AS "
                         f"SELECT * FROM {self.tablename}")
         session.execute(f"ANALYZE {self.tablename}_clone")
