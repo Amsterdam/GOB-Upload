@@ -105,7 +105,7 @@ WINDOW w AS (PARTITION BY {FIELD.ID}, consecutive_period ORDER BY {FIELD.ID}, {F
         """
         query = self._query()
 
-        session.execute(f"CREATE TEMPORARY TABLE {self.name} AS ({query})")
+        session.execute(f"CREATE TEMPORARY TABLE {self.name} USING columnar AS ({query})")
         session.execute(f"CREATE INDEX ON {self.name}({FIELD.ID}, {FIELD.SEQNR}) INCLUDE ({FIELD.START_VALIDITY})")
         session.execute(f"ANALYZE {self.name}")
 
@@ -189,6 +189,18 @@ class EventCreator:
         return None  # No event created, CONFIRMS are skipped
 
 
+class Table:
+    def __init__(self, tablename: str):
+        self.tablename = tablename
+
+    def clone_using_columnar(self, session):
+        logger.info(f"Creating temporary citus table for: {self.tablename}")
+        session.execute(f"CREATE TEMPORARY TABLE {self.tablename}_clone USING columnar AS "
+                        f"SELECT * FROM {self.tablename}")
+        session.execute(f"ANALYZE {self.tablename}_clone")
+        return Table(f"{self.tablename}_clone")
+
+
 class Relater:
     model = gob_model
     sources = GOBSources(model)
@@ -248,12 +260,14 @@ class Relater:
 
         self.src_collection = self.model[src_catalog_name]['collections'][src_collection_name]
         self.src_field = self.src_collection['all_fields'].get(src_field_name)
-        self.src_table_name = self.model.get_table_name(src_catalog_name, src_collection_name)
+        self.src_table_name = Table(self.model.get_table_name(src_catalog_name, src_collection_name)) \
+            .clone_using_columnar(session).tablename
 
         # Get the destination catalog and collection names
         self.dst_catalog_name, self.dst_collection_name = self.src_field['ref'].split(':')
         self.dst_collection = self.model[self.dst_catalog_name]['collections'][self.dst_collection_name]
-        self.dst_table_name = self.model.get_table_name(self.dst_catalog_name, self.dst_collection_name)
+        self.dst_table_name = Table(self.model.get_table_name(self.dst_catalog_name, self.dst_collection_name)) \
+            .clone_using_columnar(session).tablename
 
         # Check if source or destination has states (volgnummer, begin_geldigheid, eind_geldigheid)
         self.src_has_states = self.model.has_states(self.src_catalog_name, self.src_collection_name)
@@ -277,8 +291,8 @@ class Relater:
         self.relation_specs = [spec for spec in relation_specs if spec['source'] in src_applications]
 
         self.is_many = self.src_field['type'] == "GOB.ManyReference"
-        self.relation_table = "rel_" + get_relation_name(self.model, src_catalog_name, src_collection_name,
-                                                         src_field_name)
+        self.relation_table = Table("rel_" + get_relation_name(self.model, src_catalog_name, src_collection_name,
+                                                               src_field_name)).clone_using_columnar(session).tablename
 
         src_intv_tmp_table_name = "_".join([
             self.src_catalog_name, self.src_collection['abbreviation'], "intv", random_string(6)
@@ -876,11 +890,11 @@ SELECT * FROM {self.dst_table_name} dst
         """
         has_multiple_allowed_source = any(spec['multiple_allowed'] for spec in self.relation_specs)
         return "WHERE (" \
-               + (f"rel.{FIELD.DATE_DELETED} IS NULL OR " if not is_conflicts_query else "") \
-               + f"src.{FIELD.ID} IS NOT NULL)" \
-               + f" AND dst.{FIELD.DATE_DELETED} IS NULL" \
-               + (f" AND {self._filter_conflicts()}" if is_conflicts_query else "") \
-               + (f" AND {self._multiple_allowed_where()}" if has_multiple_allowed_source else "")
+            + (f"rel.{FIELD.DATE_DELETED} IS NULL OR " if not is_conflicts_query else "") \
+            + f"src.{FIELD.ID} IS NOT NULL)" \
+            + f" AND dst.{FIELD.DATE_DELETED} IS NULL" \
+            + (f" AND {self._filter_conflicts()}" if is_conflicts_query else "") \
+            + (f" AND {self._multiple_allowed_where()}" if has_multiple_allowed_source else "")
 
     def _multiple_allowed_where(self):
         """If any of the sources for this relation has multiple_allowed set to true, add this extra where-clause
