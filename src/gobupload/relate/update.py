@@ -18,7 +18,6 @@ from gobcore.utils import ProgressTicker
 from gobupload import gob_model
 from gobupload.compare.event_collector import EventCollector
 from gobupload.storage.handler import StreamSession
-from gobupload.utils import random_string
 from gobupload.relate.exceptions import RelateException
 
 EQUALS = 'equals'
@@ -40,79 +39,6 @@ _RELATE_VERSION = '0.1'
 
 
 # DEVELOPMENT: The DEBUG environment to 'true' to avoid removal of tmp tables.
-
-class StartValiditiesTable:
-    """Holds the start validities table for a given object.
-
-    For objects with state (volgnummers), for a given state, the begin_geldigheid that is used in the relate process
-    is the begin_geldigheid of the first state of the set of consecutive states this state is a member of.
-
-    For example, we have a certain object A with volgnummers 1, 2, 3, 5, 6 and 8
-
-    We have three sets of consecutive states:
-    1, 2, 3
-    5, 6
-    8
-
-    Each state in each series will get the begin_geldigheid of the first state in its set. This means that states 2
-    and 3 get the begin_geldigheid of state 1. 6 uses the begin_geldigheid of 5 and 1, 5 and 8 don't change.
-
-    These new values for begin_geldigheid are used only to determine the begin_geldigheid for the relation.
-
-    The resulting table contains the columns id, volgnummer, begin_geldigheid
-    """
-
-    def __init__(self, from_table: str, name: str):
-        """
-
-        :param from_table: The table to extract the calculate the start validities for
-        :param name: Name of the table to be created
-        """
-        self.from_table = from_table
-        self.name = name
-
-    def _query(self):
-        """Returns the query that builds the table
-
-        :return:
-        """
-        return f"""
--- Find all possible intervals for {self.from_table}: id - seqnr - start - end, using windows per `_id`
--- 1. lag (sorted) end_validity 1 row to allow for comparison with start_validity of next period
--- 2. create column with labels of consecutive periods (when there is a gap, start a new group)
--- 3. Take the first start_validity per group
-WITH
-end_validity_lag AS (
-    SELECT {FIELD.ID}, {FIELD.SEQNR}, {FIELD.START_VALIDITY}, LAG({FIELD.END_VALIDITY}) OVER w AS lagged_end
-    FROM {self.from_table}
-    WINDOW w AS (PARTITION BY {FIELD.ID} ORDER BY {FIELD.ID}, {FIELD.SEQNR})
-),
-group_start_validity AS (
-    SELECT {FIELD.ID}, {FIELD.SEQNR}, {FIELD.START_VALIDITY},
-        COUNT(*) FILTER ( WHERE {FIELD.START_VALIDITY} <> lagged_end ) OVER w AS consecutive_period
-    FROM end_validity_lag
-    WINDOW w AS (PARTITION BY {FIELD.ID} ORDER BY {FIELD.ID}, {FIELD.SEQNR})
-)
-SELECT {FIELD.ID}, {FIELD.SEQNR}, MIN({FIELD.START_VALIDITY}) OVER w AS {FIELD.START_VALIDITY}
-FROM group_start_validity
-WINDOW w AS (PARTITION BY {FIELD.ID}, consecutive_period ORDER BY {FIELD.ID}, {FIELD.SEQNR})
-"""
-
-    def create(self, session: StreamSession):
-        """Creates the table with index on id, volgnummer
-
-        :return:
-        """
-        query = self._query()
-
-        session.execute(f"CREATE TEMPORARY TABLE {self.name} USING columnar AS ({query})")
-        session.execute(f"CREATE INDEX ON {self.name}({FIELD.ID}, {FIELD.SEQNR}) INCLUDE ({FIELD.START_VALIDITY})")
-        session.execute(f"ANALYZE {self.name}")
-
-    @classmethod
-    def from_catalog_collection(cls, catalog_name: str, collection_name: str, table_name: str):
-        from_table = gob_model.get_table_name(catalog_name, collection_name)
-        return cls(from_table, table_name)
 
 
 class EventCreator:
@@ -294,23 +220,11 @@ class Relater:
         self.relation_table = Table("rel_" + get_relation_name(self.model, src_catalog_name, src_collection_name,
                                                                src_field_name)).clone_using_columnar(session).tablename
 
-        src_intv_tmp_table_name = "_".join([
-            self.src_catalog_name, self.src_collection['abbreviation'], "intv", random_string(6)
-        ]).lower()
-
-        dst_intv_tmp_table_name = "_".join([
-            self.dst_catalog_name, self.dst_collection['abbreviation'], "intv", random_string(6)
-        ]).lower()
-
-        self.src_intv_tmp_table = StartValiditiesTable(self.src_table_name, src_intv_tmp_table_name)
-        self.dst_intv_tmp_table = StartValiditiesTable(self.dst_table_name, dst_intv_tmp_table_name)
-
         self.result_table_name = "_".join([
             self.src_catalog_name, self.src_collection['abbreviation'], src_field_name, "result"
         ]).lower()
 
     def __enter__(self):
-        self._create_tmp_intv_tables()
         self._create_tmp_result_table()
         return self
 
@@ -323,14 +237,14 @@ class Relater:
 
     def _validity_select_expressions_src(self):
         if self.src_has_states and self.dst_has_states:
-            start = f"GREATEST(src_bg.{FIELD.START_VALIDITY}, dst_bg.{FIELD.START_VALIDITY}, " \
+            start = f"GREATEST(src.{FIELD.START_VALIDITY}, dst.{FIELD.START_VALIDITY}, " \
                     f"{self._provided_start_validity()})"
             end = f"LEAST(src.{FIELD.END_VALIDITY}, dst.{FIELD.END_VALIDITY})"
         elif self.src_has_states:
-            start = f"GREATEST(src_bg.{FIELD.START_VALIDITY}, {self._provided_start_validity()})"
+            start = f"GREATEST(src.{FIELD.START_VALIDITY}, {self._provided_start_validity()})"
             end = f"src.{FIELD.END_VALIDITY}"
         elif self.dst_has_states:
-            start = f"GREATEST(dst_bg.{FIELD.START_VALIDITY}, {self._provided_start_validity()})"
+            start = f"GREATEST(dst.{FIELD.START_VALIDITY}, {self._provided_start_validity()})"
             end = f"dst.{FIELD.END_VALIDITY}"
         else:
             start = self._provided_start_validity()
@@ -730,20 +644,6 @@ INNER JOIN (
     ){source_value_not_null}
 """
 
-    def _create_tmp_intv_tables(self):
-        """Creates tmp tables from recursive queries to determine the begin_geldigheid for each volgnummer."""
-        if self.src_has_states:
-            logger.info(f"Creating temporary table {self.src_intv_tmp_table.name}")
-            self.src_intv_tmp_table.create(self.session)
-
-        if self.dst_has_states:
-            if self.src_table_name == self.dst_table_name:
-                # Use same table as src as they are the same
-                self.dst_intv_tmp_table = self.src_intv_tmp_table
-            else:
-                logger.info(f"Creating temporary table {self.dst_intv_tmp_table.name}")
-                self.dst_intv_tmp_table.create(self.session)
-
     def _create_tmp_result_table(self):
         varchar = 'varchar'
         serial = 'serial'
@@ -828,20 +728,6 @@ SELECT * FROM {self.src_table_name} src
 SELECT * FROM {self.dst_table_name} dst
 {filters_str}
 """
-
-    def _join_geldigheid(self, table_name: str, alias: str, join_with: str):
-        """Returns the join with the begin_geldigheid for the given volgnummer for either 'src' or 'dst' (src_bg or
-        dst_bg)
-        """
-        return f"LEFT JOIN {table_name} {alias} " \
-               f"ON {alias}.{FIELD.ID} = {join_with}.{FIELD.ID} " \
-               f"AND {alias}.{FIELD.SEQNR} = {join_with}.{FIELD.SEQNR}"
-
-    def _join_dst_geldigheid(self):
-        return self._join_geldigheid(self.dst_intv_tmp_table.name, 'dst_bg', 'dst') if self.dst_has_states else ""
-
-    def _join_src_geldigheid(self):
-        return self._join_geldigheid(self.src_intv_tmp_table.name, 'src_bg', 'src') if self.src_has_states else ""
 
     def _join_rel_dst_clause(self):
         dst_join_clause = f"rel.dst_id = dst.{FIELD.ID}"
@@ -1010,8 +896,6 @@ FROM {self.src_entities_alias} src
 {self._src_dst_join(dst_entities)}
 LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(self._dst_table_outer_join_on())}
 {self._join_rel() if not is_conflicts_query else ""}
-{self._join_src_geldigheid()}
-{self._join_dst_geldigheid()}
 {self._get_where(is_conflicts_query)}
 """
 
