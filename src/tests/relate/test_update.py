@@ -25,8 +25,12 @@ class MockModel:
                             'src_field_name': {
                                 'type': 'GOB.Reference',
                                 'ref': 'dst_catalog_name:dst_collection_name',
-                                }
                             },
+                            'self_referenced_field_name': {
+                                'type': 'GOB.Reference',
+                                'ref': 'src_catalog_name:src_collection_name',
+                            },
+                        },
                         'abbreviation': 'srcabbr'
                     },
                     'src_many_collection_name': {
@@ -242,6 +246,18 @@ class TestRelaterInit(TestCase):
         self.mock_session.execute.assert_any_call(query)
 
         assert "src_catalog_name_srcabbr_src_field_name_result" == relater.result_table_name
+
+    def test_init_selfreference(self):
+        mock_session = MagicMock(spec=StreamSession)
+        catalog = "src_catalog_name"
+        collection = "src_collection_name"
+        field_name = "self_referenced_field_name"
+
+        mock_session.execute.return_value.scalars.return_value.all.return_value = ["applicationA"]
+        relater = Relater(mock_session, catalog, collection, field_name)
+
+        assert relater.src_table_name == relater.dst_table_name
+        assert relater.dst_table_name == "src_catalog_name_src_collection_name_table_clone"
 
     def test_init_relate_exception(self):
         with patch("gobupload.relate.update.Relater.sources.get_field_relations", lambda cat, col, field: []):

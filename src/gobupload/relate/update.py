@@ -119,6 +119,9 @@ class Table:
     def __init__(self, tablename: str):
         self.tablename = tablename
 
+    def __eq__(self, other: "Table"):
+        return self.tablename == other.tablename
+
     def clone_using_columnar(self, session):
         logger.info(f"Creating temporary citus table for: {self.tablename}")
         session.execute(f"CREATE TEMPORARY TABLE {self.tablename}_clone USING columnar AS "
@@ -186,14 +189,18 @@ class Relater:
 
         self.src_collection = self.model[src_catalog_name]['collections'][src_collection_name]
         self.src_field = self.src_collection['all_fields'].get(src_field_name)
-        self.src_table_name = Table(self.model.get_table_name(src_catalog_name, src_collection_name)) \
-            .clone_using_columnar(session).tablename
+        src_table_orig = Table(self.model.get_table_name(src_catalog_name, src_collection_name))
+        self.src_table_name = src_table_orig.clone_using_columnar(session).tablename
 
         # Get the destination catalog and collection names
         self.dst_catalog_name, self.dst_collection_name = self.src_field['ref'].split(':')
         self.dst_collection = self.model[self.dst_catalog_name]['collections'][self.dst_collection_name]
-        self.dst_table_name = Table(self.model.get_table_name(self.dst_catalog_name, self.dst_collection_name)) \
-            .clone_using_columnar(session).tablename
+        dst_table_orig = Table(self.model.get_table_name(self.dst_catalog_name, self.dst_collection_name))
+
+        if dst_table_orig == src_table_orig:
+            self.dst_table_name = self.src_table_name
+        else:
+            self.dst_table_name = dst_table_orig.clone_using_columnar(session).tablename
 
         # Check if source or destination has states (volgnummer, begin_geldigheid, eind_geldigheid)
         self.src_has_states = self.model.has_states(self.src_catalog_name, self.src_collection_name)
