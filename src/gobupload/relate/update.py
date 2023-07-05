@@ -207,29 +207,33 @@ class Relater:
         self.src_has_states = self.model.has_states(self.src_catalog_name, self.src_collection_name)
         self.dst_has_states = self.model.has_states(self.dst_catalog_name, self.dst_collection_name)
 
-        # init table(names)
-        src_table_orig = Table(self.model.get_table_name(self.src_catalog_name, self.src_collection_name))
-        dst_table_orig = Table(self.model.get_table_name(self.dst_catalog_name, self.dst_collection_name))
-        rel_table_orig = Table(
-            "rel_" + get_relation_name(self.model, src_catalog_name, src_collection_name, src_field_name)
+        self.src_table_name, self.dst_table_name, self.relation_table = self._init_temp_tables()
+
+        _result_parts = [self.src_catalog_name, self.src_collection["abbreviation"], src_field_name, "result"]
+        self.result_table_name = "_".join(_result_parts).lower()
+
+        # _get_applications_in_src depends on self.src_table_name
+        self.relation_specs = [
+            spec for spec in self._get_relation_specs() if spec["source"] in self._get_applications_in_src()
+        ]
+
+    def _init_temp_tables(self) -> tuple[str, str, str]:
+        src_table = Table(self.model.get_table_name(self.src_catalog_name, self.src_collection_name))
+        dst_table = Table(self.model.get_table_name(self.dst_catalog_name, self.dst_collection_name))
+        rel_table = Table(
+            "rel_" + get_relation_name(
+                self.model, self.src_catalog_name, self.src_collection_name, self.src_field_name
+            )
         )
+        src_clone = src_table.clone_using_columnar(self.session, self._src_table_columns)
 
-        self.src_table_name = src_table_orig.tablename
-        self.dst_table_name = self.src_table_name if dst_table_orig == src_table_orig else dst_table_orig.tablename
-        self.relation_table = rel_table_orig.tablename
-        self.result_table_name = "_".join([
-            self.src_catalog_name, self.src_collection["abbreviation"], src_field_name, "result"
-        ]).lower()
+        if dst_table == src_table:
+            dst_clone = src_clone
+        else:
+            dst_clone = dst_table.clone_using_columnar(self.session, self._dst_table_columns)
 
-        # Only include specs that are present in the src table.
-        # If no specs are left this implies that the src table is empty.
-        self.relation_specs = self._get_relation_specs(src_catalog_name, src_collection_name, src_field_name)
-
-        src_table_orig.clone_using_columnar(self.session, self._src_table_columns)
-        if dst_table_orig != src_table_orig:
-            dst_table_orig.clone_using_columnar(self.session, self._dst_table_columns)
-
-        rel_table_orig.clone_using_columnar(self.session, self._rel_table_columns)
+        rel_clone = rel_table.clone_using_columnar(self.session, self._rel_table_columns)
+        return src_clone.tablename, dst_clone.tablename, rel_clone.tablename
 
     @property
     def _src_table_columns(self) -> list[str]:
@@ -237,13 +241,13 @@ class Relater:
         return [
             self.src_field_name,
             *self._tmp_columns,
-            *{rel["source_attribute"] for rel in self.relation_specs if rel.get("source_attribute")},
+            *{rel["source_attribute"] for rel in self._get_relation_specs() if rel.get("source_attribute")},
             *([FIELD.SEQNR, FIELD.START_VALIDITY, FIELD.END_VALIDITY] if self.src_has_states else [])
         ]
 
     @property
     def _rel_table_columns(self) -> list[str]:
-        """Return columns necessary to relate for temp current relation table."""
+        """Return columns necessary to relate for temp (current) relation table."""
         return [
             FIELD.ID,
             FIELD.LAST_EVENT,
@@ -252,6 +256,7 @@ class Relater:
             FIELD.REFERENCE_ID,
             "src_source",
             "src_id",
+            "src_volgnummer",
             "dst_id",
             "dst_volgnummer",
             FIELD.EXPIRATION_DATE,
@@ -267,21 +272,25 @@ class Relater:
         """Return columns necessary to relate for temp destination table."""
         return [
             *self._tmp_columns,
-            *{rel["destination_attribute"] for rel in self.relation_specs if rel.get("destination_attribute")},
+            *{rel["destination_attribute"] for rel in self._get_relation_specs() if rel.get("destination_attribute")},
             *([FIELD.SEQNR, FIELD.START_VALIDITY, FIELD.END_VALIDITY] if self.dst_has_states else [])
         ]
 
-    def _get_relation_specs(self, catalog: str, collection: str, field: str) -> list[dict]:
+    def _get_relation_specs(self) -> list[dict]:
         # Copy relation specs and set default for multiple_allowed. Filter out specs that are not present in src.
-        fieldrelations = self.sources.get_field_relations(catalog, collection, field)
+        fieldrelations = self.sources.get_field_relations(
+            self.src_catalog_name, self.src_collection_name, self.src_field_name
+        )
         relation_specs = [spec | {"multiple_allowed": spec.get("multiple_allowed", False)} for spec in fieldrelations]
 
         if not relation_specs:
             raise RelateException(
-                f"Missing relation specification for {catalog} {collection} {field} (sources.get_field_relations)"
+                "Missing relation specification for "
+                f"{self.src_catalog_name} {self.src_collection_name} {self.src_field_name} "
+                "(sources.get_field_relations)"
             )
 
-        return [spec for spec in relation_specs if spec["source"] in self._get_applications_in_src()]
+        return relation_specs
 
     def __enter__(self):
         self._create_tmp_result_table()
