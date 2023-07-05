@@ -63,12 +63,13 @@ class MockModel:
 class MockSources:
     def get_field_relations(self, *args):
         return [{
-            'source': 'applicationA'
+            'source': 'applicationA',
+            "source_attribute": "src_attr_self",
+            "destination_attribute": "dst_attr_self"
         }, {
             'source': 'applicationB',
             'multiple_allowed': True
         }]
-
 
 
 class TestEventCreator(TestCase):
@@ -238,7 +239,7 @@ class TestRelaterInit(TestCase):
         assert relater.dst_has_states is False
 
         # applicationB should be filtered out
-        assert [{"source": "applicationA", "multiple_allowed": False}] == relater.relation_specs
+        assert relater.relation_specs[0]["source"] == "applicationA" and len(relater.relation_specs) == 1
         assert relater.is_many is False
         assert "rel_src_catalog_name_src_collection_name_src_field_name_clone" == relater.relation_table
 
@@ -259,6 +260,22 @@ class TestRelaterInit(TestCase):
         assert relater.src_table_name == relater.dst_table_name
         assert relater.dst_table_name == "src_catalog_name_src_collection_name_table_clone"
 
+        mock_session.execute.assert_any_call(
+            "CREATE TEMPORARY TABLE src_catalog_name_src_collection_name_table_clone USING columnar AS "
+            "SELECT _application, _date_deleted, _expiration_date, _id, _last_event, _source, begin_geldigheid, "
+            "dst_attr_self, eind_geldigheid, self_referenced_field_name, src_attr_self, volgnummer "
+            "FROM src_catalog_name_src_collection_name_table"
+        )
+
+        mock_session.execute.assert_any_call(
+            "CREATE TEMPORARY TABLE rel_src_catalog_name_src_collection_name_self_referenced_field_name_clone "
+            "USING columnar AS "
+            "SELECT _id, _last_event, _hash, _date_deleted, id, src_source, src_id, src_volgnummer, "
+            "dst_id, dst_volgnummer, _expiration_date, bronwaarde, begin_geldigheid, eind_geldigheid, "
+            "_last_dst_event, _last_src_event "
+            "FROM rel_src_catalog_name_src_collection_name_self_referenced_field_name"
+        )
+
     def test_init_relate_exception(self):
         with patch("gobupload.relate.update.Relater.sources.get_field_relations", lambda cat, col, field: []):
             self.assertRaises(RelateException, self.relater)
@@ -277,20 +294,20 @@ class TestRelaterInit(TestCase):
         mock_exec.assert_any_call(
             "CREATE TEMPORARY TABLE src_catalog_name_src_collection_name_table_clone USING columnar AS "
             "SELECT src_field_name, _application, _expiration_date, _source, _id, _last_event, _date_deleted, "
-            "volgnummer, begin_geldigheid, eind_geldigheid "
+            "src_attr_self, volgnummer, begin_geldigheid, eind_geldigheid "
             "FROM src_catalog_name_src_collection_name_table"
         )
 
         mock_exec.assert_any_call(
             "CREATE TEMPORARY TABLE dst_catalog_name_dst_collection_name_table_clone USING columnar AS "
-            "SELECT _application, _expiration_date, _source, _id, _last_event, _date_deleted "
+            "SELECT _application, _expiration_date, _source, _id, _last_event, _date_deleted, dst_attr_self "
             "FROM dst_catalog_name_dst_collection_name_table"
         )
 
         mock_exec.assert_any_call(
             "CREATE TEMPORARY TABLE rel_src_catalog_name_src_collection_name_src_field_name_clone USING columnar AS "
-            "SELECT _id, _last_event, _hash, _date_deleted, id, src_source, src_id, src_volgnummer, dst_id, "
-            "dst_volgnummer, _expiration_date, bronwaarde, begin_geldigheid, eind_geldigheid, _last_dst_event, "
+            "SELECT _id, _last_event, _hash, _date_deleted, id, src_source, src_id, src_volgnummer, "
+            "dst_id, dst_volgnummer, _expiration_date, bronwaarde, begin_geldigheid, eind_geldigheid, _last_dst_event, "
             "_last_src_event "
             "FROM rel_src_catalog_name_src_collection_name_src_field_name"
         )
