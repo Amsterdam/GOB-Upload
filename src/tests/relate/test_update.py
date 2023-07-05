@@ -270,6 +270,31 @@ class TestRelaterInit(TestCase):
         relater = Relater(MagicMock(), "src_catalog_name", "src_many_collection_name", "src_field_name")
         assert relater.is_many is True
 
+    def test_init_temp_tables(self):
+        relater = self.relater()
+        mock_exec = relater.session.execute
+
+        mock_exec.assert_any_call(
+            "CREATE TEMPORARY TABLE src_catalog_name_src_collection_name_table_clone USING columnar AS "
+            "SELECT src_field_name, _application, _expiration_date, _source, _id, _last_event, _date_deleted, "
+            "volgnummer, begin_geldigheid, eind_geldigheid "
+            "FROM src_catalog_name_src_collection_name_table"
+        )
+
+        mock_exec.assert_any_call(
+            "CREATE TEMPORARY TABLE dst_catalog_name_dst_collection_name_table_clone USING columnar AS "
+            "SELECT _application, _expiration_date, _source, _id, _last_event, _date_deleted "
+            "FROM dst_catalog_name_dst_collection_name_table"
+        )
+
+        mock_exec.assert_any_call(
+            "CREATE TEMPORARY TABLE rel_src_catalog_name_src_collection_name_src_field_name_clone USING columnar AS "
+            "SELECT _id, _last_event, _hash, _date_deleted, id, src_source, src_id, src_volgnummer, dst_id, "
+            "dst_volgnummer, _expiration_date, bronwaarde, begin_geldigheid, eind_geldigheid, _last_dst_event, "
+            "_last_src_event "
+            "FROM rel_src_catalog_name_src_collection_name_src_field_name"
+        )
+
 
 @patch("gobupload.relate.update.logger", MagicMock())
 @patch("gobupload.relate.update.Relater.model", MockModel())
