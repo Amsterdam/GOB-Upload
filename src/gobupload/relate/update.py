@@ -122,10 +122,10 @@ class Table:
     def __eq__(self, other: "Table"):
         return self.tablename == other.tablename
 
-    def clone_using_columnar(self, session):
-        logger.info(f"Creating temporary citus table for: {self.tablename}")
+    def clone_using_columnar(self, session: StreamSession, columns: list[str] = None):
+        logger.info(f"Creating temporary citus table {self.tablename}")
         session.execute(f"CREATE TEMPORARY TABLE {self.tablename}_clone USING columnar AS "
-                        f"SELECT * FROM {self.tablename}")
+                        f"SELECT {', '.join(columns) if columns else '*'} FROM {self.tablename}")
         session.execute(f"ANALYZE {self.tablename}_clone")
         return Table(f"{self.tablename}_clone")
 
@@ -181,6 +181,15 @@ class Relater:
         f'rel_{FIELD.HASH}',
     ]
 
+    _tmp_columns = [
+        FIELD.APPLICATION,
+        FIELD.EXPIRATION_DATE,
+        FIELD.SOURCE,
+        FIELD.ID,
+        FIELD.LAST_EVENT,
+        FIELD.DATE_DELETED
+    ]
+
     def __init__(self, session: StreamSession, src_catalog_name: str, src_collection_name: str, src_field_name: str):
         self.session = session
         self.src_catalog_name = src_catalog_name
@@ -189,47 +198,99 @@ class Relater:
 
         self.src_collection = self.model[src_catalog_name]['collections'][src_collection_name]
         self.src_field = self.src_collection['all_fields'].get(src_field_name)
-        src_table_orig = Table(self.model.get_table_name(src_catalog_name, src_collection_name))
-        self.src_table_name = src_table_orig.clone_using_columnar(session).tablename
-
+        self.is_many = self.src_field['type'] == "GOB.ManyReference"
         # Get the destination catalog and collection names
         self.dst_catalog_name, self.dst_collection_name = self.src_field['ref'].split(':')
         self.dst_collection = self.model[self.dst_catalog_name]['collections'][self.dst_collection_name]
-        dst_table_orig = Table(self.model.get_table_name(self.dst_catalog_name, self.dst_collection_name))
-
-        if dst_table_orig == src_table_orig:
-            self.dst_table_name = self.src_table_name
-        else:
-            self.dst_table_name = dst_table_orig.clone_using_columnar(session).tablename
 
         # Check if source or destination has states (volgnummer, begin_geldigheid, eind_geldigheid)
         self.src_has_states = self.model.has_states(self.src_catalog_name, self.src_collection_name)
         self.dst_has_states = self.model.has_states(self.dst_catalog_name, self.dst_collection_name)
 
+        self.src_table_name, self.dst_table_name, self.relation_table = self._init_temp_tables()
+
+        _result_parts = [self.src_catalog_name, self.src_collection["abbreviation"], src_field_name, "result"]
+        self.result_table_name = "_".join(_result_parts).lower()
+
+        # _get_applications_in_src depends on self.src_table_name
+        self.relation_specs = [
+            spec for spec in self._get_relation_specs() if spec["source"] in self._get_applications_in_src()
+        ]
+
+    def _init_temp_tables(self) -> tuple[str, str, str]:
+        src_table = Table(self.model.get_table_name(self.src_catalog_name, self.src_collection_name))
+        dst_table = Table(self.model.get_table_name(self.dst_catalog_name, self.dst_collection_name))
+        rel_table = Table(
+            "rel_" + get_relation_name(
+                self.model, self.src_catalog_name, self.src_collection_name, self.src_field_name
+            )
+        )
+        src_clone = src_table.clone_using_columnar(self.session, self._src_table_columns)
+
+        if dst_table == src_table:
+            dst_clone = src_clone
+        else:
+            dst_clone = dst_table.clone_using_columnar(self.session, self._dst_table_columns)
+
+        rel_clone = rel_table.clone_using_columnar(self.session, self._rel_table_columns)
+        return src_clone.tablename, dst_clone.tablename, rel_clone.tablename
+
+    @property
+    def _src_table_columns(self) -> list[str]:
+        """Return columns necessary to relate for temp source table."""
+        return [
+            self.src_field_name,
+            *self._tmp_columns,
+            *{rel["source_attribute"] for rel in self._get_relation_specs() if rel.get("source_attribute")},
+            *([FIELD.SEQNR, FIELD.START_VALIDITY, FIELD.END_VALIDITY] if self.src_has_states else [])
+        ]
+
+    @property
+    def _rel_table_columns(self) -> list[str]:
+        """Return columns necessary to relate for temp (current) relation table."""
+        return [
+            FIELD.ID,
+            FIELD.LAST_EVENT,
+            FIELD.HASH,
+            FIELD.DATE_DELETED,
+            FIELD.REFERENCE_ID,
+            "src_source",
+            "src_id",
+            "src_volgnummer",
+            "dst_id",
+            "dst_volgnummer",
+            FIELD.EXPIRATION_DATE,
+            FIELD.SOURCE_VALUE,
+            FIELD.START_VALIDITY,
+            FIELD.END_VALIDITY,
+            FIELD.LAST_DST_EVENT,
+            FIELD.LAST_SRC_EVENT,
+        ]
+
+    @property
+    def _dst_table_columns(self) -> list[str]:
+        """Return columns necessary to relate for temp destination table."""
+        return [
+            *self._tmp_columns,
+            *{rel["destination_attribute"] for rel in self._get_relation_specs() if rel.get("destination_attribute")},
+            *([FIELD.SEQNR, FIELD.START_VALIDITY, FIELD.END_VALIDITY] if self.dst_has_states else [])
+        ]
+
+    def _get_relation_specs(self) -> list[dict]:
         # Copy relation specs and set default for multiple_allowed. Filter out specs that are not present in src.
-        relation_specs = [{
-            **spec,
-            'multiple_allowed': spec.get('multiple_allowed', False)
-        } for spec in self.sources.get_field_relations(src_catalog_name, src_collection_name, src_field_name)]
+        fieldrelations = self.sources.get_field_relations(
+            self.src_catalog_name, self.src_collection_name, self.src_field_name
+        )
+        relation_specs = [spec | {"multiple_allowed": spec.get("multiple_allowed", False)} for spec in fieldrelations]
 
         if not relation_specs:
             raise RelateException(
                 "Missing relation specification for "
-                f"{src_catalog_name} {src_collection_name} {src_field_name} "
-                "(sources.get_field_relations)")
-        src_applications = self._get_applications_in_src()
+                f"{self.src_catalog_name} {self.src_collection_name} {self.src_field_name} "
+                "(sources.get_field_relations)"
+            )
 
-        # Only include specs that are present in the src table. If no specs are left this implies that the src table is
-        # empty.
-        self.relation_specs = [spec for spec in relation_specs if spec['source'] in src_applications]
-
-        self.is_many = self.src_field['type'] == "GOB.ManyReference"
-        self.relation_table = Table("rel_" + get_relation_name(self.model, src_catalog_name, src_collection_name,
-                                                               src_field_name)).clone_using_columnar(session).tablename
-
-        self.result_table_name = "_".join([
-            self.src_catalog_name, self.src_collection['abbreviation'], src_field_name, "result"
-        ]).lower()
+        return relation_specs
 
     def __enter__(self):
         self._create_tmp_result_table()
