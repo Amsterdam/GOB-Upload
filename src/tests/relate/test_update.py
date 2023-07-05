@@ -262,8 +262,8 @@ class TestRelaterInit(TestCase):
 
         mock_session.execute.assert_any_call(
             "CREATE TEMPORARY TABLE src_catalog_name_src_collection_name_table_clone USING columnar AS "
-            "SELECT _application, _date_deleted, _expiration_date, _id, _last_event, _source, begin_geldigheid, "
-            "dst_attr_self, eind_geldigheid, self_referenced_field_name, src_attr_self, volgnummer "
+            "SELECT _application, _date_deleted, _expiration_date, _gobid, _id, _last_event, _source, begin_geldigheid,"
+            " dst_attr_self, eind_geldigheid, self_referenced_field_name, src_attr_self, volgnummer "
             "FROM src_catalog_name_src_collection_name_table"
         )
 
@@ -293,7 +293,7 @@ class TestRelaterInit(TestCase):
 
         mock_exec.assert_any_call(
             "CREATE TEMPORARY TABLE src_catalog_name_src_collection_name_table_clone USING columnar AS "
-            "SELECT src_field_name, _application, _expiration_date, _source, _id, _last_event, _date_deleted, "
+            "SELECT _gobid, src_field_name, _application, _expiration_date, _source, _id, _last_event, _date_deleted, "
             "src_attr_self, volgnummer, begin_geldigheid, eind_geldigheid "
             "FROM src_catalog_name_src_collection_name_table"
         )

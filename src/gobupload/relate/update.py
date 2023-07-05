@@ -227,7 +227,7 @@ class Relater:
         )
 
         if dst_table == src_table:
-            # we need the destination_attribute(s) in columns too
+            # we need destination_attribute in columns too
             src_table_columns = sorted(set(self._src_table_columns) | set(self._dst_table_columns))
             src_clone = src_table.clone_using_columnar(self.session, src_table_columns)
             dst_clone = src_clone
@@ -242,10 +242,11 @@ class Relater:
     def _src_table_columns(self) -> list[str]:
         """Return columns necessary to relate for temp source table."""
         return [
+            FIELD.GOBID,  # required for selfjoin geo is_valid check
             self.src_field_name,
             *self._tmp_columns,
             *{rel["source_attribute"] for rel in self._get_relation_specs() if rel.get("source_attribute")},
-            *([FIELD.SEQNR, FIELD.START_VALIDITY, FIELD.END_VALIDITY] if self.src_has_states else [])
+            *([FIELD.SEQNR, FIELD.START_VALIDITY, FIELD.END_VALIDITY] if self.src_has_states else []),
         ]
 
     @property
