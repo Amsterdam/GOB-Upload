@@ -562,14 +562,16 @@ WHERE
             "query", execution_options={"yield_per": 2000, "stream_results": True}, extra=5
         )
 
-    @patch("gobupload.storage.handler.GOBStorageHandler.execute")
-    def test_apply_confirms(self, mock_execute):
+    def test_apply_confirms(self):
+        mock_session = MagicMock(spec=StreamSession)
+        self.storage.session = mock_session
+
         confirms = [{"_tid": "confirm1"}, {"_tid": "confirm2"}]
         timestamp = "any ts"
 
         self.storage.apply_confirms(confirms, timestamp)
 
-        query = mock_execute.call_args[0][0]
+        query = mock_session.execute.call_args[0][0]
         query = str(query.compile(compile_kwargs={"literal_binds": True}))
 
         expected = (
