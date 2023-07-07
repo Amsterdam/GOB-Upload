@@ -49,7 +49,10 @@ def apply_events(storage: GOBStorageHandler, last_events: set[str], start_after:
 
 
 def _apply_confirms(storage: GOBStorageHandler, confirms: Path, timestamp: str, stats: UpdateStatistics):
-    with ProgressTicker("Apply CONFIRM events", 50_000) as progress:
+    with (
+        storage.get_session(),
+        ProgressTicker("Apply CONFIRM events", 50_000) as progress
+    ):
         for event in ContentsReader(confirms).items():
             if event["event"] not in (CONFIRM.name, BULKCONFIRM.name):
                 raise GOBException(f"Expected 'CONFIRM' or 'BULKCONFIRM' got: {event['event']}")
