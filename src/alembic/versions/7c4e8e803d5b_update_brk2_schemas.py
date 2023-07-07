@@ -18,6 +18,7 @@ depends_on = None
 
 
 def upgrade():
+    op.execute("DROP VIEW IF EXISTS legacy.brk2_stukdelen")
     op.add_column('brk2_stukdelen', sa.Column('is_bron_voor_brk_erfpachtcanon', postgresql.JSONB(astext_type=sa.Text()), autoincrement=False, nullable=True))
 
 
