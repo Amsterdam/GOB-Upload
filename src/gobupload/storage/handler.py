@@ -722,7 +722,8 @@ WHERE
         # https://docs.sqlalchemy.org/en/14/core/dml.html#sqlalchemy.sql.expression.Insert.inline
         self.session.execute(table.insert().inline(), rows)
 
-    def apply_confirms(self, confirms, timestamp):
+    @with_session
+    def apply_confirms(self, confirms: list[dict], timestamp: str):
         """
         Apply a (BULK)CONFIRM event
 
@@ -732,14 +733,14 @@ WHERE
         """
         values_tid = \
             values(column("_tid", String), name="tids") \
-            .data([(record['_tid'],) for record in confirms])
+            .data([(record["_tid"],) for record in confirms])
 
         stmt = (
             update(self.DbEntity)
             .where(self.DbEntity._tid == values_tid.c._tid)
             .values({CONFIRM.timestamp_field: timestamp})
         )
-        self.execute(stmt)
+        self.session.execute(stmt)
 
     def execute(self, statement):
         result = self.engine.execute(statement)
