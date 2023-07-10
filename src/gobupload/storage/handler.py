@@ -121,8 +121,7 @@ class GOBStorageHandler:
         pool_pre_ping=True,
         future=True,
         echo=False,
-        # executemany_mode="values_plus_batch",
-        use_insertmanyvalues=False
+        executemany_mode="values_plus_batch"
     )
 
     Session = sessionmaker(engine, class_=StreamSession, autoflush=False)

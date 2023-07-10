@@ -48,7 +48,7 @@ class EventApplicator:
         self.updates[gob_event.tid].append(gob_event)
         self.updates_total += 1
 
-    def _update_entity(self, entity, row: RowMapping):
+    def _update_entity(self, entity, tid: str):
         """
         Update an entity
 
@@ -58,8 +58,8 @@ class EventApplicator:
 
         :param entity:
         """
-        for gob_event in self.updates[row[FIELD.TID]]:
-            self._validate_update_event(gob_event, row[FIELD.DATE_DELETED])
+        for gob_event in self.updates[tid]:
+            self._validate_update_event(gob_event, entity._date_deleted)
 
             gob_event.apply_to(entity)
 
@@ -103,7 +103,13 @@ class EventApplicator:
                 self.updates.keys(), with_deleted=True, columns=[FIELD.GOBID, FIELD.TID, FIELD.DATE_DELETED]
             ).mappings()
 
-            updates = (self._update_entity(Entity(_gobid=row[FIELD.GOBID]), row) for row in rows)
+            updates = (
+                self._update_entity(
+                    Entity(_gobid=row[FIELD.GOBID], _date_deleted=row[FIELD.DATE_DELETED]),
+                    row[FIELD.TID],
+                )
+                for row in rows
+            )
             self.storage.apply_updates(updates)
 
             self.updates.clear()
