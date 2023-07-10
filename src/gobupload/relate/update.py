@@ -3,7 +3,9 @@
 import hashlib
 import json
 from datetime import date, datetime
-from typing import Iterator
+from typing import Iterator, Sequence
+
+from sqlalchemy import RowMapping
 
 from gobcore.events.import_events import ADD, DELETE, MODIFY
 from gobcore.exceptions import GOBException
@@ -44,40 +46,34 @@ _RELATE_VERSION = '0.1'
 class EventCreator:
 
     def __init__(self, dst_has_states: bool):
-        self.dst_has_states = dst_has_states
-
-    def _get_modifications(self, row: dict, compare_fields: list):
-        modifications = []
-
-        for field in compare_fields:
-            old_value = row[f"rel_{field}"]
-            new_value = row[field]
-
-            if old_value != new_value:
-                modifications.append({
-                    'old_value': old_value,
-                    'new_value': new_value,
-                    'key': field,
-                })
-
-        return modifications
-
-    def _get_hash(self, row: dict):
-        return hashlib.md5(
-            (json.dumps(row, sort_keys=True, cls=GobTypeJSONEncoder) + row[FIELD.APPLICATION]).encode('utf-8')
-        ).hexdigest()
-
-    def create_event(self, row: dict):
-        compare_fields = [
+        self.compare_fields = [
             'dst_id',
             FIELD.EXPIRATION_DATE,
             FIELD.START_VALIDITY,
             FIELD.END_VALIDITY,
         ]
 
-        if self.dst_has_states:
-            compare_fields.append('dst_volgnummer')
+        if dst_has_states:
+            self.compare_fields.append('dst_volgnummer')
 
+    @staticmethod
+    def _get_modifications(row: RowMapping, compare_fields: list):
+        return [
+            {
+                "old_value": row[f"rel_{field}"],
+                "new_value": row[field],
+                "key": field
+            }
+            for field in compare_fields
+            if row[f"rel_{field}"] != row[field]
+        ]
+
+    def _get_hash(self, row: RowMapping):
+        return hashlib.md5(
+            (json.dumps(row, sort_keys=True, cls=GobTypeJSONEncoder) + row[FIELD.APPLICATION]).encode('utf-8')
+        ).hexdigest()
+
+    def create_event(self, row: RowMapping):
         # FIELD.ID, rel_id are equal to the TID
         if row['rel_id'] is None or row['rel_deleted'] is not None:
             # No relation yet, or previously deleted relation. Create ADD
@@ -89,7 +85,7 @@ class EventCreator:
                 f'rel_{FIELD.HASH}',
                 'rel_dst_volgnummer',
                 'rowid',
-            ] + [f"rel_{field}" for field in compare_fields]
+            ] + [f"rel_{field}" for field in self.compare_fields]
 
             data = {k: v for k, v in row.items() if k not in ignore_fields}
             return ADD.create_event(row[FIELD.ID], data, _RELATE_VERSION)
@@ -102,7 +98,7 @@ class EventCreator:
         row[FIELD.HASH] = self._get_hash(row)
         modifications = [] \
             if row[FIELD.HASH] == row[f"rel_{FIELD.HASH}"] \
-            else self._get_modifications(row, compare_fields)
+            else self._get_modifications(row, self.compare_fields)
 
         if modifications:
             data = {
@@ -303,7 +299,7 @@ class Relater:
     def __exit__(self, exc_type, exc_val, exc_tb):
         pass
 
-    def _get_applications_in_src(self) -> list[str]:
+    def _get_applications_in_src(self) -> Sequence[str]:
         query = f"SELECT DISTINCT {FIELD.APPLICATION} FROM {self.src_table_name}"
         return self.session.execute(query).scalars().all()
 
@@ -498,7 +494,8 @@ class Relater:
             return f"({self.json_join_alias}.item->>'{FIELD.START_VALIDITY}')::timestamp without time zone"
         return f"(src.{self.src_field_name}->>'{FIELD.START_VALIDITY}')::timestamp without time zone"
 
-    def _geo_resolve(self, spec):
+    @staticmethod
+    def _geo_resolve(spec):
         src_geo = f"src.{spec['source_attribute']}"
         dst_geo = f"dst.{spec['destination_attribute']}"
 
@@ -525,7 +522,7 @@ class Relater:
     def _src_dst_match(self, source_value_ref=None):
         """Returns the match clause to match src and dst, to be used in an ON clause (or WHERE, for that matter)
 
-        :param src_ref:
+        :param source_value_ref:
         :return:
         """
 
@@ -646,7 +643,7 @@ class Relater:
         (source_side='src'), and once to generate the remaining relations from a subset of the dst relations to all
         the src relations (source_side='dst') that were not included in the first step
 
-        :param source_side:
+        :param dst_entities:
         :return:
         """
         join_on = self._src_dst_match()
@@ -1144,12 +1141,12 @@ LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(self._dst_table_outer
                 f"  ) q WHERE rn > 1" \
                 f")"
 
-        return self.session.execute(query)
+        self.session.execute(query)
 
     def _query_into_results_table(self, query: str, is_conflicts_query: bool = False):
         result_table_columns = ', '.join(self._select_aliases(is_conflicts_query))
         query = f"INSERT INTO {self.result_table_name} ({result_table_columns}) ({query})"
-        return self.session.execute(query)
+        self.session.execute(query)
 
     def _get_updates(self, initial_load: bool = False):
         """Relates in chunks. Chunks are determined by the _get_chunks method.
@@ -1172,10 +1169,9 @@ LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(self._dst_table_outer
 
         return self._read_results()
 
-    def _read_results(self) -> Iterator[dict]:
+    def _read_results(self) -> Iterator[RowMapping]:
         query = f"SELECT * FROM {self.result_table_name}"
-
-        for row in self.session.stream_execute(query, execution_options={"yield_per": 25_000}):
+        for row in self.session.stream_execute(query, execution_options={"yield_per": 25_000}).mappings():
             yield dict(row)
 
     def _get_changed_ranges(self):

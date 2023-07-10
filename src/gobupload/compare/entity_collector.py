@@ -45,4 +45,5 @@ class EntityCollector:
 
     def close(self):
         self._write_entities()
+        self.storage.session.flush()
         self.storage.analyze_temporary_table()

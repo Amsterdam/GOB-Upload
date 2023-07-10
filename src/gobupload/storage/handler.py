@@ -12,16 +12,17 @@ from __future__ import annotations
 import functools
 import json
 import warnings
-import traceback
+
 from contextlib import contextmanager
-from typing import Union, Iterator, Iterable
+from typing import Union, Iterator, Iterable, Any, Sequence
 
 from sqlalchemy import (
-    create_engine, Table, update, exc as sa_exc, select, column, String, values, Column, text
+    create_engine, Table, update, exc as sa_exc, select, column, String, values, Column, text, Connection, Executable,
+    inspect, Result
 )
 from sqlalchemy.engine import Row
 from sqlalchemy.engine.url import URL
-from sqlalchemy.exc import OperationalError, MultipleResultsFound
+from sqlalchemy.exc import MultipleResultsFound
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import sessionmaker, Session as SessionORM
 
@@ -32,7 +33,7 @@ from gobcore.model import FIELD
 from gobcore.model.sa.gob import get_column
 from gobcore.model.sa.indexes import get_indexes
 from gobcore.typesystem import get_gob_type
-from gobcore.events.import_events import CONFIRM
+from gobcore.events.import_events import CONFIRM, ADD
 
 from alembic.runtime import migration
 import alembic.config
@@ -87,23 +88,29 @@ class StreamSession(SessionORM):
 
         return {"execution_options": exec_opts, **kwargs} if exec_opts else kwargs
 
-    def stream_scalars(self, statement, **kwargs):
+    def stream_scalars(self, statement: str | Executable, **kwargs):
         """
         Execute a statement and return the results as scalars.
         Use a server-side cursor during statement execution to prevent high memory consumption.
 
         Batchsize can be adjusted by passing yield_per=<size> to execution_options
         """
-        return super().scalars(statement, **self._update_param(**kwargs))
+        stmt = text(statement) if isinstance(statement, str) else statement
+        return super().scalars(stmt, **self._update_param(**kwargs))
 
-    def stream_execute(self, statement, **kwargs):
+    def stream_execute(self, statement: str | Executable, **kwargs):
         """
         Execute a SQL expression construct.
         Use a server-side cursor during statement execution to prevent high memory consumption.
 
         Batchsize can be adjusted by passing yield_per=<size> to execution_options
         """
-        return super().execute(statement, **self._update_param(**kwargs))
+        stmt = text(statement) if isinstance(statement, str) else statement
+        return super().execute(stmt, **self._update_param(**kwargs))
+
+    def execute(self, statement: str | Executable, *args, **kwargs):
+        stmt = text(statement) if isinstance(statement, str) else statement
+        return super().execute(stmt, *args, **kwargs)
 
 
 class GOBStorageHandler:
@@ -112,14 +119,14 @@ class GOBStorageHandler:
         URL.create(**GOB_DB),
         connect_args={'sslmode': 'require'},
         pool_pre_ping=True,
+        future=True,
+        echo=False,
+        # executemany_mode="values_plus_batch",
+        use_insertmanyvalues=False
     )
-    Session = sessionmaker(
-        autocommit=True,
-        autoflush=False,
-        bind=engine,
-        class_=StreamSession
-    )
-    base = automap_base(bind=engine)
+
+    Session = sessionmaker(engine, class_=StreamSession, autoflush=False)
+    base = automap_base()
 
     @classmethod
     def _set_base(cls, update=False, reflection_options: dict = None):
@@ -141,7 +148,7 @@ class GOBStorageHandler:
             warnings.simplefilter("ignore", category=sa_exc.SAWarning)
 
             # Reflect database in metadata, prepare generates mapped classes
-            cls.base.metadata.reflect(**reflection_options)
+            cls.base.metadata.reflect(cls.engine, **reflection_options)
             cls.base.prepare()
 
     EVENTS_TABLE = "events"
@@ -182,10 +189,16 @@ class GOBStorageHandler:
 
         GOBStorageHandler._set_base(reflection_options=reflection_options)
 
+    def execute(self, statement: str, **kwargs):
+        """Execute statement and commit to database, rollback if error occurs."""
+        with self.engine.connect() as connection:
+            connection.execute(text(statement), **kwargs)
+            connection.commit()
+
     def init_storage(
-            self,
-            force_migrate=False,
-            recreate_materialized_views: Union[bool, list] = False,
+        self,
+        force_migrate=False,
+        recreate_materialized_views: Union[bool, list] = False
     ):
         """Check if the necessary tables (for events, and for the entities in gobmodel) are present
         If not, they are required
@@ -193,17 +206,15 @@ class GOBStorageHandler:
         :param force_migrate: Don't wait for any migrations to finish before continuing
         :param recreate_materialized_views: List of mv's to recreate, True for all, False for none
         """
-        MIGRATION_LOCK = 19935910  # Just some random number
+        MIGRATION_LOCK = 19935910
 
         if not force_migrate:
-            # Don't force
-            # Nicely wait for any migrations to finish before continuing
-            self.engine.execute(f"SELECT pg_advisory_lock({MIGRATION_LOCK})")
+            self.execute(f"SELECT pg_advisory_lock({MIGRATION_LOCK})")
 
         try:
-            # Check if storage is up-to-date
             alembic_cfg = alembic.config.Config('alembic.ini')
             script = alembic.script.ScriptDirectory.from_config(alembic_cfg)
+
             with self.engine.begin() as conn:
                 context = migration.MigrationContext.configure(conn)
                 up_to_date = context.get_current_revision() == script.get_current_head()
@@ -224,40 +235,32 @@ class GOBStorageHandler:
         except Exception as err:
             print(f'Storage migration failed: {str(err)}')
             raise err
-        else:  # No exception
+        else:
             print('Storage is up-to-date')
         finally:
-            # Always unlock
-            self.engine.execute(f"SELECT pg_advisory_unlock({MIGRATION_LOCK})")
+            self.execute(f"SELECT pg_advisory_unlock({MIGRATION_LOCK})")
 
         self._check_configuration()
 
-    def _get_config_value(self, setting: str):
-        return next(self.engine.execute(f"SHOW {setting}"))[0]
-
     def _check_configuration(self):
-        for setting, check, message, type in self.config_checks:
-            value = self._get_config_value(setting)
-            if not check(value):
-                msg = f"Checking Postgres config for {setting}. Value is {value}, but {message}"
-                if type == self.ERROR:
-                    raise GOBException(msg)
-                else:
-                    print(f"WARNING: {msg}")
+        with self.engine.connect() as connection:
+            for setting, check, message, type_ in self.config_checks:
+                value = connection.execute(text(f"SHOW {setting}")).scalar_one()
+                if not check(value):
+                    msg = f"Checking Postgres config for {setting}. Value is {value}, but {message}"
+                    if type_ == self.ERROR:
+                        raise GOBException(msg)
+                    else:
+                        print(f"WARNING: {msg}")
 
     def _init_relation_materialized_views(self, recreate=False):
         mv = MaterializedViews()
         mv.initialise(self, recreate)
 
-    def _get_index_type(self, type: str) -> str:
-        if type == "geo":
-            return "GIST"
-        elif type == "json":
-            return "GIN"
-        else:
-            return "BTREE"
+    def _get_index_type(self, type_: str) -> str:
+        return {"geo": "GIST", "json": "GIN"}.get(type_, "BTREE")
 
-    def _indexes_to_drop_query(self, tablenames: list, keep_indexes: list):
+    def _indexes_to_drop_query(self, tablenames: list, keep_indexes: list) -> str:
         keep = ','.join([f"'{index}'" for index in keep_indexes])
         relations = ','.join([f"'{tablename}'" for tablename in tablenames])
 
@@ -274,34 +277,18 @@ WHERE
     AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint c WHERE c.conindid = s.indexrelid)
 """
 
-    def _drop_indexes(self, indexes):
-        """Drops indexes on managed tables that aren't defined in this script.
-
-        :return:
-        """
+    def _drop_indexes(self, connection: Connection, indexes: dict[str, dict]):
+        """Drops indexes on managed tables that aren't defined in this script. """
         query = self._indexes_to_drop_query([index['table_name'] for index in indexes.values()], list(indexes.keys()))
-
-        try:
-            indexes_to_drop = self.engine.execute(query)
-        except OperationalError as e:
-            print(f"ERROR: Could not get indexes to drop: {e}")
-            return
+        indexes_to_drop = connection.execute(text(query)).scalars()
 
         for index in indexes_to_drop:
-            try:
-                statement = f'DROP INDEX IF EXISTS "{index[0]}"'
-                self.execute(statement)
-            except OperationalError as e:
-                print(f"ERROR: Could not drop index {index[0]}: {e}")
+            connection.execute(text(f'DROP INDEX IF EXISTS "{index}"'))
 
-    def _get_existing_indexes(self) -> list:
+    @staticmethod
+    def _get_existing_indexes(connection: Connection) -> Sequence[str]:
         query = "SELECT indexname FROM pg_indexes"
-
-        try:
-            return [row[0] for row in self.engine.execute(query)]
-        except OperationalError as e:
-            print(f"WARNING: Could not fetch list of existing indexes: {e}")
-            return []
+        return connection.execute(text(query)).scalars().all()
 
     def _init_indexes(self):
         """Create indexes
@@ -309,27 +296,26 @@ WHERE
         :return:
         """
         indexes = get_indexes(gob_model)
-        self._drop_indexes(indexes)
-        existing_indexes = self._get_existing_indexes()
 
-        for name, definition in indexes.items():
-            if name in existing_indexes:
-                # Don't run CREATE INDEX IF NOT EXISTS query to prevent unnecessary locks
-                continue
+        with self.engine.begin() as connection:
+            self._drop_indexes(connection, indexes)
+            existing_indexes = self._get_existing_indexes(connection)
 
-            columns = ','.join(definition['columns'])
-            index_type = self._get_index_type(definition.get('type'))
-            table = definition["table_name"]
-            statement = f'CREATE INDEX IF NOT EXISTS "{name}" ON {table} USING {index_type}({columns})'
+            for name, definition in indexes.items():
+                if name in existing_indexes:
+                    # Don't run CREATE INDEX IF NOT EXISTS query to prevent unnecessary locks
+                    continue
 
-            if index_type == "GIST":
-                # Create GIST index for valid geometries (used during spatial relate)
-                statement += f" WHERE ST_IsValid({columns})"
+                columns = ','.join(definition['columns'])
+                index_type = self._get_index_type(definition.get('type'))
+                table = definition["table_name"]
+                statement = f'CREATE INDEX IF NOT EXISTS "{name}" ON {table} USING {index_type}({columns})'
 
-            try:
-                self.execute(statement)
-            except OperationalError as e:
-                print(f"ERROR: Index {name} failed: {e}")
+                if index_type == "GIST":
+                    # Create GIST index for valid geometries (used during spatial relate)
+                    statement += f" WHERE ST_IsValid({columns})"
+
+                connection.execute(text(statement))
 
     @with_session
     def create_temporary_table(self):
@@ -352,7 +338,6 @@ WHERE
             self.tablename_temp,
             self.base.metadata,
             *columns,
-            implicit_returning=False,  # no returning on insert
             prefixes=["TEMPORARY"]     # CREATE TEMPORARY TABLE <table>
         )
         table.create(bind=self.session.bind)
@@ -366,7 +351,7 @@ WHERE
         If the write_per argument is specified writes will take place in chunks
         :return:
         """
-        table = self.base.metadata.tables[self.tablename_temp]
+        table: Table = self.base.metadata.tables[self.tablename_temp]
         tid_type = self._field_types[FIELD.TID]
         hash_type = self._field_types[FIELD.HASH]
         source_value = self._field_types[FIELD.SOURCE].from_value(self.metadata.source).to_db
@@ -383,7 +368,7 @@ WHERE
         self.session.execute(table.insert(), rows)
 
     @with_session
-    def compare_temporary_data(self, mode: ImportMode = ImportMode.FULL) -> Iterator[list[Row]]:
+    def compare_temporary_data(self, mode: ImportMode = ImportMode.FULL) -> Iterator[Sequence[Row]]:
         """ Compare the data in the temporay table to the current state
 
         The created query compares each model field and returns the tid, last_event
@@ -404,12 +389,8 @@ WHERE
     @with_session
     def analyze_temporary_table(self):
         """Runs VACUUM ANALYZE on temporary table."""
-        conn = self.session.bind
-
-        # Temporary switch to database AUTOCOMMIT, reset after VACUUM
-        conn.execution_options(isolation_level="AUTOCOMMIT")
-        conn.execute(text(f"ANALYZE {self.tablename_temp}"))
-        conn.execution_options(isolation_level=conn.default_isolation_level)
+        query = f"ANALYZE {self.tablename_temp}"
+        self.session.bind.execute(text(query), execution_options={"isolation_level": "AUTOCOMMIT"})
 
     @property
     def DbEvent(self):
@@ -439,17 +420,22 @@ WHERE
         :param invalidate: Invalidate and release connection on exiting context.
             Useful in case you want to discard the database session, i.e. to drop temp table
         """
+
+        # Explicitely create Connection (not an Engine) to make it accessible on the `bind` attribute
         connection = self.engine.connect()
-        self.session = self.Session(bind=connection)
+
+        session = self.Session(bind=connection)
+        self.session = session
 
         try:
-            yield self.session
+            yield session
         except Exception as err:
-            print(traceback.format_exc(limit=-5))
+            # print(traceback.format_exc(limit=-5))
             logger.error(repr(err))
-            self.session.rollback()
+            session.rollback()
+            raise
         else:
-            self.session.flush()
+            session.commit()
         finally:
             if invalidate:
                 # release connection to database -> dropping temp tables
@@ -459,7 +445,7 @@ WHERE
                 if self.metadata and self.tablename_temp in self.base.metadata.tables:
                     self.base.metadata.remove(self.base.metadata.tables[self.tablename_temp])
 
-            self.session.close()
+            session.close()
             self.session = None
 
     @with_session
@@ -494,7 +480,7 @@ WHERE
         )
         return self.session.execute(query).scalar() or 0
 
-    def get_events_starting_after(self, eventid: int, limit: int = 10_000) -> Iterator[list[Row]]:
+    def get_events_starting_after(self, eventid: int, limit: int = 10_000) -> Sequence[DbEvent]:
         """
         Return chunks of events with eventid starting at `eventid`.
         Example with size=2: ([event1, event2], [event3, event4], [event5])
@@ -505,39 +491,23 @@ WHERE
         :param limit: limit returned result to this size
         :return: Iterator containing lists of events
         """
-        events = self.DbEvent
-        query = (
-            select(
-                events.eventid,
-                events.timestamp,
-                events.catalogue,
-                events.entity,
-                events.version,
-                events.action,
-                events.source,
-                events.contents,
-                events.application,
-                events.tid
+        Event = self.DbEvent
+        stmt = (
+            select(Event)
+            .where(
+                Event.source == self.metadata.source,
+                Event.catalogue == self.metadata.catalogue,
+                Event.entity == self.metadata.entity,
+                Event.eventid > eventid
             )
-            .where(events.source == self.metadata.source)
-            .where(events.catalogue == self.metadata.catalogue)
-            .where(events.entity == self.metadata.entity)
-            .order_by(events.eventid.asc())
+            .order_by(Event.eventid.asc())
             .limit(limit)
         )
 
-        def _get_chunk(after_event: int) -> list[Row]:
-            # close connection after every query, release transaction
-            with self.engine.connect() as conn:
-                return conn.execute(query.where(events.eventid > after_event)).all()
+        # Fetch detached Events (not connected to any session)
+        with self.engine.connect() as conn:
+            return [Event(**row) for row in conn.execute(stmt).mappings()]
 
-        start_after = eventid
-
-        while chunk := _get_chunk(start_after):
-            yield chunk
-            start_after = getattr(chunk[-1], "eventid")
-
-    @with_session
     def has_any_event(self, filter_: dict) -> bool:
         """True if any event matches the filter condition
 
@@ -548,10 +518,10 @@ WHERE
         for key, val in filter_.items():
             query = query.where(getattr(self.DbEvent, key) == val)
 
-        return self.session.execute(query).first() is not None
+        with self.engine.connect() as connection:
+            return connection.execute(query).first() is not None
 
-    @with_session
-    def has_any_entity(self, key=None, value=None):
+    def has_any_entity(self, key: str = None, value: Any = None) -> bool:
         """Check if any entity exist with the given key-value combination
         When no key-value combination is supplied check for any entity
 
@@ -563,15 +533,15 @@ WHERE
 
         if key and value:
             query = query.where(getattr(self.DbEntity, key) == value)
-        return self.session.execute(query).first() is not None
 
-    def get_collection_model(self):
+        with self.engine.connect() as connection:
+            return connection.execute(query).first() is not None
+
+    def get_collection_model(self) -> dict | None:
         if self.metadata.catalogue in gob_model:
             return gob_model[self.metadata.catalogue]['collections'].get(self.metadata.entity)
-        return None
 
-    @with_session
-    def get_current_ids(self, exclude_deleted=True) -> Iterator[str]:
+    def get_current_ids(self, exclude_deleted=True) -> Sequence[str]:
         """Overview of entities that are current
 
         Current id's are evaluated within an application
@@ -581,7 +551,9 @@ WHERE
         query = select(self.DbEntity._tid)
         if exclude_deleted:
             query = query.where(self.DbEntity._date_deleted.is_(None))
-        return self.session.stream_scalars(query)
+
+        with self.engine.connect() as conn:
+            return conn.execute(query).scalars().all()
 
     @with_session
     def get_last_events(self) -> dict[str, int]:
@@ -592,8 +564,7 @@ WHERE
         query = select(self.DbEntity._tid, self.DbEntity._last_event)
         return {row[0]: row[1] for row in self.session.stream_execute(query)}
 
-    @with_session
-    def get_column_values_for_key_value(self, column, key, value):
+    def get_column_values_for_key_value(self, column: str, key: str, value: Any) -> Sequence[Row]:
         """Gets the distinct values for column within the given source for the given key-value
 
         Example: get all values for column "identification" with "code" == "A" coming from source "AMSBI"
@@ -603,19 +574,23 @@ WHERE
         :param value: The value to filter the column on
         :return: A list of all unique values for the given combination within the Storage handler source
         """
-        filter = {
-            "_source": self.metadata.source,
-            key: value
-        }
-        attr = getattr(self.DbEntity, column)
-        return self.session.query(attr) \
-            .filter_by(**filter) \
-            .filter(attr.isnot(None)) \
-            .distinct(attr) \
-            .all()
+        attr: Column = getattr(self.DbEntity, column)
+        source: Column = getattr(self.DbEntity, FIELD.SOURCE)
+        key_col: Column = getattr(self.DbEntity, key)
 
-    @with_session
-    def get_last_column_value(self, template, column):
+        stmt = (
+            select(attr)
+            .distinct()
+            .where(
+                source == self.metadata.source,
+                key_col == value,
+                attr.isnot(None)
+            )
+        )
+        with self.engine.connect() as connection:
+            return connection.execute(stmt).all()
+
+    def get_last_column_value(self, template: str, column: str) -> Any:
         """Get the "last" value for column with column values that match the template
 
         Example: Get the last value for "identification" with values that match "036%"
@@ -626,19 +601,23 @@ WHERE
         :param column: The column to filter on, eg "identification"
         :return:
         """
-        filter = {
-            "_source": self.metadata.source
-        }
-        attr = getattr(self.DbEntity, column)
-        return self.session.query(attr) \
-            .filter_by(**filter) \
-            .filter(attr.like(template)) \
-            .order_by(attr.desc()) \
-            .limit(1) \
-            .value(attr)
+        attr: Column = getattr(self.DbEntity, column)
+        source: Column = getattr(self.DbEntity, FIELD.SOURCE)
+
+        stmt = (
+            select(attr)
+            .where(
+                source == self.metadata.source,
+                attr.like(template)
+            )
+            .order_by(attr.desc())
+            .limit(1)
+        )
+        with self.engine.connect() as connection:
+            return connection.execute(stmt).scalar()
 
     @with_session
-    def get_current_entity(self, entity, with_deleted=False):
+    def get_current_entity(self, entity, with_deleted=False) -> Row | None:
         """Gets current stored version of entity for the given entity.
 
         If it doesn't exist, returns None
@@ -650,20 +629,23 @@ WHERE
         :raises GOBException:
         :return: the stored version of the entity, or None if it doesn't exist
         """
-        filter = {"_tid": entity['_tid']}
+        where = {
+            FIELD.TID: entity[FIELD.TID]
+        }
 
-        entity_query = self.session.query(self.DbEntity).filter_by(**filter)
         if not with_deleted:
-            entity_query = entity_query.filter_by(_date_deleted=None)
+            where[FIELD.DATE_DELETED] = None
+
+        statement = select(self.DbEntity).filter_by(**where)
 
         try:
-            return entity_query.one_or_none()
+            return self.session.execute(statement).one_or_none()
         except MultipleResultsFound:
-            filter_str = ','.join([f"{k}={v}" for k, v in filter.items()])
+            filter_str = ','.join([f"{k}={v}" for k, v in where.items()])
             raise GOBException(f"Found multiple rows with filter: {filter_str}")
 
     @with_session
-    def get_entities(self, tids: Iterable[str], with_deleted=False) -> Iterator[Row]:
+    def get_entities(self, tids: Iterable[str], with_deleted=False) -> Sequence[DbEntity]:
         """
         Get entities with tid contained in the given list of tid's
 
@@ -671,22 +653,44 @@ WHERE
         :param with_deleted: boolean denoting if entities that are deleted should be considered (default: False)
         :return:
         """
-        values_tid = \
-            values(column("_tid", String), name="tids")\
-            .data([(tid, ) for tid in tids])
-
+        values_tid = values(column("_tid", String), name="tids").data([(tid, ) for tid in tids])
         query = select(self.DbEntity).join(values_tid, self.DbEntity._tid == values_tid.c._tid)
 
         if not with_deleted:
             query = query.where(self.DbEntity._date_deleted.is_(None))
 
-        return self.session.stream_scalars(query, execution_options={"yield_per": 10_000})
+        return self.session.scalars(query).all()
 
     @with_session
-    def add_add_events(self, events):
-        table = self.DbEntity.__table__
-        rows = [event.get_attribute_dict() | {"_last_event": event.id} for event in events]
-        self.session.execute(table.insert(), rows)
+    def get_entity_rows_by_tid(
+            self, tids: Iterable[str], with_deleted: bool = False, columns: list[str] = None
+    ) -> Result:
+        values_tid = values(column("_tid", String), name="tids").data([(tid,) for tid in tids])
+        columns = [getattr(self.DbEntity, col) for col in columns]
+
+        query = select(*columns).join(values_tid, self.DbEntity._tid == values_tid.c._tid)
+
+        if not with_deleted:
+            query = query.where(self.DbEntity._date_deleted.is_(None))
+
+        return self.session.execute(query)
+
+    @with_session
+    def apply_updates(self, updates: Iterator[DbEntity]) -> None:
+        def _get_modified_attrs(entity) -> dict[str, Any]:
+            return {
+                c.name: getattr(entity, c.name) for c in entity.__table__.columns
+                if c.name not in inspect(entity).unmodified
+            }
+
+        self.session.execute(update(self.DbEntity), [_get_modified_attrs(upd) for upd in updates])
+
+    @with_session
+    def add_add_events(self, events: list[ADD]):
+        self.session.execute(
+            self.DbEntity.__table__.insert(),  # insert on the Table object, not the ORM class
+            [event.get_attribute_dict() | {"_last_event": event.id, "_tid": event.tid} for event in events],
+        )
 
     @with_session
     def add_events(self, events):
@@ -696,7 +700,9 @@ WHERE
         :param events: the list of events to insert
         :return: None
         """
-        table = self.DbEvent.__table__
+        table: Table = self.DbEvent.__table__
+        table.implicit_returning = False  # RETURNING not supported on events table
+
         timestamp = self.metadata.timestamp
         source = self.metadata.source
         catalogue = self.metadata.catalogue
@@ -718,9 +724,7 @@ WHERE
             }
             for event in events
         ]
-        # disable implicit returning
-        # https://docs.sqlalchemy.org/en/14/core/dml.html#sqlalchemy.sql.expression.Insert.inline
-        self.session.execute(table.insert().inline(), rows)
+        self.session.execute(table.insert(), rows)
 
     @with_session
     def apply_confirms(self, confirms: list[dict], timestamp: str):
@@ -732,21 +736,18 @@ WHERE
         :return:
         """
         values_tid = \
-            values(column("_tid", String), name="tids") \
-            .data([(record["_tid"],) for record in confirms])
+            values(column("_gobid", String), name="gobids") \
+            .data([(record["_gobid"],) for record in confirms])
 
         stmt = (
             update(self.DbEntity)
-            .where(self.DbEntity._tid == values_tid.c._tid)
-            .values({CONFIRM.timestamp_field: timestamp})
+            .where(self.DbEntity._gobid == values_tid.c._gobid)
+            .values(**{CONFIRM.timestamp_field: timestamp})
+            .execution_options(synchronize_session=False)
         )
         self.session.execute(stmt)
 
-    def execute(self, statement):
-        result = self.engine.execute(statement)
-        result.close()
-
-    def get_query_value(self, query):
+    def get_query_value(self, query: str) -> Any:
         """Execute a query and return the result value
 
         The supplied query needs to resolve to a scalar value
@@ -754,12 +755,10 @@ WHERE
         :param query: Query string
         :return: scalar value result
         """
-        result = self.engine.execute(query)
-        value = result.scalar()
-        result.close()
-        return value
+        with self.engine.connect() as connection:
+            return connection.execute(text(query)).scalar()
 
-    def get_source_catalogue_entity_combinations(self, **kwargs) -> list[Row]:
+    def get_source_catalogue_entity_combinations(self, **kwargs) -> Sequence[Row]:
         """Return all unique source / catalogue / entity combinations."""
         query = select(
             self.DbEvent.source,
@@ -779,9 +778,5 @@ WHERE
 
         :return:
         """
-        # Create separate connection and start with COMMIT to be outside of transaction context, otherwise VACUUM won't
-        # work.
-        connection = self.engine.connect()
-        connection.execute("COMMIT")
-        connection.execute(f"VACUUM ANALYZE {self.tablename}")
-        connection.close()
+        with self.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+            connection.execute(text(f"VACUUM ANALYZE {self.tablename}"))

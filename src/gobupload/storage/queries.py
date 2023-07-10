@@ -16,6 +16,7 @@ SELECT * FROM (
 SELECT
     {temporary}._tid,
     {temporary}._source,
+    {current}._gobid AS _entity_gobid,
     {current}._source AS _entity_source,
     {current}._tid AS _entity_tid,
     {temporary}._original_value,
@@ -38,6 +39,7 @@ UNION ALL
 SELECT
     {temporary}._tid,
     {temporary}._source,
+    {current}._gobid AS _entity_gobid,
     {current}._source AS _entity_source,
     {current}._tid AS _entity_tid,
     {temporary}._original_value,

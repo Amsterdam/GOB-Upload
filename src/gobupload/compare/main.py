@@ -4,7 +4,7 @@ Derive Add, Change, Delete and Confirm events by comparing a full set of new dat
 
 Todo: Event, action and mutation are used for the same subject. Use one name to improve maintainability.
 """
-from typing import Iterator, Callable, Any
+from typing import Iterator, Callable, Any, Sequence
 from sqlalchemy.engine import Row
 
 from gobcore.enum import ImportMode
@@ -70,37 +70,37 @@ def compare(msg):
     stats = CompareStatistics()
     filename, confirms = None, None  # initialise here, storage.get_session doesn't re-raise exception
 
-    with storage.get_session(invalidate=True):
-        # Check any dependencies
-        if not meets_dependencies(storage, msg):
-            return {
-                "header": msg["header"],
-                "summary": logger.get_summary(),
-                "contents": None
-            }
+    # Check any dependencies
+    if not meets_dependencies(storage, msg):
+        return {
+            "header": msg["header"],
+            "summary": logger.get_summary(),
+            "contents": None
+        }
 
-        enricher = Enricher(storage, msg)
-        populator = Populator(entity_model, msg)
+    enricher = Enricher(storage, msg)
+    populator = Populator(entity_model, msg)
 
-        if storage.has_any_entity():
-            # Collect entities in a temporary table
+    if storage.has_any_entity():
+        # Collect entities in a temporary table
+        with storage.get_session(invalidate=True) as session:
             with EntityCollector(storage) as collector:
                 _collect_entities(msg["contents"], collector.collect, enricher, populator, stats)
 
             diff = storage.compare_temporary_data(mode)
             filename, confirms = _process_compare_results(storage, entity_model, diff, stats)
 
-        else:
-            # If there are no records in the database all data are ADD events
-            logger.info("Initial load of new collection detected")
+    else:
+        # If there are no records in the database all data are ADD events
+        logger.info("Initial load of new collection detected")
 
-            with (
-                ContentsWriter() as writer,
-                EventCollector(contents_writer=writer, confirms_writer=None, version=version) as collector
-            ):
-                _collect_entities(msg["contents"], collector.collect_initial_add, enricher, populator, stats)
+        with (
+            ContentsWriter() as writer,
+            EventCollector(contents_writer=writer, confirms_writer=None, version=version) as collector
+        ):
+            _collect_entities(msg["contents"], collector.collect_initial_add, enricher, populator, stats)
 
-            filename = writer.filename
+        filename = writer.filename
 
     # Build result message
     results = stats.results()
@@ -167,7 +167,7 @@ def _process_compare_result_row(
     elif event_type == "CONFIRM":
         return GOB.CONFIRM.create_event(
             _tid=tid,
-            data={FIELD.LAST_EVENT: last_event},
+            data={FIELD.LAST_EVENT: last_event, FIELD.GOBID: getattr(row, "_entity_gobid")},
             version=event_version
         )
 
@@ -193,7 +193,7 @@ def _process_compare_result_row(
 
 
 def _process_compare_results(
-        storage: GOBStorageHandler, model: dict, results: Iterator[list[Row]], stats: CompareStatistics
+        storage: GOBStorageHandler, model: dict, results: Iterator[Sequence[Row]], stats: CompareStatistics
 ) -> tuple[str, str]:
     """Process the results of the in database compare.
 

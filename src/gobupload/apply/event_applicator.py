@@ -4,11 +4,17 @@ Event applicator
 Applies events to the respective entity in the current model
 
 """
+from __future__ import annotations
+
+import datetime
 from collections import defaultdict
 from typing import Union
 
-from gobcore.exceptions import GOBException
+from sqlalchemy import RowMapping
+
 from gobcore.events import GOB, database_to_gobevent, ImportEvent
+from gobcore.exceptions import GOBException
+from gobcore.model import FIELD
 from gobupload.storage.handler import GOBStorageHandler
 from gobupload.update.update_statistics import UpdateStatistics
 
@@ -42,7 +48,7 @@ class EventApplicator:
         self.updates[gob_event.tid].append(gob_event)
         self.updates_total += 1
 
-    def _update_entity(self, entity):
+    def _update_entity(self, entity, row: RowMapping):
         """
         Update an entity
 
@@ -52,23 +58,23 @@ class EventApplicator:
 
         :param entity:
         """
-        for gob_event in self.updates.pop(entity._tid):
-            # validate event and entity, raises if not valid
-            self._validate_update_event(gob_event, entity)
+        for gob_event in self.updates[row[FIELD.TID]]:
+            self._validate_update_event(gob_event, row[FIELD.DATE_DELETED])
 
-            # apply the event on the entity
             gob_event.apply_to(entity)
 
-            # register the last event that has updated this entity
             entity._last_event = gob_event.id
 
-            # update stats
             self.stats.add_applied(gob_event.action, 1)
 
-    def _validate_update_event(self, gob_event: ImportEvent, entity) -> None:
+        return entity
+
+    def _validate_update_event(
+            self, gob_event: ImportEvent, date_deleted: datetime.datetime | None
+    ) -> None:
         if isinstance(gob_event, GOB.ADD):
             # only apply ADD on deleted entity
-            if entity._date_deleted is not None:
+            if date_deleted is not None:
                 return
 
             # a ADD event is trying to be applied to a non-deleted (current) entity
@@ -79,7 +85,7 @@ class EventApplicator:
 
         else:
             # only apply GOB.MODIFY, GOB.DELETE on non-deleted entity
-            if entity._date_deleted is None:
+            if date_deleted is None:
                 return
 
             # a non-ADD event is trying to be applied on a deleted entity
@@ -91,10 +97,14 @@ class EventApplicator:
     def _flush_updates(self):
         """Generate database updates from events in buffer and clear buffer."""
         if self.updates:
-            entities = self.storage.get_entities(self.updates.keys(), with_deleted=True)
+            Entity = self.storage.DbEntity
 
-            for entity in entities:
-                self._update_entity(entity)
+            rows = self.storage.get_entity_rows_by_tid(
+                self.updates.keys(), with_deleted=True, columns=[FIELD.GOBID, FIELD.TID, FIELD.DATE_DELETED]
+            ).mappings()
+
+            updates = (self._update_entity(Entity(_gobid=row[FIELD.GOBID]), row) for row in rows)
+            self.storage.apply_updates(updates)
 
             self.updates.clear()
             self.updates_total = 0

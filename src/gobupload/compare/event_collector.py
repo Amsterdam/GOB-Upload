@@ -9,7 +9,7 @@ from gobcore.model.metadata import FIELD
 
 class EventCollector:
 
-    MAX_BULK = 100_000          # Max number of events of same type in one bulk event
+    MAX_BULK = 10_000          # Max number of events of same type in one bulk event
     BULK_TYPES = ["CONFIRM"]    # Only CONFIRM events are grouped in bulk events
 
     def __init__(self, contents_writer, confirms_writer, version):
@@ -65,7 +65,8 @@ class EventCollector:
             event = GOB.BULKCONFIRM.create_event([
                 {
                     '_tid': event["data"]["_tid"],
-                    '_last_event': event["data"]["_last_event"]
+                    '_last_event': event["data"]["_last_event"],
+                    "_gobid": event["data"]["_gobid"]
                 } for event in self._bulk_events
             ], self.version)
             self._add_event(event)
