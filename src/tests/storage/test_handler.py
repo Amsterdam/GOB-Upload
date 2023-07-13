@@ -1,17 +1,15 @@
 import datetime
 import unittest
 from decimal import Decimal
-from unittest.mock import call, MagicMock, patch, ANY
+from unittest.mock import call, MagicMock, patch, ANY, PropertyMock
 
-from sqlalchemy import Integer, DateTime, String, JSON
+from sqlalchemy import Integer, DateTime, String, JSON, text, Engine, select
 from sqlalchemy.engine import Connection
 from sqlalchemy.orm import declarative_base
-from sqlalchemy.cimmutabledict import immutabledict
 
 from gobcore.events.import_message import ImportMessage
 from gobcore.exceptions import GOBException
 
-from sqlalchemy.exc import OperationalError
 import sqlalchemy as sa
 
 from gobupload.compare.populate import Populator
@@ -127,7 +125,7 @@ class TestStorageHandler(unittest.TestCase):
         # reflection options
         mock_base.reset_mock()
         GOBStorageHandler._set_base(reflection_options={"opt1": "val1"})
-        mock_base.metadata.reflect.assert_called_with(opt1="val1")
+        mock_base.metadata.reflect.assert_called_with(GOBStorageHandler.engine, opt1="val1")
 
         # reflection options, only kwarg, table exists
         mock_base.reset_mock()
@@ -220,22 +218,19 @@ class TestStorageHandler(unittest.TestCase):
         assert "tmp_meetbouten_very long enityvery long enityvery long_abcdefgh" == other.tablename_temp
         assert len(other.tablename_temp) == 63
 
-    def test_get_config_value(self):
-        self.storage.engine = MagicMock()
-        self.storage.engine.execute.return_value = iter([('the value',)])
-
-        self.assertEqual('the value', self.storage._get_config_value('the setting'))
-        self.storage.engine.execute.assert_called_with('SHOW the setting')
-
+    @patch("gobupload.storage.handler.text")
     @patch("builtins.print")
-    def test_check_configuration(self, mock_print):
-        self.storage._get_config_value = lambda x: 'the value'
+    def test_check_configuration(self, mock_print, mock_text):
+        mock_conn = self.storage.engine.connect.return_value.__enter__.return_value
+        mock_conn.execute.return_value.scalar_one.return_value = 'the value'
+
         self.storage.config_checks = [
             ('the setting', lambda x: True, 'the message', self.storage.WARNING)
         ]
 
         self.storage._check_configuration()
         mock_print.assert_not_called()
+        mock_text.assert_called_with("SHOW the setting")
 
         self.storage.config_checks = [
             ('the setting', lambda x: False, 'the message', self.storage.WARNING)
@@ -284,7 +279,8 @@ WHERE
             ['index_a', 'index_b']
         ))
 
-    def test_drop_indexes(self):
+    @patch("gobupload.storage.handler.text")
+    def test_drop_indexes(self, mock_text):
         indexes = {
             "index_a": {
                 "table_name": "sometable_1",
@@ -296,14 +292,14 @@ WHERE
             },
         }
 
-        self.storage.engine = MagicMock()
         self.storage._indexes_to_drop_query = MagicMock()
-        self.storage.engine.execute.return_value = [("index_c",), ("index_d",)]
-        self.storage.execute = MagicMock()
+
+        mock_conn = self.storage.engine.connect.return_value.__enter__.return_value
+        mock_conn.execute.return_value.scalars.return_value = ["index_c", "index_d"]
 
         self.storage._drop_indexes(indexes)
 
-        self.storage.execute.assert_has_calls([
+        mock_text.assert_has_calls([
             call('DROP INDEX IF EXISTS "index_c"'),
             call('DROP INDEX IF EXISTS "index_d"'),
         ])
@@ -312,41 +308,17 @@ WHERE
             ['sometable_1', 'sometable_2'],
             ['index_a', 'index_b'],
         )
-        self.storage.engine.execute.assert_called_with(self.storage._indexes_to_drop_query.return_value)
-
-    @patch("builtins.print")
-    def test_drop_indexes_exception_get(self, mock_print):
-        e = OperationalError('stmt', 'params', 'orig')
-        self.storage.engine.execute = MagicMock(side_effect=e)
-        self.storage._indexes_to_drop_query = MagicMock()
-        self.storage._drop_indexes({})
-
-        mock_print.assert_called_with(f"ERROR: Could not get indexes to drop: {str(e)}")
-
-    @patch("builtins.print")
-    def test_drop_indexes_exception_drop(self, mock_print):
-        e = OperationalError('stmt', 'params', 'orig')
-        self.storage.engine.execute = MagicMock(return_value=[('a',)])
-        self.storage._indexes_to_drop_query = MagicMock()
-        self.storage.execute = MagicMock(side_effect=e)
-        self.storage._drop_indexes({})
-
-        mock_print.assert_called_with(f"ERROR: Could not drop index a: {str(e)}")
+        mock_text.assert_any_call(self.storage._indexes_to_drop_query.return_value)
 
     def test_get_existing_indexes(self):
-        self.storage.engine.execute = MagicMock(return_value=[('indexA',), ('indexB',)])
-        self.assertEqual(['indexA', 'indexB'], self.storage._get_existing_indexes())
+        mock_conn = self.storage.engine.connect.return_value.__enter__.return_value
+        mock_conn.execute.return_value.scalars.return_value.all.return_value = ['indexA', 'indexB']
 
-    @patch("builtins.print")
-    def test_get_existing_indexes_exception(self, mock_print):
-        e = OperationalError('stmt', 'params', 'orig')
-        self.storage.engine.execute = MagicMock(side_effect=e)
+        assert ['indexA', 'indexB'] == self.storage._get_existing_indexes()
 
-        self.assertEqual([], self.storage._get_existing_indexes())
-        mock_print.assert_called_with(f"WARNING: Could not fetch list of existing indexes: {e}")
-
+    @patch("gobupload.storage.handler.text")
     @patch('gobupload.storage.handler.get_indexes')
-    def test_init_indexes(self, mock_get_indexes):
+    def test_init_indexes(self, mock_get_indexes, mock_text):
         mock_get_indexes.return_value = {
             "indexname": {
                 "table_name": "sometable",
@@ -373,17 +345,17 @@ WHERE
 
         self.storage._drop_indexes = MagicMock()
         self.storage._get_existing_indexes = lambda: ['existing']
+
         self.storage._init_indexes()
-        self.storage.engine.execute.assert_has_calls([
+
+        mock_conn = self.storage.engine.connect.return_value.__enter__.return_value
+        mock_text.assert_has_calls([
             call("CREATE INDEX IF NOT EXISTS \"indexname\" ON sometable USING BTREE(cola,colb)"),
-            call().close(),
             call("CREATE INDEX IF NOT EXISTS \"index2name\" ON someothertable USING BTREE(cola)"),
-            call().close(),
             call("CREATE INDEX IF NOT EXISTS \"geo_index\" ON table_with_geo USING GIST(geocol) WHERE ST_IsValid(geocol)"),
-            call().close(),
             call("CREATE INDEX IF NOT EXISTS \"json_index\" ON table_with_json USING GIN(somejsoncol)"),
-            call().close(),
         ])
+        assert mock_conn.execute.call_count == 4
         self.storage._drop_indexes.assert_called_once()
 
     @patch("gobupload.storage.handler.Table")
@@ -451,18 +423,18 @@ WHERE
 
         self.storage.analyze_temporary_table()
 
-        mock_session.bind.execution_options.has_calls([
-            call(isolation_level="AUTOCOMMIT"),
-            call(isolation_level=mock_session.bind.default_isolation_level)
-        ])
-
         mock_text.assert_called_with("ANALYZE tmp_meetbouten_meetbouten_abcdefgh")
-        mock_session.bind.execute.assert_called_with(mock_text.return_value)
+        mock_session.bind.execute.assert_called_with(
+            mock_text.return_value, execution_options={"isolation_level": "AUTOCOMMIT"}
+        )
 
-    def test_get_query_value(self):
-        self.storage.get_query_value('SELECT * FROM test')
-        # Assert the query is performed
-        self.storage.engine.execute.assert_called_with('SELECT * FROM test')
+    @patch("gobupload.storage.handler.text")
+    def test_get_query_value(self, mock_text):
+        result = self.storage.get_query_value('SELECT * FROM test')
+
+        mock_conn = self.storage.engine.connect.return_value.__enter__.return_value
+        assert mock_conn.execute.return_value.scalar.return_value == result
+        mock_text.assert_called_with('SELECT * FROM test')
 
     def test_combinations_plain(self):
         mock_conn = MagicMock(spec=Connection)
@@ -494,10 +466,16 @@ WHERE
         ])
         assert query == expected
 
-    def test_analyze_table(self):
-        self.storage.engine = MagicMock()
+    @patch("gobupload.storage.handler.text")
+    def test_analyze_table(self, mock_text):
+        self.storage.engine = MagicMock(spec=Engine)
         self.storage.analyze_table()
-        self.storage.engine.connect.return_value.execute.assert_called_with('VACUUM ANALYZE meetbouten_meetbouten')
+
+        mock_text.assert_called_with("VACUUM ANALYZE meetbouten_meetbouten")
+
+        self.storage.engine.connect.return_value.execution_options.assert_called_with(isolation_level="AUTOCOMMIT")
+        self.storage.engine.connect.return_value.execution_options.return_value.__enter__.return_value \
+            .execute.assert_called_with(mock_text.return_value)
 
     def test_add_events(self):
         self.storage.session = MagicMock()
@@ -544,30 +522,45 @@ WHERE
         _, params = self.storage.session.execute.call_args[0]
         assert params[0]["source_id"] is None
 
+    @patch("gobupload.storage.handler.text")
     @patch("gobupload.storage.handler.SessionORM.scalars")
     @patch("gobupload.storage.handler.SessionORM.execute")
-    def test_stream_session(self, mock_execute, mock_scalars):
+    def test_stream_session(self, mock_execute, mock_scalars, mock_text):
         obj = StreamSession()
         default_opts = {"execution_options": {"stream_results": True, "yield_per": obj.YIELD_PER}}
 
         obj.stream_execute("query", extra=5)
-        mock_execute.assert_called_with("query", **default_opts, extra=5)
+        mock_text.assert_called_with("query")
+        mock_execute.assert_called_with(mock_text.return_value, **default_opts, extra=5)
 
-        obj.stream_scalars("query", extra=5)
-        mock_scalars.assert_called_with("query", **default_opts, extra=5)
+        obj.stream_scalars("query2", extra=5)
+        mock_text.assert_called_with("query2")
+        mock_scalars.assert_called_with(mock_text.return_value, **default_opts, extra=5)
 
-        mock_execute.reset_mock()
-        obj.stream_execute("query", extra=5, execution_options={"yield_per": 2000})
+        obj.stream_execute("query3", extra=5, execution_options={"yield_per": 2000})
+        mock_text.assert_called_with("query3")
         mock_execute.assert_called_with(
-            "query", execution_options={"yield_per": 2000, "stream_results": True}, extra=5
+            mock_text.return_value,
+            execution_options={"yield_per": 2000, "stream_results": True},
+            extra=5
         )
+
+        stmt = select(self.storage.DbEvent),
+        obj.stream_execute(stmt, extra=5)
+        mock_execute.assert_called_with(stmt, **default_opts, extra=5)
+
+        obj.stream_scalars(stmt, extra=5)
+        mock_execute.assert_called_with(stmt, **default_opts, extra=5)
+
+        obj.execute(stmt, extra=5)
+        mock_execute.assert_called_with(stmt, extra=5)
 
     def test_apply_confirms(self):
         mock_session = MagicMock(spec=StreamSession)
         self.storage.session = mock_session
 
         confirms = [{"_tid": "confirm1"}, {"_tid": "confirm2"}]
-        timestamp = "any ts"
+        timestamp = datetime.datetime(2023, 6, 6)
 
         self.storage.apply_confirms(confirms, timestamp)
 
@@ -576,22 +569,19 @@ WHERE
 
         expected = (
             "UPDATE meetbouten_meetbouten "
-            "SET _date_confirmed='any ts' "
+            "SET _date_confirmed='2023-06-06 00:00:00' "
             "FROM (VALUES ('confirm1'), ('confirm2')) AS tids (_tid) "
             "WHERE meetbouten_meetbouten._tid = tids._tid"
         )
         assert query == expected
 
     def test_get_events_starting_after(self):
-        mock_row = MagicMock(eventid=14)
+        mock_row = {"eventid": 14}
         mock_engine = self.storage.engine.connect.return_value.__enter__.return_value
-        mock_engine.execute.return_value.all.side_effect = [[mock_row], []]
+        mock_engine.execute.return_value.mappings.return_value = [mock_row]
 
         result = self.storage.get_events_starting_after(12)
-        assert next(result) == [mock_row]
-
-        with self.assertRaises(StopIteration):
-            next(result)
+        assert result[0].eventid == 14
 
         query = mock_engine.execute.call_args_list[0][0][0]
         query = str(query.compile(compile_kwargs={"literal_binds": True}))
@@ -599,7 +589,7 @@ WHERE
         expected = "\n".join([
             "SELECT events.eventid, events.timestamp, events.catalogue, "
             "events.entity, events.version, events.action, events.source, "
-            "events.contents, events.application, events.tid ",
+            "events.source_id, events.contents, events.application, events.tid ",
             "FROM events ",
             "WHERE events.source = 'any source' "
             "AND events.catalogue = 'meetbouten' "
@@ -609,20 +599,3 @@ WHERE
             " LIMIT 10000"
         ])
         assert query == expected
-
-        query2 = mock_engine.execute.call_args_list[1][0][0]
-        query2 = str(query2.compile(compile_kwargs={"literal_binds": True}))
-
-        expected = "\n".join([
-            "SELECT events.eventid, events.timestamp, events.catalogue, "
-            "events.entity, events.version, events.action, events.source, "
-            "events.contents, events.application, events.tid ",
-            "FROM events ",
-            "WHERE events.source = 'any source' "
-            "AND events.catalogue = 'meetbouten' "
-            "AND events.entity = 'meetbouten' "
-            "AND events.eventid > 14 "
-            "ORDER BY events.eventid ASC",
-            " LIMIT 10000"
-        ])
-        assert query2 == expected

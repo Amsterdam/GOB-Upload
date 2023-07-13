@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch, call
 from datetime import date, datetime
 
 from gobupload import gob_model
-from gobupload.storage.relate import _get_data, get_current_relations, _query_missing
+from gobupload.storage.relate import _get_data, _query_missing
 from gobupload.storage.relate import check_relations, check_very_many_relations
 from gobupload.storage.relate import check_relation_conflicts, _get_relation_check_query
 from gobupload.storage.relate import QA_CHECK, QA_LEVEL, date_to_datetime, _get_date_origin_fields
@@ -43,64 +43,6 @@ class TestRelations(TestCase):
         self.assertEqual(
             result,
             {"src_begin_geldigheid": date_to_datetime(begin), "dst_eind_geldigheid": end})
-
-    @patch('gobupload.storage.relate._execute')
-    def test_current_relations(self, mock_execute):
-        mock_execute.return_value = [{}]
-        mock_gobmodel_data = {
-            'catalog': {
-                'collections': {
-                    'collection': {
-                        'all_fields': {
-                            'field': {
-                                'type': 'GOB.Reference',
-                                'ref': 'dst_catalogue:dst_collection'
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        with patch.dict(gob_model.data, mock_gobmodel_data):
-            result = get_current_relations("catalog", "collection", "field")
-            next(result)
-        mock_execute.assert_called_with("""
-SELECT   _gobid, field, _source, _id
-FROM     catalog_collection
-WHERE    _date_deleted IS NULL
-ORDER BY _source, _id
-""")
-
-    @patch('gobupload.storage.relate._execute')
-    def test_current_relations_with_states(self, mock_execute):
-        mock_execute.return_value = [{}]
-        mock_gobmodel_data = {
-            'catalog': {
-                'collections': {
-                    'collection': {
-                        'all_fields': {
-                            'field': {
-                                'type': 'GOB.Reference',
-                                'ref': 'dst_catalogue:dst_collection'
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        with patch.object(gob_model, 'has_states', lambda *args: True), \
-                patch.dict(gob_model.data, mock_gobmodel_data):
-            result = get_current_relations("catalog", "collection", "field")
-            first = next(result)
-        self.assertEqual(first, {})
-        mock_execute.assert_called_with("""
-SELECT   _gobid, field, _source, _id, volgnummer, eind_geldigheid
-FROM     catalog_collection
-WHERE    _date_deleted IS NULL
-ORDER BY _source, _id, volgnummer, begin_geldigheid
-""")
 
     @patch('gobupload.storage.relate.GOBStorageHandler', MagicMock(), spec_set=True)
     def test_get_data(self):
