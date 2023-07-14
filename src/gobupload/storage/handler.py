@@ -120,8 +120,6 @@ class GOBStorageHandler:
         URL.create(**GOB_DB),
         connect_args={'sslmode': 'require'},
         pool_pre_ping=True,
-        future=True,
-        echo=False,
         executemany_mode="values_plus_batch"
     )
 
