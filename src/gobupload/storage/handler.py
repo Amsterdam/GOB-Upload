@@ -506,9 +506,9 @@ WHERE
             .limit(limit)
         )
 
-        # Fetch detached Events (not connected to any session)
-        with self.engine.connect() as conn:
-            return [Event(**row) for row in conn.execute(stmt).mappings()]
+        with StreamSession(self.engine) as session:
+            session.expire_on_commit = False  # allows getting object attributes after closing session
+            return session.scalars(stmt).all()
 
     def has_any_event(self, filter_: dict) -> bool:
         """True if any event matches the filter condition
@@ -666,7 +666,12 @@ WHERE
     @with_session
     def add_add_events(self, events):
         table = self.DbEntity.__table__
-        rows = [event.get_attribute_dict() | {"_last_event": event.id} for event in events]
+
+        # disables insertmanyvalues sqlalchemy2 feature for better bulk insert performance
+        table.implicit_returning = False
+
+        # make sure _tid is filled from events.tid, not always present in event.contents
+        rows = [event.get_attribute_dict() | {"_last_event": event.id, "_tid": event.tid} for event in events]
         self.session.execute(table.insert(), rows)
 
     @with_session

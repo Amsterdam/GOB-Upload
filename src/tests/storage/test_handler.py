@@ -575,15 +575,16 @@ WHERE
         )
         assert query == expected
 
-    def test_get_events_starting_after(self):
-        mock_row = {"eventid": 14}
-        mock_engine = self.storage.engine.connect.return_value.__enter__.return_value
-        mock_engine.execute.return_value.mappings.return_value = [mock_row]
+    @patch("gobupload.storage.handler.StreamSession", spec=StreamSession)
+    def test_get_events_starting_after(self, mock_session):
+        mock_row = MockEvents(eventid=14)
+        mock_sess = mock_session.return_value.__enter__.return_value
+        mock_sess.scalars.return_value.all.return_value = [mock_row]
 
         result = self.storage.get_events_starting_after(12)
         assert result[0].eventid == 14
 
-        query = mock_engine.execute.call_args_list[0][0][0]
+        query = mock_sess.scalars.call_args_list[0][0][0]
         query = str(query.compile(compile_kwargs={"literal_binds": True}))
 
         expected = "\n".join([
