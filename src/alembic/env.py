@@ -51,13 +51,14 @@ def run_migrations_online():
     """
     # Register database URL
     ini_section = config.get_section(config.config_ini_section)
-    ini_section['sqlalchemy.url'] = URL(**GOB_DB)
+    ini_section['sqlalchemy.url'] = URL.create(**GOB_DB)
 
     # Connect to database
     connectable = engine_from_config(
         ini_section,
         prefix='sqlalchemy.',
-        poolclass=pool.NullPool)
+        poolclass=pool.NullPool
+    )
 
     with connectable.connect() as connection:
         context.configure(
