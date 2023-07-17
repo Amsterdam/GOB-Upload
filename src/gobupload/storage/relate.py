@@ -12,7 +12,6 @@ from gobupload import gob_model
 from gobupload.relate.update import Relater
 
 from gobupload.storage.handler import GOBStorageHandler
-from gobupload.storage.execute import _execute
 
 # Dates compare at start of day
 _START_OF_DAY = datetime.time(0, 0, 0)
@@ -87,43 +86,8 @@ def _get_data(query):
     """
     handler = GOBStorageHandler()
     with handler.get_session() as session:
-        data = session.execute(query)
-        for row in data:
+        for row in session.stream_execute(query, execution_options={"yield_per": 25_000}).mappings():
             yield _convert_row(row)
-
-
-def get_current_relations(catalog_name, collection_name, field_name):
-    """Get the current relations as an iterable of dictionaries.
-
-    Each relation is transformed into a dictionary
-
-    :param catalog_name:
-    :param collection_name:
-    :param field_name:
-    :return: An iterable of dicts
-    """
-    table_name = gob_model.get_table_name(catalog_name, collection_name)
-
-    collection = gob_model[catalog_name]['collections'][collection_name]
-    field = collection['all_fields'][field_name]
-    field_type = field['type']
-    assert field_type in ["GOB.Reference", "GOB.ManyReference"], f"Error: unexpected field type '{field_type}'"
-
-    select = [FIELD.GOBID, field_name, FIELD.SOURCE, FIELD.ID]
-    order_by = [FIELD.SOURCE, FIELD.ID]
-    if gob_model.has_states(catalog_name, collection_name):
-        select += [FIELD.SEQNR, FIELD.END_VALIDITY]
-        order_by += [FIELD.SEQNR, FIELD.START_VALIDITY]
-    query = f"""
-SELECT   {', '.join(select)}
-FROM     {table_name}
-WHERE    {FIELD.DATE_DELETED} IS NULL
-ORDER BY {', '.join(order_by)}
-"""
-    rows = _execute(query)
-    for row in rows:
-        row = dict(row)
-        yield row
 
 
 def _query_missing(query, check, attr):

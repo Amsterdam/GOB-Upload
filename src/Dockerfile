@@ -22,6 +22,9 @@ RUN rm requirements.txt
 # Wheelhouse cleanup.
 RUN rm -rf /opt/wheelhouse
 
+# install newer sqlalchemy than gobcore
+RUN pip install SQLAlchemy~=2.0.18
+
 # Copy gobupload module
 COPY gobupload gobupload
 

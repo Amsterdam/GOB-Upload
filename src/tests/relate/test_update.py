@@ -1538,7 +1538,7 @@ WHERE CLAUSE CONFLICTS
     def test_read_results(self):
         relater = self._get_relater()
         relater.result_table_name = "result_table"
-        relater.session.stream_execute.return_value = [(("a", "b"), )]
+        relater.session.stream_execute.return_value.mappings.return_value = [(("a", "b"), )]
 
         assert [{'a': 'b'}] == list(relater._read_results())
         relater.session.stream_execute.assert_called_with(

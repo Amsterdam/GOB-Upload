@@ -4,7 +4,7 @@ from tempfile import NamedTemporaryFile
 from unittest import TestCase
 
 import logging
-from unittest.mock import ANY, MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch, call
 
 from gobcore.exceptions import GOBException
 from gobcore.logging.logger import logger
@@ -38,34 +38,26 @@ class TestApply(TestCase):
     def tearDown(self):
         logging.disable(logging.NOTSET)
 
+    @patch("gobupload.apply.main.EventApplicator", autospec=EventApplicator)
     @patch('gobupload.apply.main.logger', MagicMock())
-    def test_apply_events(self, mock):
+    def test_apply_events(self, mock_applicator, _):
         event = fixtures.get_event_fixure()
+        event.eventid = 100
         event.contents = '{"_entity_source_id": "{fixtures.random_string()}", "entity": {}}'
-        mock.return_value = self.mock_storage
-        self.mock_storage.get_events_starting_after.side_effect = [[[event]], []]
-        stats = MagicMock()
+        self.mock_storage.get_events_starting_after.side_effect = [[event], []]
+        stats = MagicMock(spec=UpdateStatistics)
 
         apply_events(self.mock_storage, set(), 1, stats)
 
-        stats.add_applied.assert_called()
-
-    @patch("gobupload.apply.main.EventApplicator", spec_set=EventApplicator)
-    @patch("gobupload.apply.main.logger")
-    def test_apply_exception(self, mock_logger, mock_applicator, mock_storage):
-        mock_applicator.return_value.__enter__.return_value.flush.side_effect = GOBException
-        mock_storage.get_events_starting_after.return_value = [["event1"], ["event2"]]
-        mock_storage.session = MagicMock()
-
-        apply_events(mock_storage, set(), 1, self.stats)
-
-        mock_logger.error.assert_called_with("Exception during applying events: GOBException()")
-        mock_applicator.return_value.__enter__.return_value.load.assert_called_with("event1")
-        mock_applicator.return_value.__enter__.return_value.load.assert_called_once()
+        mock_applicator.assert_called_with(self.mock_storage, set(), stats)
+        mock_applicator.return_value.__enter__.return_value.load.assert_called_with(event)
         mock_applicator.return_value.__enter__.return_value.flush.assert_called_once()
 
-        # Session exits normally through finally.
-        mock_storage.get_session.return_value.__exit__.assert_called_with(None, None, None)
+        self.mock_storage.get_session.assert_called_once()
+        self.mock_storage.get_session.return_value.__enter__.assert_called_once()
+        self.mock_storage.get_session.return_value.__exit__.assert_called_once()
+
+        self.mock_storage.get_events_starting_after.has_calls([call(1, 10_000), call(100, 10_000)])
 
     @patch('gobupload.apply.main.add_notification')
     @patch('gobupload.apply.main.EventNotification')

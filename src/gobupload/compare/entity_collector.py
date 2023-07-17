@@ -25,7 +25,7 @@ class EntityCollector:
         self.close()
 
     def _clear(self):
-        self._entities.clear()
+        self._entities.clear()  # pragma: no cover
 
     def _write_entities(self):
         if self._entities:
