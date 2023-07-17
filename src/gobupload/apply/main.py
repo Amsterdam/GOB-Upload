@@ -31,21 +31,20 @@ def apply_events(storage: GOBStorageHandler, last_events: set[str], start_after:
     :param stats: update statitics for this action
     :return:
     """
+    CHUNK_SIZE = 10_000
+
     with (
-        ProgressTicker("Apply events", 10_000) as progress,
+        ProgressTicker("Apply events", CHUNK_SIZE) as progress,
         EventApplicator(storage, last_events, stats) as event_applicator,
     ):
-        for chunk in storage.get_events_starting_after(start_after):
+        while chunk := storage.get_events_starting_after(start_after, CHUNK_SIZE):
             with storage.get_session():
                 for event in chunk:
                     progress.tick()
                     event_applicator.load(event)
 
-                try:
-                    event_applicator.flush()
-                except Exception as err:
-                    logger.error(f"Exception during applying events: {repr(err)}")
-                    break  # skips 'else' and executes 'finally' => session rollback + closed
+                event_applicator.flush()
+                start_after = event.eventid
 
 
 def _apply_confirms(storage: GOBStorageHandler, confirms: Path, timestamp: str, stats: UpdateStatistics):
@@ -141,8 +140,7 @@ def apply(msg):
             apply_confirm_events(storage, stats, msg)
         else:
             logger.info(f"Start application of unhandled {model} events")
-            with storage.get_session():
-                last_events = set(storage.get_current_ids(exclude_deleted=False))
+            last_events = set(storage.get_current_ids(exclude_deleted=False))
 
             apply_events(storage, last_events, entity_max_eventid, stats)
             apply_confirm_events(storage, stats, msg)

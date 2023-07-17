@@ -70,37 +70,37 @@ def compare(msg):
     stats = CompareStatistics()
     filename, confirms = None, None  # initialise here, storage.get_session doesn't re-raise exception
 
-    with storage.get_session(invalidate=True):
-        # Check any dependencies
-        if not meets_dependencies(storage, msg):
-            return {
-                "header": msg["header"],
-                "summary": logger.get_summary(),
-                "contents": None
-            }
+    # Check any dependencies
+    if not meets_dependencies(storage, msg):
+        return {
+            "header": msg["header"],
+            "summary": logger.get_summary(),
+            "contents": None
+        }
 
-        enricher = Enricher(storage, msg)
-        populator = Populator(entity_model, msg)
+    enricher = Enricher(storage, msg)
+    populator = Populator(entity_model, msg)
 
-        if storage.has_any_entity():
-            # Collect entities in a temporary table
+    if storage.has_any_entity():
+        # Collect entities in a temporary table
+        with storage.get_session(invalidate=True):
             with EntityCollector(storage) as collector:
                 _collect_entities(msg["contents"], collector.collect, enricher, populator, stats)
 
             diff = storage.compare_temporary_data(mode)
             filename, confirms = _process_compare_results(storage, entity_model, diff, stats)
 
-        else:
-            # If there are no records in the database all data are ADD events
-            logger.info("Initial load of new collection detected")
+    else:
+        # If there are no records in the database all data are ADD events
+        logger.info("Initial load of new collection detected")
 
-            with (
-                ContentsWriter() as writer,
-                EventCollector(contents_writer=writer, confirms_writer=None, version=version) as collector
-            ):
-                _collect_entities(msg["contents"], collector.collect_initial_add, enricher, populator, stats)
+        with (
+            ContentsWriter() as writer,
+            EventCollector(contents_writer=writer, confirms_writer=None, version=version) as collector
+        ):
+            _collect_entities(msg["contents"], collector.collect_initial_add, enricher, populator, stats)
 
-            filename = writer.filename
+        filename = writer.filename
 
     # Build result message
     results = stats.results()

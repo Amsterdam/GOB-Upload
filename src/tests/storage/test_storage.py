@@ -80,14 +80,15 @@ class TestContextManager(unittest.TestCase):
             self.assertEqual(session, mock_session_instance)
 
         # test session creation after leaving context:
-        mock_session_instance.flush.assert_called()
+        mock_session_instance.commit.assert_called()
         mock_session_instance.close.assert_called()
         self.assertIsNone(storage.session)
 
         # test exception handling
-        with patch("gobupload.storage.handler.logger") as mock_logger:
-            with storage.get_session():
-                raise ConnectionError("any")
+        with self.assertRaises(ConnectionError):
+            with patch("gobupload.storage.handler.logger") as mock_logger:
+                with storage.get_session():
+                    raise ConnectionError("any")
 
         mock_session_instance.rollback.assert_called()
         mock_session_instance.close.assert_called()

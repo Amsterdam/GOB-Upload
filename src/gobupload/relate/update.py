@@ -5,6 +5,8 @@ import json
 from datetime import date, datetime
 from typing import Iterator
 
+from sqlalchemy import RowMapping
+
 from gobcore.events.import_events import ADD, DELETE, MODIFY
 from gobcore.exceptions import GOBException
 from gobcore.logging.logger import logger
@@ -1172,10 +1174,9 @@ LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(self._dst_table_outer
 
         return self._read_results()
 
-    def _read_results(self) -> Iterator[dict]:
+    def _read_results(self) -> Iterator[RowMapping]:
         query = f"SELECT * FROM {self.result_table_name}"
-
-        for row in self.session.stream_execute(query, execution_options={"yield_per": 25_000}):
+        for row in self.session.stream_execute(query, execution_options={"yield_per": 25_000}).mappings():
             yield dict(row)
 
     def _get_changed_ranges(self):
