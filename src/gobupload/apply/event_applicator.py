@@ -4,11 +4,15 @@ Event applicator
 Applies events to the respective entity in the current model
 
 """
+from __future__ import annotations
+
+import datetime
 from collections import defaultdict
 from typing import Union
 
-from gobcore.exceptions import GOBException
 from gobcore.events import GOB, database_to_gobevent, ImportEvent
+from gobcore.exceptions import GOBException
+from gobcore.model import FIELD
 from gobupload.storage.handler import GOBStorageHandler
 from gobupload.update.update_statistics import UpdateStatistics
 
@@ -33,42 +37,20 @@ class EventApplicator:
         if self.inserts or self.updates:
             raise GOBException("Have unapplied events. Call apply_all() before leaving context")
 
-    def _add_insert(self, gob_event):
+    def _add_insert(self, gob_event: GOB.ADD):
         """Adds ADD event to buffer."""
         self.inserts.append(gob_event)
 
-    def _add_update(self, gob_event):
+    def _add_update(self, gob_event: GOB.ADD | GOB.MODIFY | GOB.DELETE):
         """Add a non-ADD event or an ADD event on a deleted entity."""
         self.updates[gob_event.tid].append(gob_event)
         self.updates_total += 1
 
-    def _update_entity(self, entity):
-        """
-        Update an entity
-
-        The event can be an:
-        - ADD event (reanimation of a DELETED entity)
-        - DELETE or MODIFY event
-
-        :param entity:
-        """
-        for gob_event in self.updates.pop(entity._tid):
-            # validate event and entity, raises if not valid
-            self._validate_update_event(gob_event, entity)
-
-            # apply the event on the entity
-            gob_event.apply_to(entity)
-
-            # register the last event that has updated this entity
-            entity._last_event = gob_event.id
-
-            # update stats
-            self.stats.add_applied(gob_event.action, 1)
-
-    def _validate_update_event(self, gob_event: ImportEvent, entity) -> None:
+    @staticmethod
+    def _validate_update_event(gob_event: ImportEvent, date_deleted: datetime.datetime | None):
         if isinstance(gob_event, GOB.ADD):
             # only apply ADD on deleted entity
-            if entity._date_deleted is not None:
+            if date_deleted is not None:
                 return
 
             # a ADD event is trying to be applied to a non-deleted (current) entity
@@ -79,7 +61,7 @@ class EventApplicator:
 
         else:
             # only apply GOB.MODIFY, GOB.DELETE on non-deleted entity
-            if entity._date_deleted is None:
+            if date_deleted is None:
                 return
 
             # a non-ADD event is trying to be applied on a deleted entity
@@ -91,13 +73,24 @@ class EventApplicator:
     def _flush_updates(self):
         """Generate database updates from events in buffer and clear buffer."""
         if self.updates:
-            entities = self.storage.get_entities(self.updates.keys(), with_deleted=True)
-
-            for entity in entities:
+            for entity in self.storage.get_entities(self.updates.keys(), with_deleted=True):
                 self._update_entity(entity)
 
             self.updates.clear()
             self.updates_total = 0
+
+    def _update_entity(self, entity: "GOBStorageHandler.DbEntity"):
+        tid = getattr(entity, FIELD.TID)
+        events = self.updates[tid]
+
+        for event in events:
+            self._validate_update_event(event, getattr(entity, FIELD.DATE_DELETED))
+
+            event.apply_to(entity)
+            self.stats.add_applied(event.action, 1)
+
+        if events:
+            setattr(entity, FIELD.LAST_EVENT, events[-1].id)
 
     def _flush_inserts(self):
         """Generate database inserts from ADD events and clear buffer."""

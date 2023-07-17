@@ -3,7 +3,7 @@ import unittest
 from decimal import Decimal
 from unittest.mock import call, MagicMock, patch, ANY, PropertyMock
 
-from sqlalchemy import Integer, DateTime, String, JSON, text, Engine, select
+from sqlalchemy import Integer, DateTime, String, JSON, Engine, select
 from sqlalchemy.engine import Connection
 from sqlalchemy.orm import declarative_base
 
@@ -11,6 +11,7 @@ from gobcore.events.import_message import ImportMessage
 from gobcore.exceptions import GOBException
 
 import sqlalchemy as sa
+from sqlalchemy.util.langhelpers import symbol
 
 from gobupload.compare.populate import Populator
 from gobupload.storage import queries
@@ -70,6 +71,15 @@ class MockMeta:
     source = "AMSBI"
     catalogue = "meetbouten"
     entity = "meetbouten"
+
+
+class TestCreateEngine(unittest.TestCase):
+
+    def test_create_engine(self):
+        assert GOBStorageHandler.engine.dialect.executemany_batch_page_size == 10_000
+        assert GOBStorageHandler.engine.dialect.executemany_mode == symbol("EXECUTEMANY_VALUES_PLUS_BATCH")
+        assert GOBStorageHandler.engine.dialect.use_insertmanyvalues is False
+        assert GOBStorageHandler.engine.driver == "psycopg2"
 
 
 class TestStorageHandler(unittest.TestCase):

@@ -116,11 +116,17 @@ class StreamSession(SessionORM):
 
 class GOBStorageHandler:
     """Metadata aware Storage handler."""
+
     engine = create_engine(
         URL.create(**GOB_DB),
         connect_args={'sslmode': 'require'},
+        # https://docs.sqlalchemy.org/en/20/core/pooling.html#disconnect-handling-pessimistic
         pool_pre_ping=True,
-        executemany_mode="values_plus_batch"
+        # https://docs.sqlalchemy.org/en/20/dialects/postgresql.html#psycopg2-fast-execution-helpers
+        executemany_mode="values_plus_batch",
+        executemany_batch_page_size=10_000,
+        # https://docs.sqlalchemy.org/en/20/core/connections.html#insert-many-values-behavior-for-insert-statements
+        use_insertmanyvalues=False,
     )
 
     Session = sessionmaker(engine, class_=StreamSession, autoflush=False)
@@ -663,14 +669,11 @@ WHERE
 
     @with_session
     def add_add_events(self, events):
-        table = self.DbEntity.__table__
-
-        # disables insertmanyvalues sqlalchemy2 feature for better bulk insert performance
-        table.implicit_returning = False
-
         # make sure _tid is filled from events.tid, not always present in event.contents
         rows = [event.get_attribute_dict() | {"_last_event": event.id, "_tid": event.tid} for event in events]
-        self.session.execute(table.insert(), rows)
+
+        # invoke bulk insert through the Table object, not the mapped class
+        self.session.execute(self.DbEntity.__table__.insert(), rows)
 
     @with_session
     def add_events(self, events):
@@ -680,9 +683,6 @@ WHERE
         :param events: the list of events to insert
         :return: None
         """
-        table: Table = self.DbEvent.__table__
-        table.implicit_returning = False  # RETURNING not supported on events table
-
         timestamp = self.metadata.timestamp
         source = self.metadata.source
         catalogue = self.metadata.catalogue
@@ -704,7 +704,7 @@ WHERE
             }
             for event in events
         ]
-        self.session.execute(table.insert(), rows)
+        self.session.execute(self.DbEvent.__table__.insert(), rows)
 
     @with_session
     def apply_confirms(self, confirms: list[dict], timestamp: datetime.datetime):
