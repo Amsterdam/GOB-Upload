@@ -704,7 +704,10 @@ WHERE
             }
             for event in events
         ]
-        self.session.execute(self.DbEvent.__table__.insert(), rows)
+        table: Table = self.DbEvent.__table__
+        table.implicit_returning = False  # RETURNING not supported for events table (partitioned)
+
+        self.session.execute(table.insert(), rows)
 
     @with_session
     def apply_confirms(self, confirms: list[dict], timestamp: datetime.datetime):
