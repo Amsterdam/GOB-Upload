@@ -502,6 +502,8 @@ WHERE
 
         self.storage.add_events([event])
 
+        assert self.storage.DbEvent.__table__.implicit_returning is False
+
         query, params = self.storage.session.execute.call_args[0]
 
         assert str(query) == \
