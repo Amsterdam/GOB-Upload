@@ -19,7 +19,13 @@ down_revision = '427f22a6416a'
 branch_labels = None
 depends_on = None
 
+
+def wrap_query(query: str):
+    return sa.text(query) if sa.__version__[0] == "2" else query
+
+
 model = GOBModel()
+
 
 def _get_decimals_to_update():
     decimals = []
@@ -39,14 +45,18 @@ def upgrade():
     for catalog_name, collection_name, attr_name, attr in decimals_to_update:
         tablename = model.get_table_name(catalog_name, collection_name)
 
-        res = connection.execute(f"SELECT EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename  = '{tablename}');")
+        res = connection.execute(
+            wrap_query(
+                f"SELECT EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename  = '{tablename}');"
+            )
+        )
 
         if not next(res)[0]:
             # Skip, because table does not exist
             continue
 
         if 'precision' in attr:
-            op.execute(f"DROP VIEW IF EXISTS legacy.{tablename} CASCADE")
+            op.execute(wrap_query(f"DROP VIEW IF EXISTS legacy.{tablename} CASCADE"))
 
             sa_type = sa.DECIMAL(precision=10 + int(attr['precision']), scale=attr['precision'])
             op.alter_column(tablename, attr_name, type_=sa_type)
