@@ -446,34 +446,24 @@ WHERE
         assert mock_conn.execute.return_value.scalar.return_value == result
         mock_text.assert_called_with('SELECT * FROM test')
 
-    def test_combinations_plain(self):
+    def test_get_source_catalogue_entity_combinations(self):
         mock_conn = MagicMock(spec=Connection)
         mock_conn.__enter__.return_value.execute.return_value.all.return_value = ["row1"]
         self.storage.engine.connect.return_value = mock_conn
 
-        result = self.storage.get_source_catalogue_entity_combinations()
+        result = self.storage.get_source_catalogue_entity_combinations("cat", "ent")
         assert result == ["row1"]
 
         query = mock_conn.__enter__.return_value.execute.call_args[0][0]
         query = str(query.compile(compile_kwargs={"literal_binds": True}))
-        expected = "SELECT DISTINCT events.source, events.catalogue, events.entity \nFROM events"
-        assert query == expected
-
-    def test_combinations_with_args(self):
-        mock_conn = MagicMock(spec=Connection)
-        mock_conn.__enter__.return_value.execute.return_value.all.return_value = ["row1"]
-        self.storage.engine.connect.return_value = mock_conn
-
-        result = self.storage.get_source_catalogue_entity_combinations(source="val")
-        assert result == ["row1"]
-
-        query = mock_conn.__enter__.return_value.execute.call_args[0][0]
-        query = str(query.compile(compile_kwargs={"literal_binds": True}))
-        expected = "\n".join([
-            "SELECT DISTINCT events.source, events.catalogue, events.entity ",
-            "FROM events ",
-            "WHERE events.source = 'val'"
-        ])
+        expected = (
+            "SELECT "
+            "SPLIT_PART(tablename, '_', 1) AS catalogue, "
+            "SPLIT_PART(tablename, '_', 2) AS entity, "
+            "UPPER(SPLIT_PART(tablename, '_', 3)) AS source "
+            "FROM pg_tables "
+            "WHERE schemaname = 'events' AND tablename ILIKE 'cat_ent%' AND tablename LIKE '%\\_%\\_%'"
+        )
         assert query == expected
 
     @patch("gobupload.storage.handler.text")
@@ -572,20 +562,25 @@ WHERE
         self.storage.session = mock_session
 
         confirms = [{"_tid": "confirm1"}, {"_tid": "confirm2"}]
-        timestamp = datetime.datetime(2023, 6, 6)
+        timestamp = datetime.datetime(2023, 6, 6).isoformat()
 
         self.storage.apply_confirms(confirms, timestamp)
 
         query = mock_session.execute.call_args[0][0]
-        query = str(query.compile(compile_kwargs={"literal_binds": True}))
+        compiled = query.compile(compile_kwargs={"literal_binds": False})
 
         expected = (
             "UPDATE meetbouten_meetbouten "
-            "SET _date_confirmed='2023-06-06 00:00:00' "
-            "FROM (VALUES ('confirm1'), ('confirm2')) AS tids (_tid) "
+            "SET _date_confirmed=:_date_confirmed "
+            "FROM (VALUES (:param_1), (:param_2)) AS tids (_tid) "
             "WHERE meetbouten_meetbouten._tid = tids._tid"
         )
-        assert query == expected
+        assert str(compiled) == expected
+        assert compiled.params == {
+            '_date_confirmed': datetime.datetime(2023, 6, 6, 0, 0),
+            'param_1': 'confirm1',
+            'param_2': 'confirm2'
+        }
 
     @patch("gobupload.storage.handler.StreamSession", spec=StreamSession)
     def test_get_events_starting_after(self, mock_session):
