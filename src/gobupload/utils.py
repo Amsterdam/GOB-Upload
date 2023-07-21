@@ -23,10 +23,9 @@ def get_event_ids(storage):
     :param storage: GOB (events + entities)
     :return:highest entity eventid and last eventid
     """
-    with storage.get_session():
-        entity_max_eventid = storage.get_entity_max_eventid()
-        last_eventid = storage.get_last_eventid()
-        return entity_max_eventid, last_eventid
+    entity_max_eventid = storage.get_entity_max_eventid()
+    last_eventid = storage.get_last_eventid()
+    return entity_max_eventid, last_eventid
 
 
 def random_string(length):

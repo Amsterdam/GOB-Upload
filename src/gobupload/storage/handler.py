@@ -401,11 +401,15 @@ WHERE
 
     @property
     def DbEvent(self):
-        return getattr(self.base.classes, self.EVENTS_TABLE)
+        class_ = getattr(self.base.classes, self.EVENTS_TABLE)
+        setattr(class_.__table__, "implicit_returning", False)
+        return class_
 
     @property
     def DbEntity(self):
-        return getattr(self.base.classes, self.tablename)
+        class_ = getattr(self.base.classes, self.tablename)
+        setattr(class_.__table__, "implicit_returning", False)
+        return class_
 
     @property
     def tablename(self) -> str | None:
@@ -454,7 +458,6 @@ WHERE
             session.close()
             self.session = None
 
-    @with_session
     def get_entity_max_eventid(self) -> int:
         """Get the highest last_event property of entity
 
@@ -467,9 +470,9 @@ WHERE
             .order_by(last_event.desc())
             .limit(1)
         )
-        return self.session.execute(query).scalar() or 0
+        with self.engine.connect() as conn:
+            return conn.execute(query).scalar() or 0
 
-    @with_session
     def get_last_eventid(self) -> int:
         """Get the highest last_event property of entity
 
@@ -484,7 +487,8 @@ WHERE
             .order_by(events.eventid.desc())
             .limit(1)
         )
-        return self.session.execute(query).scalar() or 0
+        with self.engine.connect() as conn:
+            return conn.execute(query).scalar() or 0
 
     def get_events_starting_after(self, eventid: int, limit: int = 10_000) -> Sequence[DbEvent]:
         """
@@ -704,13 +708,10 @@ WHERE
             }
             for event in events
         ]
-        table: Table = self.DbEvent.__table__
-        table.implicit_returning = False  # RETURNING not supported for events table (partitioned)
-
-        self.session.execute(table.insert(), rows)
+        self.session.execute(self.DbEvent.__table__.insert(), rows)
 
     @with_session
-    def apply_confirms(self, confirms: list[dict], timestamp: datetime.datetime):
+    def apply_confirms(self, confirms: list[dict], timestamp: str):
         """
         Apply a (BULK)CONFIRM event
 
@@ -725,7 +726,7 @@ WHERE
         stmt = (
             update(self.DbEntity)
             .where(self.DbEntity._tid == values_tid.c._tid)
-            .values({CONFIRM.timestamp_field: timestamp})
+            .values({CONFIRM.timestamp_field: datetime.datetime.fromisoformat(timestamp)})
             .execution_options(synchronize_session=False)
         )
         self.session.execute(stmt)
