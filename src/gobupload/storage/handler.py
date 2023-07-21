@@ -743,23 +743,17 @@ WHERE
             return connection.execute(text(query)).scalar()
 
     def get_source_catalogue_entity_combinations(
-            self, catalogue: str, entity: str, source: str = None
-    ) -> Sequence[Row]:
+        self, catalogue: str, entity: str, source: str = ""
+    ) -> Iterator[Row]:
         """Return all unique source / catalogue / entity combinations."""
-        filter_ = "_".join([part for part in [catalogue, entity, source] if part])
-
-        query = (
-            "SELECT "
-            "SPLIT_PART(tablename, '_', 1) AS catalogue, "
-            "SPLIT_PART(tablename, '_', 2) AS entity, "
-            "UPPER(SPLIT_PART(tablename, '_', 3)) AS source "
-            "FROM pg_tables "
-            f"WHERE schemaname = '{self.EVENTS_TABLE}' AND tablename ILIKE '{filter_}%' "
-            f"AND tablename LIKE '%\_%\_%'"  # noqa: W605
-        )
+        # ^@ == startswith
+        query = "SELECT tablename FROM pg_tables WHERE schemaname = :events AND tablename ^@ LOWER(:table)"
+        params = {"events": self.EVENTS_TABLE, "table": f"{catalogue}_{entity}_{source}"}
 
         with self.engine.connect() as conn:
-            return conn.execute(text(query)).all()
+            for table in conn.execute(text(query), params).scalars():
+                row_qry = f"SELECT catalogue, entity, source FROM {self.EVENTS_TABLE}.{table} LIMIT 1"
+                yield from conn.execute(text(row_qry))
 
     def analyze_table(self):
         """Runs VACUUM ANALYZE on table
