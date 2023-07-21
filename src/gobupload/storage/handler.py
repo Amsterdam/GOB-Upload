@@ -572,7 +572,7 @@ WHERE
         :return: a dict of ids with last_event for the collection
         """
         query = select(self.DbEntity._tid, self.DbEntity._last_event)
-        return {row[0]: row[1] for row in self.session.stream_execute(query)}
+        return {row[0]: row[1] for row in self.session.execute(query).all()}
 
     def get_column_values_for_key_value(self, column: str, key: str, value: Any) -> Sequence[Row]:
         """Gets the distinct values for column within the given source for the given key-value
@@ -742,20 +742,24 @@ WHERE
         with self.engine.connect() as connection:
             return connection.execute(text(query)).scalar()
 
-    def get_source_catalogue_entity_combinations(self, **kwargs) -> Sequence[Row]:
+    def get_source_catalogue_entity_combinations(
+            self, catalogue: str, entity: str, source: str = None
+    ) -> Sequence[Row]:
         """Return all unique source / catalogue / entity combinations."""
-        query = select(
-            self.DbEvent.source,
-            self.DbEvent.catalogue,
-            self.DbEvent.entity
-        ).distinct()
+        filter_ = "_".join([part for part in [catalogue, entity, source] if part])
 
-        for key, val in kwargs.items():
-            if hasattr(self.DbEvent, key) and val:
-                query = query.where(getattr(self.DbEvent, key) == val)
+        query = (
+            "SELECT "
+            "SPLIT_PART(tablename, '_', 1) AS catalogue, "
+            "SPLIT_PART(tablename, '_', 2) AS entity, "
+            "UPPER(SPLIT_PART(tablename, '_', 3)) AS source "
+            "FROM pg_tables "
+            f"WHERE schemaname = '{self.EVENTS_TABLE}' AND tablename ILIKE '{filter_}%' "
+            f"AND tablename LIKE '%\_%\_%'"  # noqa: W605
+        )
 
         with self.engine.connect() as conn:
-            return conn.execute(query).all()
+            return conn.execute(text(query)).all()
 
     def analyze_table(self):
         """Runs VACUUM ANALYZE on table

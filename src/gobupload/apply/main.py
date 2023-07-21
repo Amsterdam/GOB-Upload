@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from typing import Sequence
 
 from sqlalchemy.engine import Row
 
@@ -97,7 +98,7 @@ def _should_analyze(stats):
         sum([value['absolute'] for value in applied_stats.values()]) > 0
 
 
-def _get_source_catalog_entity_combinations(msg) -> list[Row]:
+def _get_source_catalog_entity_combinations(msg) -> Sequence[Row]:
     header = msg["header"]
     storage = GOBStorageHandler(only=[GOBStorageHandler.EVENTS_TABLE])
 
@@ -108,9 +109,7 @@ def _get_source_catalog_entity_combinations(msg) -> list[Row]:
         # we should not query event table without filters
         raise GOBException(f"No catalogue or collection specified in header: {header}")
 
-    return storage.get_source_catalogue_entity_combinations(
-        catalogue=catalogue, entity=entity, source=header.get("source")
-    )
+    return storage.get_source_catalogue_entity_combinations(catalogue, entity, source=header.get("source"))
 
 
 def apply(msg):
