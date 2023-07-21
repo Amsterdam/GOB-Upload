@@ -1,7 +1,7 @@
 import datetime
 import unittest
 from decimal import Decimal
-from unittest.mock import call, MagicMock, patch, ANY, PropertyMock
+from unittest.mock import call, MagicMock, patch, ANY
 
 from sqlalchemy import Integer, DateTime, String, JSON, Engine, select
 from sqlalchemy.engine import Connection
@@ -447,24 +447,39 @@ WHERE
         mock_text.assert_called_with('SELECT * FROM test')
 
     def test_get_source_catalogue_entity_combinations(self):
+        class MockRow:
+            catalogue = "cat"
+            entity = "ent"
+            source = "src"
+
         mock_conn = MagicMock(spec=Connection)
-        mock_conn.__enter__.return_value.execute.return_value.all.return_value = ["row1"]
+
+        mock_execute1 = MagicMock()
+        mock_execute1.scalars.return_value = ["table1"]
+
+        mock_conn.__enter__.return_value.execute.side_effect = [mock_execute1, [MockRow()]]
         self.storage.engine.connect.return_value = mock_conn
 
-        result = self.storage.get_source_catalogue_entity_combinations("cat", "ent")
-        assert result == ["row1"]
+        result = next(self.storage.get_source_catalogue_entity_combinations("cat", "ent"))
+        assert result.catalogue == "cat"
+        assert result.entity == "ent"
+        assert result.source == "src"
 
         query = mock_conn.__enter__.return_value.execute.call_args[0][0]
         query = str(query.compile(compile_kwargs={"literal_binds": True}))
-        expected = (
-            "SELECT "
-            "SPLIT_PART(tablename, '_', 1) AS catalogue, "
-            "SPLIT_PART(tablename, '_', 2) AS entity, "
-            "UPPER(SPLIT_PART(tablename, '_', 3)) AS source "
-            "FROM pg_tables "
-            "WHERE schemaname = 'events' AND tablename ILIKE 'cat_ent%' AND tablename LIKE '%\\_%\\_%'"
-        )
+        expected = 'SELECT catalogue, entity, source FROM events.table1 LIMIT 1'
         assert query == expected
+
+        # empty result
+        mock_execute1.scalars.return_value = []
+        mock_conn.__enter__.return_value.execute.side_effect = [mock_execute1, [MockRow()]]
+        result = list(self.storage.get_source_catalogue_entity_combinations("cat", "ent"))
+        assert result == []
+
+        mock_execute1.scalars.return_value = [mock_execute1]
+        mock_conn.__enter__.return_value.execute.side_effect = [mock_execute1, []]
+        result = list(self.storage.get_source_catalogue_entity_combinations("cat", "ent"))
+        assert result == []
 
     @patch("gobupload.storage.handler.text")
     def test_analyze_table(self, mock_text):
