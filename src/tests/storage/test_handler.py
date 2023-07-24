@@ -110,7 +110,6 @@ class TestStorageHandler(unittest.TestCase):
         GOBStorageHandler.engine = MagicMock()
         GOBStorageHandler.engine.__enter__ = lambda self: None
         GOBStorageHandler.engine.__exit__ = lambda *args: None
-        GOBStorageHandler.engine.begin = lambda: GOBStorageHandler.engine
 
         GOBStorageHandler.base.classes.events = MockEvents
         GOBStorageHandler.base.classes.meetbouten_meetbouten = MockMeetbouten
@@ -304,7 +303,7 @@ WHERE
 
         self.storage._indexes_to_drop_query = MagicMock()
 
-        mock_conn = self.storage.engine.connect.return_value.__enter__.return_value
+        mock_conn = self.storage.engine.begin.return_value.__enter__.return_value
         mock_conn.execute.return_value.scalars.return_value = ["index_c", "index_d"]
 
         self.storage._drop_indexes(indexes)
@@ -358,7 +357,7 @@ WHERE
 
         self.storage._init_indexes()
 
-        mock_conn = self.storage.engine.connect.return_value.__enter__.return_value
+        mock_conn = self.storage.engine.begin.return_value.__enter__.return_value
         mock_text.assert_has_calls([
             call("CREATE INDEX IF NOT EXISTS \"indexname\" ON sometable USING BTREE(cola,colb)"),
             call("CREATE INDEX IF NOT EXISTS \"index2name\" ON someothertable USING BTREE(cola)"),
