@@ -572,7 +572,8 @@ WHERE
         :return: a dict of ids with last_event for the collection
         """
         query = select(self.DbEntity._tid, self.DbEntity._last_event)
-        return {row[0]: row[1] for row in self.session.execute(query).all()}
+        exc_opts = {"execution_options": {"yield_per": 25_000}}
+        return {row[0]: row[1] for row in self.session.stream_execute(query, **exc_opts)}
 
     def get_column_values_for_key_value(self, column: str, key: str, value: Any) -> Sequence[Row]:
         """Gets the distinct values for column within the given source for the given key-value
