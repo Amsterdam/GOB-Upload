@@ -90,7 +90,7 @@ class TestApply(TestCase):
         result = apply(msg)
 
         self.mock_storage.get_source_catalogue_entity_combinations.assert_called_with(
-            catalogue="any cat", entity="any ent", source="any src"
+            "any cat", "any ent", source="any src"
         )
 
         result_msg = {'header': msg["header"], 'summary': ANY}
@@ -100,18 +100,6 @@ class TestApply(TestCase):
 
         mock_event_notification.assert_called_with({}, [1, 1])
         mock_add_notification.assert_called_with(result_msg, mock_event_notification())
-
-        # collection instead of entity
-        apply({"header": {"catalogue": "any cat", "collection": "any ent", "source": "any src"}})
-        self.mock_storage.get_source_catalogue_entity_combinations.assert_called_with(
-            catalogue="any cat", entity="any ent", source="any src"
-        )
-
-        # only catalogue
-        apply({"header": {"catalogue": "any cat"}})
-        self.mock_storage.get_source_catalogue_entity_combinations.assert_called_with(
-            catalogue="any cat", entity=None, source=None
-        )
 
         # empty header raises
         with self.assertRaises(GOBException):

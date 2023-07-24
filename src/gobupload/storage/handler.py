@@ -401,11 +401,15 @@ WHERE
 
     @property
     def DbEvent(self):
-        return getattr(self.base.classes, self.EVENTS_TABLE)
+        class_ = getattr(self.base.classes, self.EVENTS_TABLE)
+        setattr(class_.__table__, "implicit_returning", False)
+        return class_
 
     @property
     def DbEntity(self):
-        return getattr(self.base.classes, self.tablename)
+        class_ = getattr(self.base.classes, self.tablename)
+        setattr(class_.__table__, "implicit_returning", False)
+        return class_
 
     @property
     def tablename(self) -> str | None:
@@ -454,7 +458,6 @@ WHERE
             session.close()
             self.session = None
 
-    @with_session
     def get_entity_max_eventid(self) -> int:
         """Get the highest last_event property of entity
 
@@ -467,9 +470,9 @@ WHERE
             .order_by(last_event.desc())
             .limit(1)
         )
-        return self.session.execute(query).scalar() or 0
+        with self.engine.connect() as conn:
+            return conn.execute(query).scalar() or 0
 
-    @with_session
     def get_last_eventid(self) -> int:
         """Get the highest last_event property of entity
 
@@ -484,7 +487,8 @@ WHERE
             .order_by(events.eventid.desc())
             .limit(1)
         )
-        return self.session.execute(query).scalar() or 0
+        with self.engine.connect() as conn:
+            return conn.execute(query).scalar() or 0
 
     def get_events_starting_after(self, eventid: int, limit: int = 10_000) -> Sequence[DbEvent]:
         """
@@ -568,7 +572,8 @@ WHERE
         :return: a dict of ids with last_event for the collection
         """
         query = select(self.DbEntity._tid, self.DbEntity._last_event)
-        return {row[0]: row[1] for row in self.session.stream_execute(query)}
+        exc_opts = {"execution_options": {"yield_per": 25_000}}
+        return {row[0]: row[1] for row in self.session.stream_execute(query, **exc_opts)}
 
     def get_column_values_for_key_value(self, column: str, key: str, value: Any) -> Sequence[Row]:
         """Gets the distinct values for column within the given source for the given key-value
@@ -704,13 +709,10 @@ WHERE
             }
             for event in events
         ]
-        table: Table = self.DbEvent.__table__
-        table.implicit_returning = False  # RETURNING not supported for events table (partitioned)
-
-        self.session.execute(table.insert(), rows)
+        self.session.execute(self.DbEvent.__table__.insert(), rows)
 
     @with_session
-    def apply_confirms(self, confirms: list[dict], timestamp: datetime.datetime):
+    def apply_confirms(self, confirms: list[dict], timestamp: str):
         """
         Apply a (BULK)CONFIRM event
 
@@ -725,7 +727,7 @@ WHERE
         stmt = (
             update(self.DbEntity)
             .where(self.DbEntity._tid == values_tid.c._tid)
-            .values({CONFIRM.timestamp_field: timestamp})
+            .values({CONFIRM.timestamp_field: datetime.datetime.fromisoformat(timestamp)})
             .execution_options(synchronize_session=False)
         )
         self.session.execute(stmt)
@@ -741,20 +743,18 @@ WHERE
         with self.engine.connect() as connection:
             return connection.execute(text(query)).scalar()
 
-    def get_source_catalogue_entity_combinations(self, **kwargs) -> Sequence[Row]:
+    def get_source_catalogue_entity_combinations(
+        self, catalogue: str, entity: str, source: str = ""
+    ) -> Iterator[Row]:
         """Return all unique source / catalogue / entity combinations."""
-        query = select(
-            self.DbEvent.source,
-            self.DbEvent.catalogue,
-            self.DbEvent.entity
-        ).distinct()
-
-        for key, val in kwargs.items():
-            if hasattr(self.DbEvent, key) and val:
-                query = query.where(getattr(self.DbEvent, key) == val)
+        # ^@ == startswith
+        query = "SELECT tablename FROM pg_tables WHERE schemaname = :events AND tablename ^@ LOWER(:table)"
+        params = {"events": self.EVENTS_TABLE, "table": f"{catalogue}_{entity}_{source}"}
 
         with self.engine.connect() as conn:
-            return conn.execute(query).all()
+            for table in conn.execute(text(query), params).scalars():
+                row_qry = f"SELECT catalogue, entity, source FROM {self.EVENTS_TABLE}.{table} LIMIT 1"
+                yield from conn.execute(text(row_qry))
 
     def analyze_table(self):
         """Runs VACUUM ANALYZE on table

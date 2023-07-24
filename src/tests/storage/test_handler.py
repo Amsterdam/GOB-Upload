@@ -1,7 +1,7 @@
 import datetime
 import unittest
 from decimal import Decimal
-from unittest.mock import call, MagicMock, patch, ANY, PropertyMock
+from unittest.mock import call, MagicMock, patch, ANY
 
 from sqlalchemy import Integer, DateTime, String, JSON, Engine, select
 from sqlalchemy.engine import Connection
@@ -446,35 +446,40 @@ WHERE
         assert mock_conn.execute.return_value.scalar.return_value == result
         mock_text.assert_called_with('SELECT * FROM test')
 
-    def test_combinations_plain(self):
+    def test_get_source_catalogue_entity_combinations(self):
+        class MockRow:
+            catalogue = "cat"
+            entity = "ent"
+            source = "src"
+
         mock_conn = MagicMock(spec=Connection)
-        mock_conn.__enter__.return_value.execute.return_value.all.return_value = ["row1"]
+
+        mock_execute1 = MagicMock()
+        mock_execute1.scalars.return_value = ["table1"]
+
+        mock_conn.__enter__.return_value.execute.side_effect = [mock_execute1, [MockRow()]]
         self.storage.engine.connect.return_value = mock_conn
 
-        result = self.storage.get_source_catalogue_entity_combinations()
-        assert result == ["row1"]
+        result = next(self.storage.get_source_catalogue_entity_combinations("cat", "ent"))
+        assert result.catalogue == "cat"
+        assert result.entity == "ent"
+        assert result.source == "src"
 
         query = mock_conn.__enter__.return_value.execute.call_args[0][0]
         query = str(query.compile(compile_kwargs={"literal_binds": True}))
-        expected = "SELECT DISTINCT events.source, events.catalogue, events.entity \nFROM events"
+        expected = 'SELECT catalogue, entity, source FROM events.table1 LIMIT 1'
         assert query == expected
 
-    def test_combinations_with_args(self):
-        mock_conn = MagicMock(spec=Connection)
-        mock_conn.__enter__.return_value.execute.return_value.all.return_value = ["row1"]
-        self.storage.engine.connect.return_value = mock_conn
+        # empty result
+        mock_execute1.scalars.return_value = []
+        mock_conn.__enter__.return_value.execute.side_effect = [mock_execute1, [MockRow()]]
+        result = list(self.storage.get_source_catalogue_entity_combinations("cat", "ent"))
+        assert result == []
 
-        result = self.storage.get_source_catalogue_entity_combinations(source="val")
-        assert result == ["row1"]
-
-        query = mock_conn.__enter__.return_value.execute.call_args[0][0]
-        query = str(query.compile(compile_kwargs={"literal_binds": True}))
-        expected = "\n".join([
-            "SELECT DISTINCT events.source, events.catalogue, events.entity ",
-            "FROM events ",
-            "WHERE events.source = 'val'"
-        ])
-        assert query == expected
+        mock_execute1.scalars.return_value = [mock_execute1]
+        mock_conn.__enter__.return_value.execute.side_effect = [mock_execute1, []]
+        result = list(self.storage.get_source_catalogue_entity_combinations("cat", "ent"))
+        assert result == []
 
     @patch("gobupload.storage.handler.text")
     def test_analyze_table(self, mock_text):
@@ -572,20 +577,25 @@ WHERE
         self.storage.session = mock_session
 
         confirms = [{"_tid": "confirm1"}, {"_tid": "confirm2"}]
-        timestamp = datetime.datetime(2023, 6, 6)
+        timestamp = datetime.datetime(2023, 6, 6).isoformat()
 
         self.storage.apply_confirms(confirms, timestamp)
 
         query = mock_session.execute.call_args[0][0]
-        query = str(query.compile(compile_kwargs={"literal_binds": True}))
+        compiled = query.compile(compile_kwargs={"literal_binds": False})
 
         expected = (
             "UPDATE meetbouten_meetbouten "
-            "SET _date_confirmed='2023-06-06 00:00:00' "
-            "FROM (VALUES ('confirm1'), ('confirm2')) AS tids (_tid) "
+            "SET _date_confirmed=:_date_confirmed "
+            "FROM (VALUES (:param_1), (:param_2)) AS tids (_tid) "
             "WHERE meetbouten_meetbouten._tid = tids._tid"
         )
-        assert query == expected
+        assert str(compiled) == expected
+        assert compiled.params == {
+            '_date_confirmed': datetime.datetime(2023, 6, 6, 0, 0),
+            'param_1': 'confirm1',
+            'param_2': 'confirm2'
+        }
 
     @patch("gobupload.storage.handler.StreamSession", spec=StreamSession)
     def test_get_events_starting_after(self, mock_session):
