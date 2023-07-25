@@ -45,6 +45,10 @@ USER root
 # will be available immediately.
 RUN rm -rf GOB-Core && git clone --depth=1 --branch master https://github.com/Amsterdam/GOB-Core.git
 RUN LIBGDAL_VERSION=$(gdal-config --version) pip install -e /app/GOB-Core
+
+# install newer sqlalchemy than gobcore
+RUN pip install SQLAlchemy~=2.0.19
+
 USER datapunt
 
 

@@ -195,9 +195,8 @@ class GOBStorageHandler:
 
     def execute(self, statement: str, **kwargs):
         """Execute statement and commit to database, rollback if error occurs."""
-        with self.engine.connect() as connection:
+        with self.engine.begin() as connection:
             connection.execute(text(statement), **kwargs)
-            connection.commit()
 
     def init_storage(
         self,
@@ -285,7 +284,7 @@ WHERE
         """Drops indexes on managed tables that aren't defined in this script. """
         query = self._indexes_to_drop_query([index['table_name'] for index in indexes.values()], list(indexes.keys()))
 
-        with self.engine.connect() as connection:
+        with self.engine.begin() as connection:
             indexes_to_drop = connection.execute(text(query)).scalars()
 
             for index in indexes_to_drop:
@@ -306,7 +305,7 @@ WHERE
         self._drop_indexes(indexes)
         existing_indexes = self._get_existing_indexes()
 
-        with self.engine.connect() as connection:
+        with self.engine.begin() as connection:
             for name, definition in indexes.items():
                 if name in existing_indexes:
                     # Don't run CREATE INDEX IF NOT EXISTS query to prevent unnecessary locks
