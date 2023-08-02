@@ -53,9 +53,9 @@ def upgrade():
         sa.UniqueConstraint('_source_id', name='rel_woz_wot_brk2_kot_bevat_kadastraalobject_uniq'),
         sa.UniqueConstraint('_tid', name='rel_woz_wot_brk2_kot_bevat_kadastraalobject__tid_key')
     )
-    op.execute("DROP VIEW legacy.rel_woz_wot_brk_kot_bevat_kadastraalobject CASCADE")
-    op.execute("DROP VIEW legacy.mv_woz_wot_woz_wdt_bestaat_uit_wozdeelobjecten CASCADE")
-    op.execute("DROP TABLE rel_woz_wot_brk_kot_bevat_kadastraalobject CASCADE")
+    op.execute("DROP VIEW IF EXISTS legacy.rel_woz_wot_brk_kot_bevat_kadastraalobject CASCADE")
+    op.execute("DROP VIEW IF EXISTS legacy.mv_woz_wot_woz_wdt_bestaat_uit_wozdeelobjecten CASCADE")
+    op.execute("DROP TABLE IF EXISTS rel_woz_wot_brk_kot_bevat_kadastraalobject CASCADE")
     # ### end Alembic commands ###
 
 
