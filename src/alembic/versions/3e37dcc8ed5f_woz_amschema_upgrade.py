@@ -1,7 +1,7 @@
 """woz amschema upgrade
 
 Revision ID: 3e37dcc8ed5f
-Revises: 452e26fc9b57
+Revises: 2d68dd5f78ea
 Create Date: 2023-08-04 15:05:06.444540
 
 """
@@ -12,7 +12,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision = '3e37dcc8ed5f'
-down_revision = '452e26fc9b57'
+down_revision = '2d68dd5f78ea'
 branch_labels = None
 depends_on = None
 
