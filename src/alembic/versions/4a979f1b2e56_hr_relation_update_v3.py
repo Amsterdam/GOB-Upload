@@ -554,6 +554,11 @@ def upgrade():
     sa.UniqueConstraint('_source_id', name='rel_hr_ves_hr_ves_is_samengevoegd_met_vestigingen_uniq'),
     sa.UniqueConstraint('_tid', name='rel_hr_ves_hr_ves_is_samengevoegd_met_vestigingen__tid_key')
     )
+
+    # truncate data to prevent foreign key errors
+    op.execute("TRUNCATE TABLE rel_hr_mac_hr_nnp_heeft_als_eigenaar_nnp")
+    op.execute("TRUNCATE TABLE rel_hr_mac_hr_nps_heeft_als_eigenaar_np")
+
     op.drop_constraint('rel_hr_mac_hr_nnp_heeft_als_eigenaar_nnp_dfk', 'rel_hr_mac_hr_nnp_heeft_als_eigenaar_nnp', type_='foreignkey')
     op.create_foreign_key('rel_hr_mac_hr_nnp_heeft_als_eigenaar_nnp_dfk', 'rel_hr_mac_hr_nnp_heeft_als_eigenaar_nnp', 'hr_nietnatuurlijkepersonen', ['dst_id'], ['_id'])
     op.drop_constraint('rel_hr_mac_hr_nps_heeft_als_eigenaar_np_dfk', 'rel_hr_mac_hr_nps_heeft_als_eigenaar_np', type_='foreignkey')
