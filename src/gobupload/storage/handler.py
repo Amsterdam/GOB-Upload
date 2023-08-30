@@ -719,14 +719,19 @@ WHERE
         :param timestamp: Time to set as last_confirmed
         :return:
         """
+        timestamp_dt = datetime.datetime.fromisoformat(timestamp)
+        col_confirm = getattr(self.DbEntity, CONFIRM.timestamp_field)
         values_tid = \
             values(column("_tid", String), name="tids") \
             .data([(record["_tid"],) for record in confirms])
 
         stmt = (
             update(self.DbEntity)
-            .where(self.DbEntity._tid == values_tid.c._tid)
-            .values({CONFIRM.timestamp_field: datetime.datetime.fromisoformat(timestamp)})
+            .where(
+                self.DbEntity._tid == values_tid.c._tid,
+                col_confirm != timestamp_dt
+            )
+            .values({col_confirm: timestamp_dt})
             .execution_options(synchronize_session=False)
         )
         self.session.execute(stmt)
