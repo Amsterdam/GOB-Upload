@@ -587,11 +587,13 @@ WHERE
             "UPDATE meetbouten_meetbouten "
             "SET _date_confirmed=:_date_confirmed "
             "FROM (VALUES (:param_1), (:param_2)) AS tids (_tid) "
-            "WHERE meetbouten_meetbouten._tid = tids._tid"
+            "WHERE meetbouten_meetbouten._tid = tids._tid AND "
+            "meetbouten_meetbouten._date_confirmed != :date_confirmed_1"
         )
         assert str(compiled) == expected
         assert compiled.params == {
             '_date_confirmed': datetime.datetime(2023, 6, 6, 0, 0),
+            'date_confirmed_1': datetime.datetime(2023, 6, 6, 0, 0),
             'param_1': 'confirm1',
             'param_2': 'confirm2'
         }
