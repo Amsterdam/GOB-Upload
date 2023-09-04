@@ -9,17 +9,29 @@ Use it like this:
 """
 from __future__ import annotations
 
-import datetime
 import functools
 import json
 import warnings
 
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Union, Iterator, Iterable, Any, Sequence
 
 from sqlalchemy import (
-    create_engine, Table, update, exc as sa_exc, select, column, String, values, Column, text,
-    Executable, Result, ScalarResult
+    create_engine,
+    Table,
+    update,
+    exc as sa_exc,
+    select,
+    column,
+    String,
+    values,
+    Column,
+    text,
+    Executable,
+    Result,
+    ScalarResult,
+    CursorResult,
 )
 from sqlalchemy.engine import Row
 from sqlalchemy.engine.url import URL
@@ -34,7 +46,6 @@ from gobcore.model import FIELD
 from gobcore.model.sa.gob import get_column
 from gobcore.model.sa.indexes import get_indexes
 from gobcore.typesystem import get_gob_type
-from gobcore.events.import_events import CONFIRM
 
 from alembic.runtime import migration
 import alembic.config
@@ -109,7 +120,7 @@ class StreamSession(SessionORM):
         stmt = text(statement) if isinstance(statement, str) else statement
         return super().execute(stmt, **self._update_param(**kwargs))
 
-    def execute(self, statement: str | Executable, *args, **kwargs) -> Result:
+    def execute(self, statement: str | Executable, *args, **kwargs) -> Result | CursorResult:
         stmt = text(statement) if isinstance(statement, str) else statement
         return super().execute(stmt, *args, **kwargs)
 
@@ -711,30 +722,59 @@ WHERE
         self.session.execute(self.DbEvent.__table__.insert(), rows)
 
     @with_session
-    def apply_confirms(self, confirms: list[dict], timestamp: str):
+    def create_confirms_table(self, filepath: Path, timestamp: str) -> str:
+        """
+        Creates a temporary table to store confirmed data from a file.
+
+        Args:
+            filepath (Path): The path to the file containing the data.
+            timestamp (str): The timestamp to associate with the data.
+
+        Returns:
+            str: The name of the created temporary table.
+
+        Raises:
+            None.
+        """
+        c_tid, c_confirm, c_data = FIELD.TID, FIELD.DATE_CONFIRMED, "data"
+        tmp_table = f"tmp_confirms_{random_string(8)}"
+        tmp_table_unpacked = f"{tmp_table}_unpacked"
+    
+        self.session.execute(f"CREATE TEMPORARY TABLE {tmp_table} ({c_data} jsonb)")
+        self.session.execute(f"CREATE TEMPORARY TABLE {tmp_table_unpacked} ({c_tid} text, {c_confirm} timestamp)")
+    
+        with self.session.bind.connection.cursor() as cur, filepath.open() as fp:
+            # \x01 and \x02 are special characters so we dont split in the middle of a line, only at the end
+            # use copy_expert function from psycopg2
+            sql = f"COPY {tmp_table} (data) FROM STDIN (FORMAT CSV, QUOTE E'\x01', DELIMITER E'\x02')"
+            cur.copy_expert(sql, fp)
+    
+        values_qry = (
+            f"SELECT JSONB_ARRAY_ELEMENTS({c_data} -> 'data' -> 'confirms') ->> '{c_tid}', '{timestamp}' "
+            f"FROM {tmp_table}"
+        )
+        self.session.execute(f"INSERT INTO {tmp_table_unpacked} {values_qry}")
+        self.session.execute(f"CREATE INDEX ON {tmp_table_unpacked} ({c_tid}) INCLUDE ({c_confirm})")
+        self.session.execute(f"ANALYZE {tmp_table_unpacked}")
+        return tmp_table_unpacked
+
+    @with_session
+    def apply_confirms(self, confirms_table: str, offset: int, limit: int) -> int:
         """
         Apply a (BULK)CONFIRM event
 
-        :param confirms: list of confirm data
-        :param timestamp: Time to set as last_confirmed
+        :param confirms_table:
+        :param offset:
+        :param limit:
         :return:
         """
-        timestamp_dt = datetime.datetime.fromisoformat(timestamp)
-        col_confirm = getattr(self.DbEntity, CONFIRM.timestamp_field)
-        values_tid = \
-            values(column("_tid", String), name="tids") \
-            .data([(record["_tid"],) for record in confirms])
-
-        stmt = (
-            update(self.DbEntity)
-            .where(
-                self.DbEntity._tid == values_tid.c._tid,
-                col_confirm != timestamp_dt
-            )
-            .values({col_confirm: timestamp_dt})
-            .execution_options(synchronize_session=False)
+        result = self.session.execute(
+            f"UPDATE {self.DbEntity.__table__} ent "
+            f"SET {FIELD.DATE_CONFIRMED} = b.{FIELD.DATE_CONFIRMED} "
+            f"FROM (SELECT * FROM {confirms_table} OFFSET {offset} LIMIT {limit}) b "
+            f"WHERE ent.{FIELD.TID} = b.{FIELD.TID} AND ent.{FIELD.DATE_CONFIRMED} != b.{FIELD.DATE_CONFIRMED}"
         )
-        self.session.execute(stmt)
+        return int(result.rowcount)
 
     def get_query_value(self, query: str) -> Any:
         """Execute a query and return the result value

@@ -4,11 +4,10 @@ from typing import Sequence
 
 from sqlalchemy.engine import Row
 
-from gobcore.events.import_events import CONFIRM, BULKCONFIRM
+from gobcore.events.import_events import CONFIRM
 from gobcore.exceptions import GOBException
 from gobcore.logging.logger import logger
 from gobcore.message_broker.notifications import EventNotification, add_notification
-from gobcore.message_broker.offline_contents import ContentsReader
 from gobcore.utils import ProgressTicker
 
 from gobupload.config import FULL_UPLOAD
@@ -48,23 +47,18 @@ def apply_events(storage: GOBStorageHandler, last_events: set[str], start_after:
                 start_after = event.eventid
 
 
-def _apply_confirms(storage: GOBStorageHandler, confirms: Path, timestamp: str, stats: UpdateStatistics):
-    with (
-        storage.get_session(),
-        ProgressTicker("Apply CONFIRM events", 50_000) as progress
-    ):
-        for event in ContentsReader(confirms).items():
-            if event["event"] not in (CONFIRM.name, BULKCONFIRM.name):
-                raise GOBException(f"Expected 'CONFIRM' or 'BULKCONFIRM' got: {event['event']}")
+def _apply_confirms(storage: GOBStorageHandler, confirms_table: str, stats: UpdateStatistics):
+    update_size = 25_000
 
-            # get confirm data: BULKCONFIRM => data.confirms, CONFIRM => [data]
-            confirm_data = event["data"].get("confirms", [event["data"]])
-            confirm_len = len(confirm_data)
-
-            progress.ticks(confirm_len)
-
-            storage.apply_confirms(confirm_data, timestamp=timestamp)
-            stats.add_applied(CONFIRM.name, confirm_len)
+    with ProgressTicker("Apply CONFIRM events", update_size) as progress:
+        while True:
+            updated_rows = storage.apply_confirms(confirms_table, progress._count, update_size)
+    
+            progress.ticks(updated_rows)
+            stats.add_applied(CONFIRM.name, updated_rows)
+    
+            if updated_rows < update_size:
+                break
 
 
 def apply_confirm_events(storage: GOBStorageHandler, stats: UpdateStatistics, msg: dict):
@@ -86,7 +80,9 @@ def apply_confirm_events(storage: GOBStorageHandler, stats: UpdateStatistics, ms
     timestamp = msg["header"]["timestamp"]
 
     try:
-        _apply_confirms(storage, confirms, timestamp=timestamp, stats=stats)
+        with storage.get_session(invalidate=True):
+            table = storage.create_confirms_table(confirms, timestamp)
+            _apply_confirms(storage, table, stats)
     finally:
         confirms.unlink(missing_ok=True)
         del msg["confirms"]
@@ -150,9 +146,9 @@ def apply(msg):
 
         # Build result message
         results = stats.results()
-        if mode == FULL_UPLOAD and _should_analyze(stats):
-            logger.info("Running VACUUM ANALYZE on table")
-            storage.analyze_table()
+
+        logger.info("Running VACUUM ANALYZE on table")
+        storage.analyze_table()
 
         stats.log()
         logger.info(f"Apply events {model} completed", {'data': results})
