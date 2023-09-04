@@ -79,13 +79,16 @@ def apply_confirm_events(storage: GOBStorageHandler, stats: UpdateStatistics, ms
     confirms = Path(msg["confirms"])
     timestamp = msg["header"]["timestamp"]
 
+    with storage.get_session(invalidate=True):
+        table = storage.create_confirms_table(confirms, timestamp)
+        _apply_confirms(storage, table, stats)
+
+    del msg["confirms"]
+
     try:
-        with storage.get_session(invalidate=True):
-            table = storage.create_confirms_table(confirms, timestamp)
-            _apply_confirms(storage, table, stats)
-    finally:
         confirms.unlink(missing_ok=True)
-        del msg["confirms"]
+    except OSError as exc:
+        logger.warning(f"Failed to delete file: {exc}")
 
 
 def _should_analyze(stats):
