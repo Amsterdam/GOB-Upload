@@ -4,7 +4,7 @@ MAINTAINER datapunt@amsterdam.nl
 
 
 # Application stage.
-FROM amsterdam/gob_baseimage:3.9-slim-bullseye as application
+FROM amsterdam/gob_baseimage:3.9-bullseye as application
 MAINTAINER datapunt@amsterdam.nl
 # GOB base image: SQL Server driver.
 
