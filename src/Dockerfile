@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1
-FROM amsterdam/gob_wheelhouse:3.9-bullseye as wheelhouse
+FROM amsterdam/gob_wheelhouse:3.9-slim-bullseye as wheelhouse
 MAINTAINER datapunt@amsterdam.nl
 
 
 # Application stage.
-FROM amsterdam/gob_baseimage:3.9-bullseye as application
+FROM amsterdam/gob_baseimage:3.9-slim-bullseye as application
 MAINTAINER datapunt@amsterdam.nl
 # GOB base image: SQL Server driver.
 
@@ -22,8 +22,8 @@ RUN rm requirements.txt
 # Wheelhouse cleanup.
 RUN rm -rf /opt/wheelhouse
 
-# install newer sqlalchemy than gobcore
-RUN pip install SQLAlchemy~=2.0.18
+# Install newer SQLAlchemy than gobcore
+RUN pip install SQLAlchemy~=2.0.21
 
 # Copy gobupload module
 COPY gobupload gobupload
@@ -46,8 +46,8 @@ USER root
 RUN rm -rf GOB-Core && git clone --depth=1 --branch master https://github.com/Amsterdam/GOB-Core.git
 RUN LIBGDAL_VERSION=$(gdal-config --version) pip install -e /app/GOB-Core
 
-# install newer sqlalchemy than gobcore
-RUN pip install SQLAlchemy~=2.0.19
+# Install newer sqlalchemy than gobcore
+RUN pip install SQLAlchemy~=2.0.21
 
 USER datapunt
 
