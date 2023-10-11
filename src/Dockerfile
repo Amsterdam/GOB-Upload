@@ -4,7 +4,7 @@ MAINTAINER datapunt@amsterdam.nl
 
 
 # Application stage.
-FROM amsterdam/gob_baseimage:3.9-bullseye as application
+FROM amsterdam/gob_baseimage:3.9-slim-bullseye as application
 MAINTAINER datapunt@amsterdam.nl
 # GOB base image: SQL Server driver.
 
@@ -28,7 +28,7 @@ RUN pip install SQLAlchemy~=2.0.21
 # Copy gobupload module
 COPY gobupload gobupload
 
-# Copy alembic config
+# Copy Alembic config.
 COPY alembic alembic
 COPY alembic.ini alembic.ini
 
