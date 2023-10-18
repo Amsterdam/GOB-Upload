@@ -17,6 +17,7 @@ import warnings
 from contextlib import contextmanager
 from typing import Union, Iterator, Iterable, Any, Sequence
 
+from psycopg2.extras import execute_values
 from sqlalchemy import (
     create_engine, Table, update, exc as sa_exc, select, column, String, values, Column, text,
     Executable, Result, ScalarResult
@@ -680,35 +681,56 @@ WHERE
         self.session.execute(self.DbEntity.__table__.insert(), rows)
 
     @with_session
-    def add_events(self, events):
+    def add_events(self, events: list[dict[str, Any]]):
         """
         Add the given events to the events table
 
         :param events: the list of events to insert
         :return: None
         """
+        columns = {
+            "timestamp": "timestamp",
+            "catalogue": "varchar",
+            "entity": "varchar",
+            "version": "varchar",
+            "action": "varchar",
+            "source": "varchar",
+            "source_id": "varchar",
+            "contents": "jsonb",
+            "application": "varchar",
+            "tid": "varchar"
+        }
+
         timestamp = self.metadata.timestamp
         source = self.metadata.source
         catalogue = self.metadata.catalogue
         entity = self.metadata.entity
         application = self.metadata.application
 
-        rows = [
-            {
-                "timestamp": timestamp,
-                "source": source,
-                "catalogue": catalogue,
-                "entity": entity,
-                "application": application,
-                "version": event['version'],
-                "action": event['event'],
-                "source_id": event["data"].get("_source_id"),
-                "contents": json.dumps(event["data"], cls=GobTypeJSONEncoder),
-                "tid": event["data"]["_tid"]
-            }
+        quoted_cols = ", ".join(f'"{c}"' for c in columns)
+        sql = f"INSERT INTO {self.EVENTS_TABLE} ({quoted_cols}) VALUES %s"
+        argslist = (
+            (
+                # should match column order events table
+                timestamp,
+                catalogue,
+                entity,
+                event["version"],
+                event["event"],
+                source,
+                event["data"].get("_source_id"),
+                json.dumps(event["data"], cls=GobTypeJSONEncoder),
+                application,
+                event["data"]["_tid"]
+            )
             for event in events
-        ]
-        self.session.execute(self.DbEvent.__table__.insert(), rows)
+        )
+
+        # explicitly cast values to prevent infering JSON using to_json
+        template = "(" + ", ".join([f'%s::{typ}' for typ in columns.values()]) + ")"
+
+        with self.session.bind.connection.cursor() as cur:
+            execute_values(cur, sql, argslist, template, page_size=2_000, fetch=False)
 
     @with_session
     def apply_confirms(self, confirms: list[dict], timestamp: str):
