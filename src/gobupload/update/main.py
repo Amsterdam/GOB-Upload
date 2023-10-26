@@ -38,8 +38,13 @@ def _store_events(
 
     with (
         ProgressTicker("Store events", chunksize) as progress,
-        storage.get_session(),
-        EventCollector(storage, last_events) as event_collector
+        storage.get_session() as session,
+        EventCollector(storage, last_events) as event_collector,
+
+        # explicitely start transaction context on bind
+        # storage.add_events operates on the bind and not the session
+        # nothing is committed otherwise
+        session.bind.begin()
     ):
         for chunk in ichunked(events, chunksize):
             for event in chunk:

@@ -491,7 +491,8 @@ WHERE
         self.storage.engine.connect.return_value.execution_options.return_value.__enter__.return_value \
             .execute.assert_called_with(mock_text.return_value)
 
-    def test_add_events(self):
+    @patch("gobupload.storage.handler.execute_values")
+    def test_add_events(self, mock_values):
         self.storage.session = MagicMock()
         metadata = fixtures.get_metadata_fixture()
         event = fixtures.get_event_fixture(metadata, "ADD")
@@ -506,37 +507,32 @@ WHERE
 
         self.storage.add_events([event])
 
-        assert self.storage.DbEvent.__table__.implicit_returning is False
+        mock_values.assert_called_with(
+            self.storage.session.bind.connection.cursor.return_value.__enter__.return_value,
+            'INSERT INTO events ("timestamp", "catalogue", "entity", "version", "action", '
+            '"source", "source_id", "contents", "application", "tid") VALUES %s',
+            ANY,
+            '(%s::timestamp, %s::varchar, %s::varchar, %s::varchar, %s::varchar, %s::varchar, '
+            '%s::varchar, %s::jsonb, %s::varchar, %s::varchar)',
+            page_size=2000,
+            fetch=False
+        )
 
-        query, params = self.storage.session.execute.call_args[0]
-
-        assert str(query) == \
-               "INSERT INTO events (eventid, timestamp, catalogue, entity, version, action, source, source_id, contents, application, tid) " \
-                "VALUES (:eventid, :timestamp, :catalogue, :entity, :version, :action, :source, :source_id, :contents, :application, :tid)"
-
-        assert params == [
-            {
-                "timestamp": self.storage.metadata.timestamp,
-                "source": self.storage.metadata.source,
-                "catalogue": self.storage.metadata.catalogue,
-                "entity": self.storage.metadata.entity,
-                "application": self.storage.metadata.application,
-                "version": "0.9",
-                "action": "ADD",
-                "source_id": "any source_id",
-                "contents": '{"_source_id": "any source_id", "_tid": "abcd.1", "decimal": 1.0,'
-                            ' "datetime": "2023-01-01T13:00:00.000000", "date": "2023-01-01",'
-                            ' "int": 10}',
-                "tid": "abcd.1"
-            }
-        ]
-
-        # no source id in data
-        self.storage.session.reset_mock()
-        event["data"] = {"_tid": "abcd.1"}
-        self.storage.add_events([event])
-        _, params = self.storage.session.execute.call_args[0]
-        assert params[0]["source_id"] is None
+        argslist = [(
+            self.storage.metadata.timestamp,
+            self.storage.metadata.catalogue,
+            self.storage.metadata.entity,
+            "0.9",
+            "ADD",
+            self.storage.metadata.source,
+            "any source_id",
+            '{"_source_id": "any source_id", "_tid": "abcd.1", "decimal": 1.0,'
+            ' "datetime": "2023-01-01T13:00:00.000000", "date": "2023-01-01",'
+            ' "int": 10}',
+            self.storage.metadata.application,
+            "abcd.1"
+        )]
+        assert list(mock_values.call_args[0][2]) == argslist
 
     @patch("gobupload.storage.handler.text")
     @patch("gobupload.storage.handler.SessionORM.scalars")
