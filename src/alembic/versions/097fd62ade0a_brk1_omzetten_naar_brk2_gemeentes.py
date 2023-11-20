@@ -341,9 +341,9 @@ def upgrade():
 
     # drop rel_ tables first, other tables depend on them
     for table in sorted(tables, key=lambda x: x[:4] != "rel_"):
-        op.execute(f"DROP VIEW IF EXISTS legacy.{table}")
-        op.execute(f"DROP VIEW IF EXISTS legacy.mv_{table.removeprefix('rel_')}")
-        op.execute(f"DROP MATERIALIZED VIEW IF EXISTS mv_{table.removeprefix('rel_')}")
+        op.execute(f"DROP VIEW IF EXISTS legacy.{table} CASCADE")
+        op.execute(f"DROP VIEW IF EXISTS legacy.mv_{table.removeprefix('rel_')} CASCADE")
+        op.execute(f"DROP MATERIALIZED VIEW IF EXISTS mv_{table.removeprefix('rel_')} CASCADE")
 
         op.drop_table(table)
     # ### end Alembic commands ###
