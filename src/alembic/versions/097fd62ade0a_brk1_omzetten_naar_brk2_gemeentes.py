@@ -327,7 +327,6 @@ def upgrade():
     )
 
     tables = [
-        'rel_gbd_brt_brk_gme_ligt_in_brk_gemeente',
         'rel_bag_sps_brk_gme_ligt_in_gemeente',
         'rel_bag_lps_brk_gme_ligt_in_gemeente',
         'rel_gbd_ggp_brk_gme_ligt_in_brk_gemeente',
@@ -335,17 +334,18 @@ def upgrade():
         'rel_bag_vot_brk_gme_ligt_in_gemeente',
         'rel_gbd_sdl_brk_gme_ligt_in_brk_gemeente',
         'rel_gbd_ggw_brk_gme_ligt_in_brk_gemeente',
-        'rel_gbd_wijk_brk_gme_ligt_in_brk_gemeente'
+        'rel_gbd_wijk_brk_gme_ligt_in_brk_gemeente',
+        'rel_gbd_brt_brk_gme_ligt_in_brk_gemeente'
     ]
     # ### end Alembic commands ###
 
     # drop rel_ tables first, other tables depend on them
     for table in sorted(tables, key=lambda x: x[:4] != "rel_"):
-        op.execute(f"DROP VIEW IF EXISTS legacy.{table} CASCADE")
-        op.execute(f"DROP VIEW IF EXISTS legacy.mv_{table.removeprefix('rel_')} CASCADE")
         op.execute(f"DROP MATERIALIZED VIEW IF EXISTS mv_{table.removeprefix('rel_')} CASCADE")
+        op.execute(f"DROP VIEW IF EXISTS legacy.mv_{table.removeprefix('rel_')} CASCADE")
+        op.execute(f"DROP VIEW IF EXISTS legacy.{table} CASCADE")
 
-        op.drop_table(table)
+        op.execute(f"DROP TABLE IF EXISTS {table} CASCADE")
     # ### end Alembic commands ###
 
 def downgrade():
