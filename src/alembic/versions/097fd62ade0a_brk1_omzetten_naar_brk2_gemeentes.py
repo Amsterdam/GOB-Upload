@@ -345,7 +345,7 @@ def upgrade():
         op.execute(f"DROP VIEW IF EXISTS legacy.mv_{table.removeprefix('rel_')} CASCADE")
         op.execute(f"DROP VIEW IF EXISTS legacy.{table} CASCADE")
 
-        op.drop_table(table)
+        op.execute(f"DROP TABLE IF EXISTS {table} CASCADE")
     # ### end Alembic commands ###
 
 def downgrade():
