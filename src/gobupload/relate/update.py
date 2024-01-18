@@ -1150,7 +1150,12 @@ LEFT JOIN {self.dst_table_name} dst ON {self.and_join.join(self._dst_table_outer
 
     def _query_into_results_table(self, query: str, is_conflicts_query: bool = False):
         result_table_columns = ', '.join(self._select_aliases(is_conflicts_query))
-        query = f"INSERT INTO {self.result_table_name} ({result_table_columns}) ({query})"
+
+        # Occasionally the planner will choose a nested loop join strategy, try to use another strategy first
+        # The query runs on a chunk of _MAX_ROWS_PER_SIDE (30_000)
+        # A nested loop join can't be disabled, only discouraged
+        # https://www.postgresql.org/docs/current/runtime-config-query.html#GUC-ENABLE-NESTLOOP
+        query = f"SET enable_nestloop=off; INSERT INTO {self.result_table_name} ({result_table_columns}) ({query})"
         return self.session.execute(query)
 
     def _get_updates(self, initial_load: bool = False):

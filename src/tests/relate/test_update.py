@@ -1491,10 +1491,14 @@ WHERE CLAUSE CONFLICTS
                                                                                                     "columnD"]
 
         relater._query_into_results_table("the query", False)
-        relater.session.execute.assert_called_with("INSERT INTO result_table (columnC, columnD) (the query)")
+        relater.session.execute.assert_called_with(
+            "SET enable_nestloop=off; INSERT INTO result_table (columnC, columnD) (the query)"
+        )
 
         relater._query_into_results_table("the query", True)
-        relater.session.execute.assert_called_with("INSERT INTO result_table (columnA, columnB) (the query)")
+        relater.session.execute.assert_called_with(
+            "SET enable_nestloop=off; INSERT INTO result_table (columnA, columnB) (the query)"
+        )
 
     def test_get_updates(self):
         relater = self._get_relater()
